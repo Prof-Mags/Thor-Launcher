@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -15,8 +14,10 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.unit.toSize
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 
 /**
@@ -52,22 +53,25 @@ val LocalPointerHoverFeedback = staticCompositionLocalOf<(() -> Unit)?> { null }
  * surface already does correctly is lay itself out.
  */
 @Stable
-class PointerHoverState internal constructor(
-    private val position: State<Offset?>,
-) {
+class PointerHoverState internal constructor() {
     internal var bounds by mutableStateOf(Rect.Zero)
 
     /**
      * True while the cursor is inside this element.
      *
+     * A plain state written by one collector rather than a value derived at each
+     * read, and that is deliberate. When the highlight was derived and the haptic
+     * came off a `snapshotFlow`, the two were separate observations of the same
+     * fact and could disagree — which is exactly what happened: the cue fired on
+     * every cell the cursor crossed while none of them ever lit up. Both now read
+     * this one field, so a buzz without a highlight is no longer expressible.
+     *
      * False whenever the pointer is down, because the position is null then — so
      * nothing has to remember to switch the highlight off when the pointer is put
      * away, and no element can be left lit by a cursor that no longer exists.
      */
-    val isHovered: Boolean by derivedStateOf {
-        val point = position.value ?: return@derivedStateOf false
-        !bounds.isEmpty && bounds.contains(point)
-    }
+    var isHovered: Boolean by mutableStateOf(false)
+        internal set
 }
 
 /**
@@ -87,7 +91,7 @@ class PointerHoverState internal constructor(
 @Composable
 fun rememberPointerHover(): PointerHoverState {
     val position = LocalPointerPosition.current
-    val state = remember(position) { PointerHoverState(position) }
+    val state = remember { PointerHoverState() }
 
     // Keyed on the element, never on the callback. A caller that rebuilds its
     // lambda each recomposition would otherwise restart this collector — and each
@@ -95,18 +99,35 @@ fun rememberPointerHover(): PointerHoverState {
     // cursor has just arrived.
     val feedback = rememberUpdatedState(LocalPointerHoverFeedback.current)
 
-    LaunchedEffect(state) {
-        snapshotFlow { state.isHovered }
+    LaunchedEffect(state, position) {
+        snapshotFlow {
+            val point = position.value
+            point != null && !state.bounds.isEmpty && state.bounds.contains(point)
+        }
+            .distinctUntilChanged()
             // The first value is the state of the world, not a change in it. An
             // element composed under a resting cursor would otherwise buzz for
             // having been drawn.
             .drop(1)
-            .collect { hovered -> if (hovered) feedback.value?.invoke() }
+            .collect { hovered ->
+                state.isHovered = hovered
+                if (hovered) feedback.value?.invoke()
+            }
     }
 
     return state
 }
 
-/** Reports this element's position so [PointerHoverState] can answer for it. */
+/**
+ * Reports this element's position so [PointerHoverState] can answer for it.
+ *
+ * Position and size rather than `boundsInWindow`, which intersects with every
+ * ancestor's clip. That sounds harmless and is not: an element inside a pager or
+ * a scrolling column reports a *truncated* rectangle near the edges, so the
+ * highlight died before the cursor reached the element's actual edge.
+ */
 fun Modifier.pointerHover(state: PointerHoverState): Modifier =
-    onGloballyPositioned { coordinates -> state.bounds = coordinates.boundsInWindow() }
+    onGloballyPositioned { coordinates ->
+        val origin = coordinates.positionInWindow()
+        state.bounds = Rect(origin, coordinates.size.toSize())
+    }

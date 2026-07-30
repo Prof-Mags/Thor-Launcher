@@ -9,6 +9,7 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import com.thor.core.common.log.ThorLog
@@ -28,7 +29,17 @@ import com.thor.core.input.PointerPosition
  * the touch underneath it would make the pointer the only thing on the device that
  * could be pointed at.
  */
-class PointerOverlay(private val context: Context) {
+class PointerOverlay(
+    private val context: Context,
+    /**
+     * Joystick motion, from whichever panel the cursor is on.
+     *
+     * Reported from here because this is the only window THOR has that is
+     * focused while another app is in front, and a focused window is the only
+     * place Android delivers motion events at all.
+     */
+    private val onMotion: (MotionEvent) -> Boolean = { false },
+) {
 
     private val displayManager = context.getSystemService(DisplayManager::class.java)
     private val windows = mutableMapOf<Int, DisplayWindow>()
@@ -87,19 +98,29 @@ class PointerOverlay(private val context: Context) {
         )
 
         for (type in types) {
-            val view = PointerView(displayContext)
+            val view = PointerView(displayContext, onMotion)
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
                 type,
                 /*
-                 * Not focusable, not touchable, and laid out over everything.
-                 * Without NOT_TOUCHABLE the cursor would eat the taps it is
-                 * supposed to be aiming; without NOT_FOCUSABLE it would take key
-                 * focus from the app underneath and stop the buttons reaching it.
+                 * Focusable on purpose, and this is the crux of the whole feature.
+                 *
+                 * Accessibility services are delivered key events and never motion
+                 * events, and the analogue stick is a motion event. So the cursor
+                 * was being driven by the launcher's own input handling, which
+                 * only works while the launcher holds focus — the moment a click
+                 * gave focus to the app underneath, the stick went somewhere
+                 * nothing could see it and the cursor froze until the launcher was
+                 * brought back. A focused window is the only place motion events
+                 * are delivered, so while the pointer is up this window is it.
+                 *
+                 * NOT_TOUCHABLE stays: the cursor must never eat the taps it is
+                 * aiming. ALT_FOCUSABLE_IM keeps a keyboard from opening merely
+                 * because a focusable window appeared.
                  */
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT,
@@ -115,7 +136,12 @@ class PointerOverlay(private val context: Context) {
                 }
                 .isSuccess
 
-            if (added) return DisplayWindow(windowManager, view)
+            if (added) {
+                // Focus has to be asked for; being in a focusable window is not
+                // enough for a view to be delivered anything.
+                view.requestFocus()
+                return DisplayWindow(windowManager, view)
+            }
         }
 
         ThorLog.e(TAG, "No pointer overlay could be placed on display $displayId")
@@ -136,11 +162,29 @@ class PointerOverlay(private val context: Context) {
  * pointer over arbitrary content has to do.
  */
 @SuppressLint("ViewConstructor")
-private class PointerView(context: Context) : View(context) {
+private class PointerView(
+    context: Context,
+    private val onMotion: (MotionEvent) -> Boolean,
+) : View(context) {
 
     private var pointerX = 0f
     private var pointerY = 0f
     private var sizePx = 0f
+
+    init {
+        isFocusable = true
+        isFocusableInTouchMode = true
+    }
+
+    /**
+     * The stick, everywhere.
+     *
+     * `onGenericMotionEvent` rather than `onTouchEvent`: a joystick is a generic
+     * motion source, and it is delivered only to the focused window — which is
+     * why this window asks to be one while the pointer is up.
+     */
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean =
+        onMotion(event) || super.onGenericMotionEvent(event)
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
@@ -202,14 +246,17 @@ private class PointerView(context: Context) : View(context) {
         val w = sizePx * 0.62f
         val h = sizePx
 
+        // The same arrow the in-launcher cursor draws; see the note there. The two
+        // must agree exactly, because crossing out of THOR hands the drawing from
+        // one to the other and a change of shape mid-travel reads as a glitch.
         path.reset()
         path.moveTo(pointerX, pointerY)
-        path.lineTo(pointerX, pointerY + h)
-        path.lineTo(pointerX + w * 0.30f, pointerY + h * 0.74f)
-        path.lineTo(pointerX + w * 0.52f, pointerY + h * 1.02f)
-        path.lineTo(pointerX + w * 0.75f, pointerY + h * 0.90f)
-        path.lineTo(pointerX + w * 0.54f, pointerY + h * 0.62f)
-        path.lineTo(pointerX + w, pointerY + h * 0.58f)
+        path.lineTo(pointerX, pointerY + h * 0.80f)
+        path.lineTo(pointerX + w * 0.24f, pointerY + h * 0.62f)
+        path.lineTo(pointerX + w * 0.40f, pointerY + h)
+        path.lineTo(pointerX + w * 0.58f, pointerY + h * 0.92f)
+        path.lineTo(pointerX + w * 0.42f, pointerY + h * 0.56f)
+        path.lineTo(pointerX + w * 0.68f, pointerY + h * 0.54f)
         path.close()
 
         // A soft drop under the arrow, so it separates from bright content the

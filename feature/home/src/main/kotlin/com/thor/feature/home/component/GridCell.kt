@@ -159,6 +159,11 @@ fun GridCell(
             Box(
                 modifier = Modifier
                     .fillMaxSize(iconFraction)
+                    // Before the scale, so the hover target is the cell's resting
+                    // box. Measured inside it, the box grows when the highlight
+                    // appears and shrinks when it goes, which makes the element's
+                    // own state an input to the test that produced it.
+                    .pointerHover(hover)
                     .scale(focusScale)
                     .graphicsLayer {
                         // The arrange-mode wobble is a rotation on the layer
@@ -179,10 +184,6 @@ fun GridCell(
                     // and a circular one a ring, rather than a fixed rounded box
                     // that matched only one of the five shapes on offer.
                     .thorCursor(focused = highlighted, shape = shape)
-                    // Bounds taken from the icon itself, not the whole cell, so
-                    // the highlight appears when the cursor is over the artwork
-                    // rather than anywhere in the surrounding gutter.
-                    .pointerHover(hover)
                     .clip(shape)
                     .background(theme.surfaceElevated, shape),
                 contentAlignment = Alignment.Center,

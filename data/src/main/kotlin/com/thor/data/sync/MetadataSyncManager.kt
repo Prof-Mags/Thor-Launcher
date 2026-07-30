@@ -156,6 +156,7 @@ class MetadataSyncManager @Inject constructor(
 
         var updated = 0
         var skipped = 0
+        var trailersFound = 0
 
         targets.forEachIndexed { index, game ->
             currentCoroutineContext().ensureActive()
@@ -180,12 +181,32 @@ class MetadataSyncManager @Inject constructor(
                 existing = game.metadata,
             )
 
+            /*
+             * A trailer pass counts trailers, not rows written.
+             *
+             * `merged != existing` is true for every game on every pass, because
+             * the merge always stamps `lastScrapedEpochMs`. So the pass reported
+             * the whole library as updated whether or not a single video had been
+             * found — "Updated 500" while nothing played, which reads as a
+             * playback bug and sent me looking in the wrong place twice.
+             */
+            val gained = merged.artwork.videoUri != null &&
+                game.metadata.artwork.videoUri.isNullOrBlank()
+            if (gained) trailersFound++
+
             if (merged != game.metadata) {
                 gameDao.setMetadata(game.id, merged)
-                updated++
+                if (!trailersOnly || gained) updated++ else skipped++
             } else {
                 skipped++
             }
+        }
+
+        if (trailersOnly) {
+            ThorLog.i(
+                TAG,
+                "Trailer pass: $trailersFound found across ${targets.size} games",
+            )
         }
 
         // Skipped entirely for a trailer refresh. That pass exists to fill one

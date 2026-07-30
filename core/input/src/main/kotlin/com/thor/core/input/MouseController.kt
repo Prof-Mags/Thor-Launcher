@@ -85,65 +85,59 @@ class MouseController @Inject constructor() {
     /** The bindings currently in force, for whoever is reading the buttons. */
     val bindings: MouseSettings get() = settings
 
-    /**
-     * The panel each of THOR's two windows holds focus on, or null for neither.
-     *
-     * Stored as the display rather than as a flag, because on a two-panel device
-     * "is the launcher in front" has no single answer — THOR can hold one panel
-     * while a game holds the other, and that is the normal way this device is
-     * used. A flag turned that into a coin toss: true meant the service stood
-     * down even when the cursor was over the game, which is precisely when it is
-     * the only thing that can click.
-     *
-     * Taken from THOR's own windows rather than from accessibility events. An
-     * event-derived answer starts as a guess, stays stale until some window
-     * happens to change, and is simply wrong at the moment the service is
-     * switched on.
-     */
     @Volatile
-    private var activityFocusDisplay: Int? = null
+    private var activityVisible = false
 
     @Volatile
-    private var presentationFocusDisplay: Int? = null
-
-    /** Whether any THOR window holds focus anywhere. */
-    val launcherForeground: Boolean
-        get() = activityFocusDisplay != null || presentationFocusDisplay != null
+    private var presentationVisible = false
 
     /**
-     * Whether the launcher, rather than the service, should act on a press.
+     * Whether any of THOR's surfaces is on screen.
      *
-     * The two must never both act — that double-toggles the chord and clicks
-     * twice — and must never both decline, which is what left the pointer inert.
-     * So exactly one rule decides, both sides read it, and the service reads it
-     * first because accessibility sees key events before the focused app does.
+     * Deliberately *not* derived from window focus. Focus was the wrong question
+     * asked three different ways: it moves when the user touches the other panel,
+     * it moves again when the pointer's own overlay comes up, and a window torn
+     * down while focused never reports losing it — so the answer was routinely
+     * stale in the one direction that mattered. Being on screen is a lifecycle
+     * fact and a composition fact, and both of those are reported reliably.
      *
-     * While the pointer is up the answer is where the cursor is: THOR can click
-     * inside its own windows and nowhere else, so a cursor over a panel THOR does
-     * not hold belongs to the service whatever else is true. While the pointer is
-     * down there is no cursor to ask about, so the chord follows key focus — it
-     * is raised by whoever the user is currently looking at.
+     * Used only to decide whether opening THOR's own keyboard would put it
+     * somewhere the user can see. Nothing about who drives the pointer depends on
+     * it any more; see [launcherOwnsPointer].
      */
-    val launcherOwnsPointer: Boolean
-        get() {
-            val position = _state.value.takeIf { it.active }?.position
-                ?: return launcherForeground
-            return position.displayId == activityFocusDisplay ||
-                position.displayId == presentationFocusDisplay
-        }
+    val launcherForeground: Boolean get() = activityVisible || presentationVisible
 
     /**
-     * Reports focus for THOR's activity window.
+     * Whether the launcher, rather than the service, drives the pointer.
      *
-     * @param displayId the panel it is on, or null when focus was lost
+     * One owner, decided by one fact: whether the service is running. Not by
+     * where the cursor is and not by who holds focus.
+     *
+     * Splitting it per panel was a mistake that took three attempts to see. Every
+     * rule involving focus depends on a signal that arrives late, or not at all
+     * when a window is torn down without ever reporting the loss — and the moment
+     * it was wrong the pointer went inert, which is unfixable from the front
+     * because the very buttons that would dismiss it are the ones being dropped.
+     * The symptom was precise: press A on something outside THOR and the cursor
+     * froze until the launcher was focused again, because the click moved focus
+     * to the app and the launcher then stopped receiving the stick that was
+     * driving the cursor.
+     *
+     * The service can do everything the launcher can — `dispatchGesture` lands on
+     * THOR's own windows exactly as it lands on anybody else's — so when it is
+     * running there is no reason to hand anything back. When it is not running
+     * the launcher does the whole job unaided, inside its own windows.
      */
-    fun setActivityFocus(displayId: Int?) {
-        activityFocusDisplay = displayId
+    val launcherOwnsPointer: Boolean get() = !_serviceConnected.value
+
+    /** Reports whether the launcher activity is resumed. */
+    fun setActivityVisible(visible: Boolean) {
+        activityVisible = visible
     }
 
-    /** Reports focus for THOR's presentation window, on the second panel. */
-    fun setPresentationFocus(displayId: Int?) {
-        presentationFocusDisplay = displayId
+    /** Reports whether the second panel's presentation is composed. */
+    fun setPresentationVisible(visible: Boolean) {
+        presentationVisible = visible
     }
 
     private val _serviceConnected = MutableStateFlow(false)

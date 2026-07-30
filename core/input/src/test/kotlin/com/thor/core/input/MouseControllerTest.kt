@@ -82,51 +82,57 @@ class MouseControllerTest {
     /**
      * Arbitration between the launcher and the accessibility service.
      *
-     * Exactly one of them must act on a press. Both acting double-toggles the
-     * chord and clicks twice; neither acting is the pointer doing nothing at all.
-     * A single flag could not express it, because THOR routinely holds one panel
-     * while a game holds the other — which is when the service matters most.
+     * Exactly one of them may act on a press. Both acting double-toggles the
+     * chord and clicks twice; neither acting is the pointer doing nothing at all,
+     * which is unfixable from the front because the buttons that would dismiss it
+     * are the ones being dropped.
+     *
+     * The rule is one fact and nothing else: is the service running. Earlier
+     * versions asked where the cursor was and who held focus, and every one of
+     * those inputs could be stale at the moment it was consulted.
      */
     @Test
-    fun `the launcher owns a cursor on a panel it holds`() {
-        mouse.setActivityFocus(0)
+    fun `the launcher owns the pointer while no service is running`() {
         mouse.setActive(true)
 
         assertThat(mouse.launcherOwnsPointer).isTrue()
     }
 
     @Test
-    fun `the service owns a cursor on a panel the launcher does not hold`() {
-        // THOR keeps the top panel; a game has the bottom one.
-        mouse.setActivityFocus(0)
+    fun `the service owns the pointer whenever it is connected`() {
+        mouse.setServiceConnected(true)
         mouse.setActive(true)
+
+        assertThat(mouse.launcherOwnsPointer).isFalse()
+
+        // Wherever the cursor is, and whatever is on screen. Nothing else counts.
         mouse.moveByStep(0f, 40f)
-
-        val position = requireNotNull(mouse.state.value.position)
-        assertThat(position.displayId).isEqualTo(1)
+        mouse.setActivityVisible(true)
+        mouse.setPresentationVisible(true)
         assertThat(mouse.launcherOwnsPointer).isFalse()
     }
 
     @Test
-    fun `with the pointer down ownership follows key focus`() {
-        assertThat(mouse.launcherOwnsPointer).isFalse()
+    fun `ownership returns to the launcher when the service goes away`() {
+        mouse.setServiceConnected(true)
+        mouse.setServiceConnected(false)
 
-        mouse.setPresentationFocus(1)
         assertThat(mouse.launcherOwnsPointer).isTrue()
-
-        mouse.setPresentationFocus(null)
-        assertThat(mouse.launcherOwnsPointer).isFalse()
     }
 
+    /** Only decides whether opening THOR's keyboard would be visible. */
     @Test
-    fun `a window that goes away stops claiming its panel`() {
-        mouse.setActivityFocus(0)
-        mouse.setPresentationFocus(1)
+    fun `the launcher is in front while either surface is on screen`() {
+        assertThat(mouse.launcherForeground).isFalse()
+
+        mouse.setPresentationVisible(true)
         assertThat(mouse.launcherForeground).isTrue()
 
-        mouse.setActivityFocus(null)
-        mouse.setPresentationFocus(null)
+        mouse.setPresentationVisible(false)
+        mouse.setActivityVisible(true)
+        assertThat(mouse.launcherForeground).isTrue()
 
+        mouse.setActivityVisible(false)
         assertThat(mouse.launcherForeground).isFalse()
     }
 

@@ -327,13 +327,14 @@ fun ThorApp(
      * window callback, at a moment when the composition that would have refreshed a
      * captured one may have been paused for as long as the app has been running.
      */
-    fun onPresentationFocusChanged(hasFocus: Boolean, displayId: Int?) {
-        // Half of the answer to "which panels does THOR hold", which decides
-        // whether THOR or the accessibility service acts on a press. The grid
-        // usually lives in this window, so the activity's focus is not the whole
-        // story — and the *panel* matters, not merely the fact of focus, because
-        // an app can hold the other one at the same time.
-        mouse.setPresentationFocus(if (hasFocus) displayId else null)
+    fun onPresentationFocusChanged(hasFocus: Boolean) {
+        /*
+         * The pointer's own overlay takes focus while the cursor is up, because a
+         * focused window is the only place Android delivers the stick. That is a
+         * focus loss this panel must not read as "the user reached for an app" —
+         * doing so handed the panel away the instant mouse mode was switched on.
+         */
+        if (mouse.isActive) return
 
         if (!hasFocus && presentationHoldsFocusNow()) focusYieldedToApp = true
     }
@@ -1191,12 +1192,12 @@ fun ThorApp(
                 performance = settings.performance,
             ) {
                 CompositionLocalProvider(LocalThorTextInput provides textInput) {
-                    // A window that goes away while focused never reports losing
-                    // it, so without this the pointer would go on believing THOR
-                    // held this panel for as long as the process lived — and the
-                    // service, reading that, would decline to act on it forever.
+                    // On screen for exactly as long as this composition exists,
+                    // which is a fact this window can report without being told
+                    // and without a focus callback that may never arrive.
                     DisposableEffect(mouse) {
-                        onDispose { mouse.setPresentationFocus(null) }
+                        mouse.setPresentationVisible(true)
+                        onDispose { mouse.setPresentationVisible(false) }
                     }
 
                     PointerHost(
@@ -1307,7 +1308,7 @@ fun ThorApp(
                         takesFocus = presentationHoldsFocusNow,
                         keyDispatcher = inputRouter::dispatchKeyEvent,
                         motionDispatcher = inputRouter::onGenericMotionEvent,
-                        onFocusChanged = { onPresentationFocusChanged(it, secondary?.displayId) },
+                        onFocusChanged = ::onPresentationFocusChanged,
                         content = { secondWindow { infoWindowContent() } },
                     )
                 } else {
@@ -1330,7 +1331,7 @@ fun ThorApp(
                         takesFocus = presentationHoldsFocusNow,
                         keyDispatcher = inputRouter::dispatchKeyEvent,
                         motionDispatcher = inputRouter::onGenericMotionEvent,
-                        onFocusChanged = { onPresentationFocusChanged(it, secondary?.displayId) },
+                        onFocusChanged = ::onPresentationFocusChanged,
                         content = { secondWindow { gridWindowContent() } },
                     )
                 }

@@ -227,9 +227,14 @@ class ControllerInputRouter(
          */
         val pointer = mouse
         if (pointer != null && pointer.isActive) {
-            val button = pointerButtonFor(keyCode)
-            if (button != null && event.repeatCount == 0) {
-                performPointerAction(pointer, pointer.bindings.actionFor(button))
+            // Acted on only when the launcher owns the pointer. Swallowed either
+            // way: a press that both clicked the cursor and moved the grid
+            // underneath it would do two things and look like it had done none.
+            if (pointer.launcherOwnsPointer) {
+                val button = pointerButtonFor(keyCode)
+                if (button != null && event.repeatCount == 0) {
+                    performPointerAction(pointer, pointer.bindings.actionFor(button))
+                }
             }
             return true
         }
@@ -431,6 +436,18 @@ class ControllerInputRouter(
      */
     private fun handlePointerChord(keyCode: Int, down: Boolean): Boolean {
         val pointer = mouse ?: return false
+
+        /*
+         * The service owns the chord whenever it is running.
+         *
+         * It sees key events before any app does, so when it is connected this
+         * code is unreachable for the chord anyway — but declining explicitly is
+         * what makes "exactly one of them acts" true by construction rather than
+         * by dispatch order. Two handlers toggling the same chord cancel out, and
+         * a pointer that will not switch off is worse than one that will not
+         * switch on.
+         */
+        if (pointer.serviceConnected.value) return false
 
         val isStart = keyCode == KeyEvent.KEYCODE_BUTTON_START || keyCode == KeyEvent.KEYCODE_MENU
         val isSelect = keyCode == KeyEvent.KEYCODE_BUTTON_SELECT ||

@@ -10,7 +10,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -96,6 +98,10 @@ fun PointerHost(
     val latestFeedback = rememberUpdatedState(onHoverFeedback)
     val stableFeedback: () -> Unit = remember { { latestFeedback.value.invoke() } }
 
+    // Without the lifecycle, like everything else in this shell: this window can
+    // be the live one while the activity behind the other panel is stopped.
+    val serviceConnected by mouse.serviceConnected.collectAsState()
+
     /*
      * Actions are performed by whichever layer the pointer is currently over.
      *
@@ -123,9 +129,19 @@ fun PointerHost(
     ) {
         Box(modifier = modifier.fillMaxSize()) {
             content()
-            // Over everything this window draws, so the cursor is never behind the
-            // thing it is pointing at.
-            Cursor(position = cursor)
+            /*
+             * Drawn here only when the service is not running.
+             *
+             * When it is, it puts a cursor of its own over every panel — including
+             * this one — and both were being drawn at once. Two arrows a pixel
+             * apart do not read as two cursors; they read as one badly drawn one,
+             * which is exactly what "the pointer looks weird shaped" was.
+             */
+            if (!serviceConnected) {
+                // Over everything this window draws, so the cursor is never behind
+                // the thing it is pointing at.
+                Cursor(position = cursor)
+            }
         }
     }
 }
@@ -227,15 +243,24 @@ private fun Cursor(position: State<PointerPosition?>) {
         val x = current.x
         val y = current.y
 
+        /*
+         * A plain arrow, in the proportions every desktop uses.
+         *
+         * The tail used to run past the bottom of the nominal height and the
+         * right edge sat at the full width, which made a squat, splayed shape
+         * that did not read as a cursor. Nothing here is decorative: the tip is
+         * the hotspot, the left edge is vertical so the point is unambiguous, and
+         * the tail is narrow enough to leave the point the widest thing on it.
+         */
         path.reset()
         path.apply {
             moveTo(x, y)
-            lineTo(x, y + h)
-            lineTo(x + w * 0.30f, y + h * 0.74f)
-            lineTo(x + w * 0.52f, y + h * 1.02f)
-            lineTo(x + w * 0.75f, y + h * 0.90f)
-            lineTo(x + w * 0.54f, y + h * 0.62f)
-            lineTo(x + w, y + h * 0.58f)
+            lineTo(x, y + h * 0.80f)
+            lineTo(x + w * 0.24f, y + h * 0.62f)
+            lineTo(x + w * 0.40f, y + h)
+            lineTo(x + w * 0.58f, y + h * 0.92f)
+            lineTo(x + w * 0.42f, y + h * 0.56f)
+            lineTo(x + w * 0.68f, y + h * 0.54f)
             close()
         }
 
@@ -244,8 +269,10 @@ private fun Cursor(position: State<PointerPosition?>) {
         translate(left = size * 0.06f, top = size * 0.08f) {
             drawPath(path, Color.Black.copy(alpha = 0.28f))
         }
-        // The theme's glow behind it, matching the selection ring's halo.
-        drawPath(path, glow.copy(alpha = GLOW_ALPHA), style = Stroke(width = size * 0.22f))
+        // A hairline of the theme's glow, hugging the outline. An earlier version
+        // stroked this at a fifth of the cursor's size, which drew a halo wider
+        // than the arrow and turned it into a blob.
+        drawPath(path, glow.copy(alpha = GLOW_ALPHA), style = Stroke(width = size * 0.14f))
         drawPath(path, fill)
         drawPath(path, outline, style = Stroke(width = size * 0.075f))
     }
