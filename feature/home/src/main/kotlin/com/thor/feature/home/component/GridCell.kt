@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.modifier.thorCursor
@@ -173,6 +174,7 @@ fun GridCell(
                         shape = shape,
                         style = folderStyle,
                         childImages = folderPreview,
+                        platform = platform,
                     )
 
                     is GameEntry -> ArtworkImage(
@@ -259,6 +261,13 @@ fun GridCell(
  *
  * Custom artwork always wins; otherwise the user's [FolderStyle] decides
  * between a glyph, a 2×2 preview of what is inside, and an offset stack.
+ *
+ * A *platform* folder is the exception and never shows the preview styles. Those
+ * describe a folder by what the user put in it, which is right for a folder they
+ * made and wrong for one the scanner made: the cell for "SNES" became a collage
+ * of four arbitrary games, which reads as a game rather than as a system and
+ * changes every time the library is rescanned. It wears the platform's own name
+ * instead, until an icon pack gives it something better.
  */
 @Composable
 private fun FolderShell(
@@ -266,9 +275,12 @@ private fun FolderShell(
     shape: Shape,
     style: FolderStyle,
     childImages: List<String?>,
+    platform: Platform?,
 ) {
     val colors = ThorTheme.colors
-    val accent = folder.accentArgb?.let(::Color) ?: colors.primary
+    // The platform's colour is the folder's when the folder has none of its own,
+    // so a system reads as itself rather than as the generic accent.
+    val accent = (folder.accentArgb ?: platform?.accentArgb)?.let(::Color) ?: colors.primary
 
     Box(
         modifier = Modifier
@@ -282,6 +294,18 @@ private fun FolderShell(
                 contentDescription = folder.title,
                 fallbackText = folder.title,
                 modifier = Modifier.fillMaxSize().clip(shape),
+            )
+
+            // A system, with no pack to dress it: its own short name, which is
+            // the one thing that identifies it and never changes under a rescan.
+            platform != null -> Text(
+                text = platform.shortName.ifBlank { platform.name },
+                style = MaterialTheme.typography.titleMedium,
+                color = accent,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 6.dp),
             )
 
             style == FolderStyle.GLYPH || childImages.isEmpty() -> Icon(

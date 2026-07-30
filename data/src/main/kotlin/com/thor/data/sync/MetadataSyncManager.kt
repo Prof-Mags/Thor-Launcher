@@ -11,6 +11,7 @@ import com.thor.core.database.dao.PlatformDao
 import com.thor.core.database.model.GameEntity
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.model.GameMetadata
+import com.thor.core.model.PlatformFolders
 import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.MetadataQuery
 import kotlinx.coroutines.CoroutineDispatcher
@@ -121,6 +122,15 @@ class MetadataSyncManager @Inject constructor(
             return@withContext
         }
 
+        // Only two providers carry video, and a library-wide pass against one that
+        // cannot return any is a long wait ending in "0 updated" — which reads as
+        // "there are no trailers for your games" instead of "nothing here can
+        // fetch one". Said before the work rather than after it.
+        if (trailersOnly && !aggregator.hasTrailerProvider()) {
+            _state.value = ScrapeState.NotConfigured
+            return@withContext
+        }
+
         val platforms = platformDao.getAll().associateBy { it.id }
         val all = gameDao.getVisible()
         val targets = when {
@@ -178,7 +188,11 @@ class MetadataSyncManager @Inject constructor(
             }
         }
 
-        updated += scrapeFolderArtwork(onlyMissing)
+        // Skipped entirely for a trailer refresh. That pass exists to fill one
+        // field on games that lack it; re-fetching every folder's artwork on the
+        // way past is unrelated work the user did not ask for, and — before this —
+        // work that actively undid their icon pack.
+        if (!trailersOnly) updated += scrapeFolderArtwork(onlyMissing)
 
         _state.value = ScrapeState.Completed(updated = updated, skipped = skipped)
     }
@@ -200,7 +214,22 @@ class MetadataSyncManager @Inject constructor(
      * @return how many folders gained artwork
      */
     private suspend fun scrapeFolderArtwork(onlyMissing: Boolean): Int {
+        /*
+         * Platform folders are never scraped, and this is the important part.
+         *
+         * A platform folder is titled after a machine — "Super Nintendo", "Sega
+         * Dreamcast" — and these providers index games, not hardware. Asked about
+         * a console they answer with a game that merely mentions it, so every
+         * system on the grid ended up wearing an unrelated screenshot. Worse, a
+         * full rescrape then wrote that over the icon pack's artwork, which is
+         * why the platforms looked right until the next scrape and never again.
+         *
+         * A platform's artwork has exactly one source — an installed pack — and
+         * nothing else may write it.
+         */
         val folders = folderDao.getAll()
+            .filter { PlatformFolders.platformIdOf(it.id) == null }
+
         val targets = if (onlyMissing) folders.filter { it.artworkUri == null } else folders
         if (targets.isEmpty()) return 0
 

@@ -67,6 +67,20 @@ class MetadataAggregator @Inject constructor(
         usableProviders(settings.metadata.first()).isNotEmpty()
 
     /**
+     * Whether any configured provider can return a trailer at all.
+     *
+     * Only two of them ever do, and both need credentials. Without this check a
+     * trailer refresh looked like it worked: Wikidata needs no key, so it counts
+     * as a usable provider, the pass ran happily through the whole library asking
+     * a source that has never returned a video, and reported "0 updated" — which
+     * reads as "your games have no trailers" rather than "nothing here can fetch
+     * one". That is the difference between a library problem and a settings
+     * problem, and the user has no way to tell them apart from the outside.
+     */
+    suspend fun hasTrailerProvider(): Boolean =
+        usableProviders(settings.metadata.first()).any { it.id in TRAILER_PROVIDERS }
+
+    /**
      * Whether any usable provider can supply text, not just artwork.
      *
      * Worth reporting separately because the two failure modes look identical from
@@ -242,6 +256,15 @@ class MetadataAggregator @Inject constructor(
 
     private companion object {
         const val TAG = "Metadata"
+
+        /**
+         * The providers that carry video.
+         *
+         * ScreenScraper ships clips for retro titles; RAWG has them for anything
+         * modern. SteamGridDB is artwork only and Wikidata is facts only — neither
+         * has a video field to read.
+         */
+        val TRAILER_PROVIDERS = setOf("screenscraper", "rawg")
 
         /**
          * Below this, a title match is more likely to be a different game than

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
+import com.thor.core.model.PlatformFolders
 import com.thor.feature.home.EditMode
 import com.thor.feature.home.LauncherUiState
 
@@ -60,8 +61,17 @@ fun LauncherGrid(
 
             GridCellData(
                 entry = entry,
-                platform = (entry as? GameEntry)
-                    ?.let { game -> state.platformsById[game.platformId] },
+                // A platform folder resolves its platform too, not only a game.
+                // The cell needs it to know it is a *system* rather than a folder
+                // the user made, which decides whether it may be drawn as a
+                // collage of the games inside it.
+                platform = when (entry) {
+                    is GameEntry -> state.platformsById[entry.platformId]
+                    is FolderEntry -> PlatformFolders.platformIdOf(entry.id)
+                        ?.let { platformId -> state.platformsById[platformId] }
+
+                    else -> null
+                },
                 isHeld = entry != null && entry.id == heldId,
                 folderPreview = (entry as? FolderEntry)
                     ?.childIds

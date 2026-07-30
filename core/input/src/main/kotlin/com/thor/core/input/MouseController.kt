@@ -85,31 +85,65 @@ class MouseController @Inject constructor() {
     /** The bindings currently in force, for whoever is reading the buttons. */
     val bindings: MouseSettings get() = settings
 
-    private var activityFocused = false
-    private var presentationFocused = false
+    /**
+     * The panel each of THOR's two windows holds focus on, or null for neither.
+     *
+     * Stored as the display rather than as a flag, because on a two-panel device
+     * "is the launcher in front" has no single answer — THOR can hold one panel
+     * while a game holds the other, and that is the normal way this device is
+     * used. A flag turned that into a coin toss: true meant the service stood
+     * down even when the cursor was over the game, which is precisely when it is
+     * the only thing that can click.
+     *
+     * Taken from THOR's own windows rather than from accessibility events. An
+     * event-derived answer starts as a guess, stays stale until some window
+     * happens to change, and is simply wrong at the moment the service is
+     * switched on.
+     */
+    @Volatile
+    private var activityFocusDisplay: Int? = null
+
+    @Volatile
+    private var presentationFocusDisplay: Int? = null
+
+    /** Whether any THOR window holds focus anywhere. */
+    val launcherForeground: Boolean
+        get() = activityFocusDisplay != null || presentationFocusDisplay != null
 
     /**
-     * Whether the user is looking at THOR rather than at something it launched.
+     * Whether the launcher, rather than the service, should act on a press.
      *
-     * Decides which half of the pointer drives it: the launcher inside its own
-     * windows, the accessibility service everywhere else. Both must never act on
-     * the same press — that double-toggles the chord and clicks twice.
+     * The two must never both act — that double-toggles the chord and clicks
+     * twice — and must never both decline, which is what left the pointer inert.
+     * So exactly one rule decides, both sides read it, and the service reads it
+     * first because accessibility sees key events before the focused app does.
      *
-     * Taken from THOR's own windows rather than from accessibility events, and the
-     * difference matters. An event-derived answer starts out as a guess, is stale
-     * for as long as no window has changed, and is simply wrong at the moment the
-     * service is switched on. THOR knows which of its windows holds focus without
-     * being told, and *both* count: the grid usually lives in a `Presentation`, so
-     * the activity having no focus does not mean the launcher is not in front.
+     * While the pointer is up the answer is where the cursor is: THOR can click
+     * inside its own windows and nowhere else, so a cursor over a panel THOR does
+     * not hold belongs to the service whatever else is true. While the pointer is
+     * down there is no cursor to ask about, so the chord follows key focus — it
+     * is raised by whoever the user is currently looking at.
      */
-    val launcherForeground: Boolean get() = activityFocused || presentationFocused
+    val launcherOwnsPointer: Boolean
+        get() {
+            val position = _state.value.takeIf { it.active }?.position
+                ?: return launcherForeground
+            return position.displayId == activityFocusDisplay ||
+                position.displayId == presentationFocusDisplay
+        }
 
-    fun setActivityFocused(focused: Boolean) {
-        activityFocused = focused
+    /**
+     * Reports focus for THOR's activity window.
+     *
+     * @param displayId the panel it is on, or null when focus was lost
+     */
+    fun setActivityFocus(displayId: Int?) {
+        activityFocusDisplay = displayId
     }
 
-    fun setPresentationFocused(focused: Boolean) {
-        presentationFocused = focused
+    /** Reports focus for THOR's presentation window, on the second panel. */
+    fun setPresentationFocus(displayId: Int?) {
+        presentationFocusDisplay = displayId
     }
 
     private val _serviceConnected = MutableStateFlow(false)
@@ -164,6 +198,9 @@ class MouseController @Inject constructor() {
 
     val isActive: Boolean get() = _state.value.active
 
+    /** Whether any panel has been declared, so a caller knows to supply one. */
+    val hasDisplays: Boolean get() = displays.isNotEmpty()
+
     fun updateSettings(settings: MouseSettings) {
         this.settings = settings
         if (!settings.enabled && isActive) setActive(false)
@@ -178,11 +215,74 @@ class MouseController @Inject constructor() {
      * wander off to.
      */
     fun setDisplays(panels: List<PointerDisplay>) {
+        if (panels.isEmpty()) return
         displays = panels
+        fromLauncher = true
         // Re-clamped only while the pointer is up. Publishing a position for a
         // pointer nobody has raised would have anything drawing from this state
         // show a cursor the moment the hardware was reported.
-        if (panels.isNotEmpty() && isActive) clampAndPublish()
+        if (isActive) placeOnPanels()
+    }
+
+    /** True once the launcher has declared the panels, so the service defers. */
+    @Volatile
+    private var fromLauncher = false
+
+    @Volatile
+    private var noPanelsListener: (() -> Unit)? = null
+
+    /**
+     * Registers a last-resort source of panels.
+     *
+     * Called when the pointer is raised with none declared, which is the state the
+     * accessibility service starts in whenever it connects without the launcher
+     * having run. Without it the first chord of a session produced a pointer that
+     * existed but had nowhere to be.
+     */
+    fun onPanelsNeeded(listener: (() -> Unit)?) {
+        noPanelsListener = listener
+    }
+
+    /**
+     * Declares panels on behalf of a launcher that is not running.
+     *
+     * The pointer needs to know the size and stacking of the panels before it can
+     * put a cursor anywhere; with no panels, raising it produced a pointer with no
+     * position, which draws nothing and clicks nothing. That was survivable while
+     * the only caller was the launcher's own composition — and fatal the moment
+     * the point of the feature became *working outside the launcher*, because the
+     * accessibility service can be connected with THOR never having composed at
+     * all. It silently explained every "the chord does nothing out here" report.
+     *
+     * Yields to [setDisplays] whenever the launcher has spoken, because the
+     * launcher's list is filtered to the two real panels while this one is
+     * whatever the system happens to be listing.
+     */
+    fun setFallbackDisplays(panels: List<PointerDisplay>) {
+        if (fromLauncher || panels.isEmpty()) return
+        displays = panels
+        if (isActive) placeOnPanels()
+    }
+
+    /**
+     * Settles the cursor after the panels change under it.
+     *
+     * A pointer raised before any panel was known has no panel and sits at the
+     * origin, so when the panels finally arrive it would appear jammed in the
+     * top-left corner rather than where [setActive] means to put it. Re-centred in
+     * that case only; a pointer that already had a panel keeps its place, because
+     * a display being re-reported is not a reason to move the user's cursor.
+     */
+    private fun placeOnPanels() {
+        if (currentDisplayId == null) centreOnFirstPanel() else clampAndPublish()
+    }
+
+    private fun centreOnFirstPanel() {
+        val first = displays.firstOrNull()
+        stackedX = (first?.widthPx ?: 0) / 2f
+        stackedY = (first?.heightPx ?: 0) / 2f
+        currentDisplayId = first?.displayId
+        clampAndPublish()
     }
 
     /**
@@ -205,6 +305,11 @@ class MouseController @Inject constructor() {
             currentDisplayId = null
         }
         _state.update { it.copy(active = active, position = if (active) resolve() else null) }
+
+        // Raised before anything reported the hardware: the pointer has no panel
+        // and therefore no position, so it would draw nothing and click nothing.
+        // Whoever can answer is asked, and `placeOnPanels` finishes the job.
+        if (active && displays.isEmpty()) noPanelsListener?.invoke()
     }
 
     fun toggle() = setActive(!isActive)

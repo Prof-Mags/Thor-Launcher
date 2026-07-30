@@ -295,17 +295,16 @@ private fun Backdrop(
         }
 
         /*
-         * A platform folder with no pack installed falls back to a game rather
-         * than to the wallpaper.
+         * A platform folder with no pack installed falls back to one of that
+         * system's landmark games, if the user owns one.
          *
-         * That is the default state of a fresh install, and the same wallpaper
-         * behind every system says nothing about any of them. A screenshot from
-         * the most-played game on that platform does, costs no scrape and no
-         * network, and comes from artwork the library already has.
+         * Only to a landmark, and never to just any game in the folder — see
+         * `representativeImageFor`. When none is owned this lands on the wallpaper,
+         * which says nothing about the system but at least does not claim to.
          */
         is FolderEntry -> platform?.artwork?.heroUri
             ?: selection.artworkUri
-            ?: representativeImageFor(folderChildren)
+            ?: platform?.let { representativeImageFor(it.id, folderChildren) }
 
         else -> platform?.artwork?.heroUri
     } ?: wallpaperUri

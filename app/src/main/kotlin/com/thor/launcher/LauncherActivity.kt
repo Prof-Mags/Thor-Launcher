@@ -8,6 +8,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.thor.core.datastore.SettingsRepository
@@ -174,9 +175,13 @@ class LauncherActivity : ComponentActivity() {
         // Losing focus while a direction is held would otherwise leave the
         // auto-repeat timer running against a window that can no longer see the
         // key-up event.
-        // Which half of the pointer drives it. The presentation reports its own
-        // focus separately; either window counts as the launcher being in front.
-        mouse.setActivityFocused(hasFocus)
+        // Which half of the pointer drives it, reported as the *panel* this window
+        // is on rather than as a flag. The presentation reports its own; between
+        // them the pointer knows which panels THOR holds and which it does not,
+        // which on a two-screen device is not the same question as "is THOR open".
+        mouse.setActivityFocus(
+            if (hasFocus) ContextCompat.getDisplayOrDefault(this).displayId else null,
+        )
 
         if (!hasFocus) {
             inputRouter.releaseAll()

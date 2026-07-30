@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -94,8 +95,8 @@ private enum class Overlay { NONE, SETTINGS, SEARCH }
 /**
  * The shell's surfaces named as the focus rule names them.
  *
- * [InputSurface] is the launcher's own vocabulary — top and bottom, as the user sees
- * them — while [LauncherPanel] is the role a surface plays, which is what decides
+ * [InputSurface] is the launcher's own vocabulary â€” top and bottom, as the user sees
+ * them â€” while [LauncherPanel] is the role a surface plays, which is what decides
  * which window has to hold focus for it. They are the same two things; only one of
  * them can live in `:core:display`, where the rule is testable.
  */
@@ -110,7 +111,7 @@ private fun InputSurface.toPanel(): LauncherPanel = when (this) {
  * Resolves how the two surfaces map onto the hardware, wires physical input
  * into the view model, and hosts the overlays. The top surface is composed once
  * and then either placed in this window or handed to a [SecondaryDisplay]
- * presentation — the composable itself is identical either way, which is what
+ * presentation â€” the composable itself is identical either way, which is what
  * makes the split-screen fallback a genuine substitute rather than a second
  * implementation.
  */
@@ -128,7 +129,7 @@ fun ThorApp(
      * Collected without the lifecycle, deliberately, everywhere in this shell.
      *
      * `collectAsStateWithLifecycle` stops at `STOPPED`, and this activity is stopped
-     * whenever an app covers *its* display — while the launcher is still fully on
+     * whenever an app covers *its* display â€” while the launcher is still fully on
      * screen on the other one. Gating on it meant the second panel kept its window
      * and its touch handling but stopped receiving any state at all: a live-looking,
      * completely frozen launcher. A launcher's state is wanted for as long as either
@@ -164,7 +165,7 @@ fun ThorApp(
      * Set when an app is launched, cleared by any touch or overlay.
      *
      * The launcher gives up its claim on window focus so the app arriving on a
-     * display can take it — the tap that started something is not a request to hold
+     * display can take it â€” the tap that started something is not a request to hold
      * that panel. Without this the second window competed for focus with the app it
      * had just launched, and the app ran with a controller that did nothing.
      */
@@ -177,7 +178,7 @@ fun ThorApp(
      * A touch anywhere on a surface claims the controller for it.
      *
      * Registered in the initial pass, so it sees the event before any cell or button
-     * consumes it — the claim is made by *touching the panel*, not by hitting
+     * consumes it â€” the claim is made by *touching the panel*, not by hitting
      * something on it. It also cancels the focus a launch gave away, because reaching
      * for a panel is unambiguously a request to drive it.
      */
@@ -230,13 +231,13 @@ fun ThorApp(
      * Every one of them is a **lambda, evaluated on each read**, and that is the
      * single most important thing in this file. Compose pauses a composition's frame
      * clock when its window's lifecycle drops below STARTED, and this composition
-     * belongs to the activity — which is stopped for as long as an app covers the
+     * belongs to the activity â€” which is stopped for as long as an app covers the
      * activity's *own* display, while the launcher is still fully on screen on the
      * other one. A value computed into a `val` here therefore freezes at whatever it
      * was at the moment of the launch and can never be recomputed, because nothing
      * will recompose to recompute it. That is precisely what made the visible panel
      * stop answering the controller: the user touched it, the touch was received, the
-     * state was written — and the derived focus decision on the far side of it never
+     * state was written â€” and the derived focus decision on the far side of it never
      * ran again. Read through the snapshot holders instead and every consumer,
      * recomposing or not, sees the current answer.
      */
@@ -247,7 +248,7 @@ fun ThorApp(
      * Whether the window *not* holding the grid is one the user can see.
      *
      * When it is not, the info panel is not drawn at all and the surfaces it hosts
-     * move over the grid instead — see `infoOverlays`.
+     * move over the grid instead â€” see `infoOverlays`.
      */
     val infoWindowFreeNow: () -> Boolean = {
         !gridInActivityWindowNow() || !appOnSecondaryPanelNow()
@@ -269,7 +270,7 @@ fun ThorApp(
     val activeSurfaceNow: () -> InputSurface = {
         when {
             // An overlay claims input the moment it appears, and gives it straight
-            // back when it goes — no stored "previous focus" to get out of step,
+            // back when it goes â€” no stored "previous focus" to get out of step,
             // because the fallback *is* the last touched surface.
             //
             // The keyboard is drawn into the grid's surface by construction, so it
@@ -290,7 +291,7 @@ fun ThorApp(
      * The rule itself lives in [LauncherFocus], where it is a pure function with
      * tests against the specific ways this has failed on the hardware. It is the part
      * of the dual-screen design that has had to be re-derived most often, and each
-     * time it broke it did so without a crash or a log — so it is worth having
+     * time it broke it did so without a crash or a log â€” so it is worth having
      * somewhere a test can reach.
      */
     val presentationHoldsFocusNow: () -> Boolean = {
@@ -312,25 +313,27 @@ fun ThorApp(
      *
      * [claimsInputFor] hears every touch that lands on a launcher surface, and none
      * of the ones that do not. When an app is running on a panel, the user touching
-     * it produces nothing anywhere in this composition — the app takes the event —
+     * it produces nothing anywhere in this composition â€” the app takes the event â€”
      * so the launcher went on holding the device's focus and the app the user had
      * just reached for received no buttons at all.
      *
      * Losing focus while we were asking for it is that missing signal, and it is
      * evidence rather than inference: some other window has been given focus, and on
      * this device that means the user put a thumb on it. The guard keeps the
-     * launcher's own hand-overs out of it — when this window is unfocusable because
+     * launcher's own hand-overs out of it â€” when this window is unfocusable because
      * the *other* launcher panel is active, the loss is one we asked for.
      *
      * Reads the live derivation rather than a captured value: this is called from a
      * window callback, at a moment when the composition that would have refreshed a
      * captured one may have been paused for as long as the app has been running.
      */
-    fun onPresentationFocusChanged(hasFocus: Boolean) {
-        // Half of the answer to "is the launcher in front", which decides whether
-        // THOR or the accessibility service drives the pointer. The grid usually
-        // lives in this window, so the activity's own focus is not the whole story.
-        mouse.setPresentationFocused(hasFocus)
+    fun onPresentationFocusChanged(hasFocus: Boolean, displayId: Int?) {
+        // Half of the answer to "which panels does THOR hold", which decides
+        // whether THOR or the accessibility service acts on a press. The grid
+        // usually lives in this window, so the activity's focus is not the whole
+        // story â€” and the *panel* matters, not just the fact of focus, because an
+        // app can hold the other one at the same time.
+        mouse.setPresentationFocus(if (hasFocus) displayId else null)
 
         if (!hasFocus && presentationHoldsFocusNow()) focusYieldedToApp = true
     }
@@ -353,13 +356,13 @@ fun ThorApp(
          *
          * The default profile binds W/A/S/D, E, F and Tab so the launcher is
          * operable from a paired keyboard, and `dispatchKeyEvent` sees those before
-         * the focused field does — so typing "was" into a text field moved the grid
+         * the focused field does â€” so typing "was" into a text field moved the grid
          * cursor and entered nothing. Nothing at this level can tell a game-pad
          * press from a keyboard press, so the surfaces that own text fields declare
          * when they are active.
          *
          * Nothing in the launcher is one any more: search, settings and the entry
-         * editor all use `ThorInputField`, which is filled in by THOR's own keyboard —
+         * editor all use `ThorInputField`, which is filled in by THOR's own keyboard â€”
          * and that keyboard is driven by this very router, so suspending routing
          * while a field is active would leave it unable to receive a single key.
          *
@@ -402,7 +405,7 @@ fun ThorApp(
          * Keyed on the router alone.
          *
          * `overlay` and `inputSurface` used to be keys, which restarted this collector
-         * every time either changed — and a restart re-subscribes to a hot flow, so
+         * every time either changed â€” and a restart re-subscribes to a hot flow, so
          * anything emitted in the gap is gone. Typing made both change, which is the
          * worst possible time to drop an event. They are read live instead: these are
          * snapshot-backed states, so a read inside the coroutine sees the current
@@ -422,7 +425,7 @@ fun ThorApp(
                  * coroutine closed over. A `LaunchedEffect` keeps the state it was
                  * started with until one of its keys changes, so a captured read is
                  * stale for exactly as long as the keyboard has been open without
-                 * anything else changing — and a stale `false` here sent every
+                 * anything else changing â€” and a stale `false` here sent every
                  * keystroke to the grid instead, which is precisely what it did.
                  */
                 if (viewModel.keyboard.value.visible) {
@@ -448,7 +451,7 @@ fun ThorApp(
                  *
                  * It is the active surface with nothing over it, which only happens by
                  * being touched. Before this the panel could take focus and then had
-                 * nothing to do with it — every press fell through to the grid, so
+                 * nothing to do with it â€” every press fell through to the grid, so
                  * touching the top screen looked like it had done nothing at all. The
                  * panel is a view of one entry, so the controller acts on that entry:
                  * its shots, launching it, and handing the pad back.
@@ -471,7 +474,7 @@ fun ThorApp(
                         // simply does nothing.
                         ControllerCommand.NAVIGATE_UP, ControllerCommand.NAVIGATE_DOWN -> Unit
 
-                        // Everything else — confirm, home, the menus — means the same
+                        // Everything else â€” confirm, home, the menus â€” means the same
                         // here as anywhere, and acts on the entry this panel is
                         // already showing.
                         else -> viewModel.onCommand(event.command, event.accelerated)
@@ -523,7 +526,7 @@ fun ThorApp(
                                 when {
                                     // Confirm inside a page is reported as
                                     // unconsumed so the row's own control acts on
-                                    // it — that is still a confirmation.
+                                    // it â€” that is still a confirmation.
                                     event.command == ControllerCommand.CONFIRM ->
                                         FeedbackCue.CONFIRM
 
@@ -536,7 +539,7 @@ fun ThorApp(
 
                     Overlay.SEARCH -> {
                         // Without this the app drawer opens from a dock slot
-                        // and can only be closed again — the results list is
+                        // and can only be closed again â€” the results list is
                         // unreachable from a pad.
                         when (event.command) {
                             ControllerCommand.BACK -> {
@@ -609,7 +612,7 @@ fun ThorApp(
          * The intro, ready to be laid over whichever surfaces are on screen.
          *
          * A lambda rather than a single overlay because the two panels are separate
-         * windows — nothing can cover both — so each draws its own, from the one
+         * windows â€” nothing can cover both â€” so each draws its own, from the one
          * progress value.
          */
         val introOverlay: @Composable () -> Unit = {
@@ -634,7 +637,7 @@ fun ThorApp(
          * already there. Releasing focus takes it away again.
          *
          * This is the whole connection between the two: the keyboard knows nothing
-         * about search, or settings, or the entry editor — it edits a buffer, and
+         * about search, or settings, or the entry editor â€” it edits a buffer, and
          * whatever holds focus receives it.
          */
         LaunchedEffect(textInput.focusedId) {
@@ -653,8 +656,8 @@ fun ThorApp(
         }
 
         /*
-         * Closing the keyboard releases the field with it — a caret left blinking on a
-         * field nothing is typing into is a lie — and hands the controller to the
+         * Closing the keyboard releases the field with it â€” a caret left blinking on a
+         * field nothing is typing into is a lie â€” and hands the controller to the
          * results, which are on the other panel. Without that, Back after typing went
          * to the grid behind the overlay instead of closing it.
          */
@@ -691,7 +694,7 @@ fun ThorApp(
          *
          * Resume is the closest thing to a dependable signal. An app launched onto
          * this window's display covers it, so being resumed again means that app is
-         * gone — time to credit the play session and put the panel back to the grid.
+         * gone â€” time to credit the play session and put the panel back to the grid.
          *
          * Window focus and top-resumed status were both tried here and are both
          * wrong: they are handed over by *touching* the launcher's other panel,
@@ -699,7 +702,7 @@ fun ThorApp(
          * on them evicted the running app the moment the second screen was touched.
          *
          * Resume alone is not enough either, because on this device a launch onto
-         * the *other* display also pauses this activity while leaving it visible —
+         * the *other* display also pauses this activity while leaving it visible â€”
          * so touching it resumes us with the app still running. Skipping the whole
          * thing while a panel is known to be occupied is what keeps a play session
          * open for its real duration; Home is what ends it in that case.
@@ -717,7 +720,7 @@ fun ThorApp(
                 when (action) {
                     SideMenuAction.APPS -> viewModel.openAppDrawer()
 
-                    // Sorts the grid in place rather than opening settings —
+                    // Sorts the grid in place rather than opening settings â€”
                     // "Sort" that took you to a settings page was doing the one
                     // thing it should not.
                     SideMenuAction.SORT -> viewModel.openSortPicker()
@@ -750,7 +753,7 @@ fun ThorApp(
             viewModel.effectFlow.collect { effect ->
                 when (effect) {
                     // Opening either of these makes the info surface the active one,
-                    // which aims the controller at it — no handover to arrange.
+                    // which aims the controller at it â€” no handover to arrange.
                     LauncherEffect.OpenSettings -> {
                         overlay = Overlay.SETTINGS
                         feedback.play(FeedbackCue.SETTINGS_OPEN)
@@ -764,15 +767,15 @@ fun ThorApp(
                     /*
                      * The lock is released so the app can take focus on the display it
                      * is arriving on. The tap that started it was a launch, not a
-                     * request to hold that panel — and a launcher window still holding
+                     * request to hold that panel â€” and a launcher window still holding
                      * focus is exactly what leaves an app running with a controller
                      * that does nothing.
                      *
                      * Only for a launch onto the panel the *presentation* projects
                      * onto, though. Standing down for an app arriving on the other
                      * display gave away the controller for a window that was not
-                     * competing for it, which left the panel still on screen — the one
-                     * the user was holding — visible, alive and completely deaf, with
+                     * competing for it, which left the panel still on screen â€” the one
+                     * the user was holding â€” visible, alive and completely deaf, with
                      * nothing but Home able to get it back.
                      */
                     is LauncherEffect.Launched ->
@@ -802,7 +805,7 @@ fun ThorApp(
          *
          * Folders resolve too, not just games: a platform's folder is the cell that
          * *is* that system on the grid, so highlighting it should back the info
-         * panel with that system's hero rather than with the generic wallpaper —
+         * panel with that system's hero rather than with the generic wallpaper â€”
          * which is exactly what an icon pack is for.
          */
         val selectedPlatform = when (val selection = state.selection) {
@@ -827,7 +830,7 @@ fun ThorApp(
              * The entry editor belongs to this surface, not to the grid's.
              *
              * It is the launcher's only free-text form, and an IME will not
-             * reliably render on a secondary display — a `Presentation` there is
+             * reliably render on a secondary display â€” a `Presentation` there is
              * also unfocusable by default, so its fields could not even take
              * focus. The info surface is normally the activity's own window on the
              * default display, which is where the keyboard lives. Opening on the
@@ -880,7 +883,7 @@ fun ThorApp(
         /** The info panel: game artwork and details, plus whatever it is hosting. */
         val topContent: @Composable () -> Unit = {
             // Touching this surface claims the controller for it, wherever it is drawn
-            // — its own panel in dual mode, half the window in split.
+            // â€” its own panel in dual mode, half the window in split.
             Box(modifier = Modifier.fillMaxSize().claimsInputFor(InputSurface.TOP)) {
                 TopScreen(
                     selection = state.selection,
@@ -893,7 +896,7 @@ fun ThorApp(
                     showStatusBar = settings.personalization.showStatusBar,
                     /*
                      * Performance mode's single switch already covers blur and
-                     * animated wallpapers; trailers are the same trade — a decoder
+                     * animated wallpapers; trailers are the same trade â€” a decoder
                      * per dwell versus a completely static panel. The user's own
                      * preference sits alongside it, and the bumpers override both
                      * for whichever game is highlighted.
@@ -992,7 +995,7 @@ fun ThorApp(
              *
              * On this surface rather than the info panel deliberately: this is the
              * screen the user is holding the controller for, and it is the one the
-             * platform IME could never appear on — which is the whole reason the
+             * platform IME could never appear on â€” which is the whole reason the
              * launcher has a keyboard of its own. Typing here, results on the other
              * panel, is what two screens are for.
              */
@@ -1051,7 +1054,7 @@ fun ThorApp(
          * panel the *presentation* projects onto. That flag is set by the launch that
          * caused it, never inferred afterwards from focus.
          *
-         * A launch onto the activity's own display needs no flag at all — the app
+         * A launch onto the activity's own display needs no flag at all â€” the app
          * simply covers that window, the way an app covers any activity.
          *
          * `swapScreens` exists for hardware that reports its two panels the other way
@@ -1064,7 +1067,7 @@ fun ThorApp(
 
         /*
          * Where an ordinary launch sends an app: the grid's *home* panel, the one
-         * the display settings assign it to — not wherever the grid happens to have
+         * the display settings assign it to â€” not wherever the grid happens to have
          * been displaced to by an app already running.
          *
          * Deliberately not derived from [gridInActivityWindow]. Doing that aimed the
@@ -1085,8 +1088,8 @@ fun ThorApp(
          *
          * The launcher used to send "second screen" launches to the first non-default
          * display the system listed, while projecting its own panel onto whichever
-         * display it had picked here. On a device reporting any extra display — a
-         * recorder, a cast target, a vendor overlay — those are two different screens,
+         * display it had picked here. On a device reporting any extra display â€” a
+         * recorder, a cast target, a vendor overlay â€” those are two different screens,
          * and the app went to the one nobody was looking at while this panel stood its
          * grid down for it.
          */
@@ -1098,7 +1101,7 @@ fun ThorApp(
          * The shape of a recording, taken from the panels themselves.
          *
          * Width follows the wider panel, height is both panels stacked plus room for
-         * the console body around them — so the video is the device's own proportions
+         * the console body around them â€” so the video is the device's own proportions
          * rather than a guess, whatever hardware this is running on.
          */
         val primaryPanel = displays.firstOrNull { it.isPrimary }
@@ -1122,8 +1125,8 @@ fun ThorApp(
          * The two panels, stacked top first, so the cursor runs off the bottom of
          * one and onto the top of the other with no special case at the seam.
          * Reported from here rather than read from `DisplayManager` for the same
-         * reason the launch target is: any extra display the system lists — a
-         * recorder, a cast target — would otherwise become somewhere the pointer
+         * reason the launch target is: any extra display the system lists â€” a
+         * recorder, a cast target â€” would otherwise become somewhere the pointer
          * could wander to and not come back from.
          */
         LaunchedEffect(primaryPanel, secondary) {
@@ -1145,8 +1148,8 @@ fun ThorApp(
         /*
          * A bound button asked for the on-screen keyboard.
          *
-         * The pointer cannot raise a platform IME — an accessibility service has
-         * no field to attach one to — but THOR's own keyboard is a composable on
+         * The pointer cannot raise a platform IME â€” an accessibility service has
+         * no field to attach one to â€” but THOR's own keyboard is a composable on
          * the grid surface that types into whatever holds text focus. So the
          * request comes back here and opens that instead.
          *
@@ -1175,8 +1178,8 @@ fun ThorApp(
         /*
          * Everything a window on the other display needs in order to compose alone.
          *
-         * That window runs its own recomposer — which is what keeps it alive while
-         * this activity is stopped — so nothing crosses the boundary implicitly. The
+         * That window runs its own recomposer â€” which is what keeps it alive while
+         * this activity is stopped â€” so nothing crosses the boundary implicitly. The
          * theme and the launcher's text focus are provided again on the far side; the
          * *state* still crosses, because these lambdas close over the same snapshot
          * objects, and snapshots do not care which composition reads them.
@@ -1188,6 +1191,14 @@ fun ThorApp(
                 performance = settings.performance,
             ) {
                 CompositionLocalProvider(LocalThorTextInput provides textInput) {
+                    // A window that goes away while focused never reports losing
+                    // it, so without this the pointer would go on believing THOR
+                    // held this panel for as long as the process lived â€” and the
+                    // service, reading that, would decline to act on it forever.
+                    DisposableEffect(mouse) {
+                        onDispose { mouse.setPresentationFocus(null) }
+                    }
+
                     Box(modifier = Modifier.fillMaxSize()) {
                         inner()
                         // Over everything this window draws, so the cursor is never
@@ -1229,7 +1240,7 @@ fun ThorApp(
                     }
                 }
 
-                // Nothing at all when an app has that panel — the presentation is
+                // Nothing at all when an app has that panel â€” the presentation is
                 // dismissed, and in the mirror case this window is behind the app.
                 val infoWindowContent: @Composable () -> Unit = {
                     if (infoWindowFree) {
@@ -1248,7 +1259,7 @@ fun ThorApp(
                  *
                  * A third window, on a display the launcher created for itself, whose
                  * output is the video encoder's input surface. It renders the same two
-                 * surfaces the panels do — from the same state, so it cannot drift —
+                 * surfaces the panels do â€” from the same state, so it cannot drift â€”
                  * inside a console body. Nothing is captured from the screens; they are
                  * simply drawn again somewhere that happens to be a file.
                  */
@@ -1289,7 +1300,7 @@ fun ThorApp(
                         takesFocus = presentationHoldsFocusNow,
                         keyDispatcher = inputRouter::dispatchKeyEvent,
                         motionDispatcher = inputRouter::onGenericMotionEvent,
-                        onFocusChanged = ::onPresentationFocusChanged,
+                        onFocusChanged = { onPresentationFocusChanged(it, secondary?.displayId) },
                         content = { secondWindow { infoWindowContent() } },
                     )
                 } else {
@@ -1305,14 +1316,14 @@ fun ThorApp(
                          * active one, and the window holding the active surface is the
                          * window that takes focus. A launch onto *this* window's panel
                          * yields the claim, so it never competes for focus with an app
-                         * starting on its own display — and the next touch takes it
+                         * starting on its own display â€” and the next touch takes it
                          * straight back, which now happens whether or not the activity
                          * behind the other panel is in a state to recompose.
                          */
                         takesFocus = presentationHoldsFocusNow,
                         keyDispatcher = inputRouter::dispatchKeyEvent,
                         motionDispatcher = inputRouter::onGenericMotionEvent,
-                        onFocusChanged = ::onPresentationFocusChanged,
+                        onFocusChanged = { onPresentationFocusChanged(it, secondary?.displayId) },
                         content = { secondWindow { gridWindowContent() } },
                     )
                 }
@@ -1345,7 +1356,7 @@ fun ThorApp(
                 // Single-screen: the grid owns the window, and the surfaces the
                 // info panel would host are raised over it. Without the overlays
                 // here, settings and search had nowhere to be composed at all in
-                // this mode — the row highlighted, the controller went to it, and
+                // this mode â€” the row highlighted, the controller went to it, and
                 // nothing appeared.
                 Box(modifier = Modifier.fillMaxSize()) {
                     bottomContent(Modifier.fillMaxSize())
@@ -1388,7 +1399,7 @@ private fun TransientMessage(text: String, modifier: Modifier = Modifier) {
 /**
  * A quiet marker that a recording is running.
  *
- * Drawn on the live panel only, never on the surfaces the mock-up renders — a
+ * Drawn on the live panel only, never on the surfaces the mock-up renders â€” a
  * recording that shows its own recording badge is a screenshot of the wrong thing.
  */
 @Composable
@@ -1499,7 +1510,7 @@ private fun ControllerCommand.toCue(): FeedbackCue = when (this) {
  * The intro's two segments, in milliseconds.
  *
  * The first ends where the chime in `ui_boot` lands, so the mark and the sound
- * arrive together; the second is the reveal. Short on purpose — this is a launcher,
+ * arrive together; the second is the reveal. Short on purpose â€” this is a launcher,
  * and the second time you see an intro is the first time it is too long.
  */
 private const val INTRO_RISE_MS = 900

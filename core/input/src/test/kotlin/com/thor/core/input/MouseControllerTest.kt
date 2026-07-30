@@ -30,6 +30,106 @@ class MouseControllerTest {
         }
     }
 
+    /**
+     * The bug that made the pointer useless outside the launcher.
+     *
+     * Panels were only ever declared by the launcher's composition, so a service
+     * connected without THOR having run had none. Raising the pointer then produced
+     * one that was active with no position — nothing draws, nothing clicks, and the
+     * chord looks dead. It reported as "mouse mode does not work outside THOR",
+     * which sounds like an input problem and was a bootstrapping one.
+     */
+    @Test
+    fun `a pointer raised before the panels are known settles once they arrive`() {
+        val bare = MouseController().apply { updateSettings(MouseSettings(enabled = true)) }
+
+        bare.setActive(true)
+        assertThat(bare.isActive).isTrue()
+        assertThat(bare.state.value.position).isNull()
+
+        bare.setFallbackDisplays(panels)
+
+        val position = requireNotNull(bare.state.value.position)
+        assertThat(position.displayId).isEqualTo(0)
+        // Centred, not left in the corner it had to start from.
+        assertThat(position.x).isWithin(1f).of(960f)
+        assertThat(position.y).isWithin(1f).of(540f)
+    }
+
+    @Test
+    fun `raising with no panels asks for some`() {
+        val bare = MouseController().apply { updateSettings(MouseSettings(enabled = true)) }
+        var asked = 0
+        bare.onPanelsNeeded { asked++ }
+
+        bare.setActive(true)
+
+        assertThat(asked).isEqualTo(1)
+    }
+
+    @Test
+    fun `the launcher's panels beat the service's`() {
+        val fallback = listOf(
+            PointerDisplay(displayId = 9, widthPx = 100, heightPx = 100, topOffsetPx = 0),
+        )
+        // setUp already declared the launcher's; the service must not override it.
+        mouse.setFallbackDisplays(fallback)
+        mouse.setActive(true)
+
+        assertThat(requireNotNull(mouse.state.value.position).displayId).isEqualTo(0)
+    }
+
+    /**
+     * Arbitration between the launcher and the accessibility service.
+     *
+     * Exactly one of them must act on a press. Both acting double-toggles the
+     * chord and clicks twice; neither acting is the pointer doing nothing at all.
+     * A single flag could not express it, because THOR routinely holds one panel
+     * while a game holds the other — which is when the service matters most.
+     */
+    @Test
+    fun `the launcher owns a cursor on a panel it holds`() {
+        mouse.setActivityFocus(0)
+        mouse.setActive(true)
+
+        assertThat(mouse.launcherOwnsPointer).isTrue()
+    }
+
+    @Test
+    fun `the service owns a cursor on a panel the launcher does not hold`() {
+        // THOR keeps the top panel; a game has the bottom one.
+        mouse.setActivityFocus(0)
+        mouse.setActive(true)
+        mouse.moveByStep(0f, 40f)
+
+        val position = requireNotNull(mouse.state.value.position)
+        assertThat(position.displayId).isEqualTo(1)
+        assertThat(mouse.launcherOwnsPointer).isFalse()
+    }
+
+    @Test
+    fun `with the pointer down ownership follows key focus`() {
+        assertThat(mouse.launcherOwnsPointer).isFalse()
+
+        mouse.setPresentationFocus(1)
+        assertThat(mouse.launcherOwnsPointer).isTrue()
+
+        mouse.setPresentationFocus(null)
+        assertThat(mouse.launcherOwnsPointer).isFalse()
+    }
+
+    @Test
+    fun `a window that goes away stops claiming its panel`() {
+        mouse.setActivityFocus(0)
+        mouse.setPresentationFocus(1)
+        assertThat(mouse.launcherForeground).isTrue()
+
+        mouse.setActivityFocus(null)
+        mouse.setPresentationFocus(null)
+
+        assertThat(mouse.launcherForeground).isFalse()
+    }
+
     @Test
     fun `the pointer starts inactive and has no position`() {
         assertThat(mouse.isActive).isFalse()

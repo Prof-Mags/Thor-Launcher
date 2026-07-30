@@ -3,12 +3,16 @@ package com.thor.launcher.mouse
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.hardware.display.DisplayManager
 import android.os.Build
+import android.util.DisplayMetrics
+import android.view.Display
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import com.thor.core.common.log.ThorLog
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.input.MouseController
+import com.thor.core.input.PointerDisplay
 import com.thor.core.input.PointerPosition
 import com.thor.core.model.MouseAction
 import com.thor.core.model.MouseButton
@@ -71,6 +75,8 @@ class ThorMouseService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         overlay = PointerOverlay(this)
+        reportDisplays()
+        mouse.onPanelsNeeded(::reportDisplays)
 
         settingsRepository.mouse
             .onEach { updated ->
@@ -102,6 +108,10 @@ class ThorMouseService : AccessibilityService() {
         heldDirections.clear()
         overlay?.hide()
         overlay = null
+        // Cleared before the scope dies: the controller is a singleton and outlives
+        // this service, so a listener left pointing at a destroyed one would keep
+        // it reachable and would report panels through a dead window manager.
+        mouse.onPanelsNeeded(null)
         mouse.setServiceConnected(false)
         // The pointer cannot be driven outside the launcher without this service,
         // so it is put away rather than left up and unresponsive.
@@ -138,7 +148,7 @@ class ThorMouseService : AccessibilityService() {
          * "normal controls overwrite the mouse" symptom. Outside THOR the
          * launcher cannot see input at all, and this service is the only driver.
          */
-        if (mouse.launcherForeground) return false
+        if (mouse.launcherOwnsPointer) return false
 
         // The chord is checked first and always, so the pointer can be dismissed
         // from any state — including one where something else has gone wrong.
@@ -167,6 +177,40 @@ class ThorMouseService : AccessibilityService() {
         // press and its release are consumed as a pair.
         if (up) perform(action)
         return !settings.passThroughToApp
+    }
+
+    /**
+     * Declares the panels when the launcher has not.
+     *
+     * Ordered by their vertical position so the stacked space matches the physical
+     * stack — the pointer runs off the bottom of the upper panel onto the top of
+     * the lower one, and getting the order wrong would make crossing the seam jump
+     * the wrong way. Presentation displays are excluded: a cast target or a screen
+     * recorder is somewhere the cursor could wander to and never come back from.
+     */
+    private fun reportDisplays() {
+        val manager = getSystemService(DisplayManager::class.java) ?: return
+
+        val panels = manager.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
+            .toList()
+            .let { presentation -> listOfNotNull(manager.getDisplay(Display.DEFAULT_DISPLAY)) + presentation }
+            .filter { it.isValid && it.state != Display.STATE_OFF }
+
+        var offset = 0
+        mouse.setFallbackDisplays(
+            panels.map { display ->
+                val metrics = DisplayMetrics().also {
+                    @Suppress("DEPRECATION")
+                    display.getRealMetrics(it)
+                }
+                PointerDisplay(
+                    displayId = display.displayId,
+                    widthPx = metrics.widthPixels,
+                    heightPx = metrics.heightPixels,
+                    topOffsetPx = offset,
+                ).also { offset += metrics.heightPixels }
+            },
+        )
     }
 
     /**
@@ -235,7 +279,22 @@ class ThorMouseService : AccessibilityService() {
             MouseAction.SCROLL_UP -> swipe(position, -SCROLL_DISTANCE_PX)
             MouseAction.SCROLL_DOWN -> swipe(position, SCROLL_DISTANCE_PX)
             MouseAction.BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
-            MouseAction.OPEN_KEYBOARD -> mouse.requestKeyboard()
+            /*
+             * Only useful while THOR is on screen, and it says so.
+             *
+             * THOR's keyboard is a composable in THOR's own window, so out here it
+             * would open somewhere nobody can see. Typing into another app needs
+             * `ACTION_SET_TEXT` on its focused node, which needs permission to read
+             * that app's window content — a thing this service deliberately does
+             * not ask for. Until that trade is made, the platform's own keyboard is
+             * what appears when the pointer taps a text field in another app, and
+             * that is the app's IME doing its job rather than THOR failing at one.
+             */
+            MouseAction.OPEN_KEYBOARD -> if (mouse.launcherForeground) {
+                mouse.requestKeyboard()
+            } else {
+                ThorLog.i(TAG, "Keyboard request ignored: THOR is not on screen")
+            }
             MouseAction.TOGGLE_OFF -> mouse.setActive(false)
             MouseAction.NONE -> Unit
         }
