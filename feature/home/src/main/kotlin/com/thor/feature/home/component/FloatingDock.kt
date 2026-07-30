@@ -126,6 +126,7 @@ fun FloatingDock(
                 // does not get a circular highlight in the dock beneath it.
                 val indicatorShape = iconShape.toComposeShape(
                     radius = dimens.cornerRadius.value,
+                    cornerStyle = ThorTheme.shapes.style,
                 )
 
                 settings.slots.forEachIndexed { index, action ->

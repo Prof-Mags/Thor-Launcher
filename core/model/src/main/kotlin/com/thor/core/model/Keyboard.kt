@@ -32,6 +32,16 @@ sealed interface KeyboardKey {
 
     /** Closes the keyboard. */
     data object Cancel : KeyboardKey
+
+    /**
+     * Opens the clipboard sheet: paste what has been copied, or copy this field.
+     *
+     * A sheet rather than a bare paste key. The system exposes one primary clip,
+     * but a launcher that has been open a while has seen several go past, and the
+     * one wanted is often not the last — a paste key that can only ever insert the
+     * most recent clip is the one case where a second press does not help.
+     */
+    data object Clipboard : KeyboardKey
 }
 
 /** Which set of keys is on show. */
@@ -60,6 +70,7 @@ object ThorKeyboardLayout {
      */
     private val FUNCTIONS: List<KeyboardKey> = listOf(
         KeyboardKey.Layer,
+        KeyboardKey.Clipboard,
         KeyboardKey.Character(lower = ',', upper = ','),
         KeyboardKey.Space,
         KeyboardKey.Character(lower = '.', upper = '.'),

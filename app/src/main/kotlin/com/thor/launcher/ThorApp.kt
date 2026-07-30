@@ -55,12 +55,17 @@ import com.thor.core.display.LauncherPanel
 import com.thor.core.display.SecondaryDisplay
 import com.thor.core.display.ThorDisplayMonitor
 import com.thor.core.input.ControllerInputRouter
+import com.thor.core.input.MouseController
+import com.thor.core.input.PointerDisplay
+import com.thor.launcher.mouse.PointerLayer
+import kotlinx.coroutines.flow.drop
 import com.thor.data.capture.RecordingState
 import com.thor.core.model.ControllerCommand
 import com.thor.core.model.DualScreenMode
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.KeyboardKey
+import com.thor.core.model.PlatformFolders
 import com.thor.core.ui.feedback.FeedbackCue
 import com.thor.core.ui.component.ThorKeyboard
 import com.thor.core.ui.component.ThorIntro
@@ -113,6 +118,8 @@ private fun InputSurface.toPanel(): LauncherPanel = when (this) {
 fun ThorApp(
     inputRouter: ControllerInputRouter,
     displayMonitor: ThorDisplayMonitor,
+    /** The controller pointer, shared with the accessibility service. */
+    mouse: MouseController,
     /** Fires when the system delivers a HOME intent to the running launcher. */
     homeRequests: Flow<Unit>,
     viewModel: LauncherViewModel = hiltViewModel(),
@@ -196,6 +203,7 @@ fun ThorApp(
     val recording by viewModel.recording.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val navCursor by viewModel.navCursor.collectAsState()
+    val trailerDismissedFor by viewModel.trailerDismissedFor.collectAsState()
 
     /*
      * The launcher's own text focus, provided to both windows.
@@ -319,6 +327,11 @@ fun ThorApp(
      * captured one may have been paused for as long as the app has been running.
      */
     fun onPresentationFocusChanged(hasFocus: Boolean) {
+        // Half of the answer to "is the launcher in front", which decides whether
+        // THOR or the accessibility service drives the pointer. The grid usually
+        // lives in this window, so the activity's own focus is not the whole story.
+        mouse.setPresentationFocused(hasFocus)
+
         if (!hasFocus && presentationHoldsFocusNow()) focusYieldedToApp = true
     }
 
@@ -784,8 +797,21 @@ fun ThorApp(
             }
         }
 
-        val selectedPlatform = (state.selection as? GameEntry)
-            ?.let { state.platformsById[it.platformId] }
+        /*
+         * The system the selection belongs to.
+         *
+         * Folders resolve too, not just games: a platform's folder is the cell that
+         * *is* that system on the grid, so highlighting it should back the info
+         * panel with that system's hero rather than with the generic wallpaper —
+         * which is exactly what an icon pack is for.
+         */
+        val selectedPlatform = when (val selection = state.selection) {
+            is GameEntry -> state.platformsById[selection.platformId]
+            is FolderEntry -> PlatformFolders.platformIdOf(selection.id)
+                ?.let { state.platformsById[it] }
+
+            else -> null
+        }
 
         /*
          * The surfaces the info panel *hosts*, kept separate from the panel itself.
@@ -865,10 +891,16 @@ fun ThorApp(
                     folderChildren = state.openFolderContents,
                     clockStyle = settings.personalization.clockStyle,
                     showStatusBar = settings.personalization.showStatusBar,
-                    // Performance mode's single switch already covers blur and
-                    // animated wallpapers; preview clips are the same trade — a
-                    // decoder per dwell versus a completely static panel.
-                    videoPreviewsEnabled = !settings.performance.performanceMode,
+                    /*
+                     * Performance mode's single switch already covers blur and
+                     * animated wallpapers; trailers are the same trade — a decoder
+                     * per dwell versus a completely static panel. The user's own
+                     * preference sits alongside it, and the bumpers override both
+                     * for whichever game is highlighted.
+                     */
+                    videoPreviewsEnabled = settings.personalization.autoplayTrailers &&
+                        !settings.performance.performanceMode &&
+                        trailerDismissedFor != state.selection?.id,
                     selectedScreenshot = selectedScreenshot,
                     onScreenshotSelected = viewModel::setScreenshot,
                     // Only when this panel is holding the controller *itself*. An
@@ -979,6 +1011,18 @@ fun ThorApp(
                         feedback.play(key.toCue())
                     },
                     onDismiss = viewModel::closeKeyboard,
+                    // Null while closed: the sheet's presence *is* its visibility,
+                    // so there is no second flag for the two to disagree about.
+                    clips = keyboard.clips.takeIf { keyboard.clipboardOpen },
+                    clipIndex = keyboard.clipIndex,
+                    onPasteClip = { clip ->
+                        viewModel.pasteClip(clip)
+                        feedback.play(FeedbackCue.CONFIRM)
+                    },
+                    onCopyText = {
+                        viewModel.copyFieldText()
+                        feedback.play(FeedbackCue.SUCCESS)
+                    },
                 )
             }
 
@@ -1073,6 +1117,50 @@ fun ThorApp(
         }
 
         /*
+         * ---- The pointer's world ---------------------------------------------
+         *
+         * The two panels, stacked top first, so the cursor runs off the bottom of
+         * one and onto the top of the other with no special case at the seam.
+         * Reported from here rather than read from `DisplayManager` for the same
+         * reason the launch target is: any extra display the system lists — a
+         * recorder, a cast target — would otherwise become somewhere the pointer
+         * could wander to and not come back from.
+         */
+        LaunchedEffect(primaryPanel, secondary) {
+            val top = primaryPanel ?: return@LaunchedEffect
+            val panels = listOfNotNull(top, secondary)
+            var offset = 0
+            mouse.setDisplays(
+                panels.map { panel ->
+                    PointerDisplay(
+                        displayId = panel.displayId,
+                        widthPx = panel.widthPx,
+                        heightPx = panel.heightPx,
+                        topOffsetPx = offset,
+                    ).also { offset += panel.heightPx }
+                },
+            )
+        }
+
+        /*
+         * A bound button asked for the on-screen keyboard.
+         *
+         * The pointer cannot raise a platform IME — an accessibility service has
+         * no field to attach one to — but THOR's own keyboard is a composable on
+         * the grid surface that types into whatever holds text focus. So the
+         * request comes back here and opens that instead.
+         *
+         * `drop(1)` because the request is a counter and collecting it replays the
+         * current value; without it the keyboard would open the moment the pointer
+         * service connected.
+         */
+        LaunchedEffect(mouse) {
+            mouse.keyboardRequests.drop(1).collect {
+                viewModel.openKeyboard(label = "Type", initial = "")
+            }
+        }
+
+        /*
          * The grid has no panel at all while an app holds the one it lives on, so
          * anything raised over the grid is closed rather than left waiting: a
          * shortcut panel opened from the info surface's window would otherwise be
@@ -1100,11 +1188,17 @@ fun ThorApp(
                 performance = settings.performance,
             ) {
                 CompositionLocalProvider(LocalThorTextInput provides textInput) {
-                    inner()
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        inner()
+                        // Over everything this window draws, so the cursor is never
+                        // behind the thing it is pointing at.
+                        PointerLayer(mouse = mouse, displayId = secondary?.displayId)
+                    }
                 }
             }
         }
 
+        Box(modifier = Modifier.fillMaxSize()) {
         when (mode) {
             DualScreenMode.DUAL_DISPLAY -> {
                 val gridWindowContent: @Composable () -> Unit = {
@@ -1258,6 +1352,11 @@ fun ThorApp(
                     infoOverlays()
                 }
             }
+        }
+
+        // The pointer over this window, whichever surfaces it happens to hold.
+        // The presentation draws its own; see `secondWindow`.
+        PointerLayer(mouse = mouse, displayId = primaryPanel?.displayId)
         }
         }
     }

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.AddToHomeScreen
 import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FolderOff
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
 import androidx.compose.material.icons.rounded.Tablet
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -64,7 +66,28 @@ enum class ContextAction(val label: String, val icon: ImageVector) {
     APP_INFO("App info", Icons.Rounded.Info),
     TOGGLE_FAVORITE("Favourite", Icons.Rounded.StarOutline),
     HIDE("Hide from grid", Icons.Rounded.VisibilityOff),
+
+    /**
+     * Offered in place of [HIDE] on an entry that is already hidden.
+     *
+     * A separate action rather than a re-labelled one because the menu is built
+     * from a fixed enum and the label is part of it — and because a toggle whose
+     * caption depends on state is exactly the kind of thing that ends up saying
+     * "Hide" over an entry that is already hidden.
+     */
+    UNHIDE("Show on grid", Icons.Rounded.Visibility),
+
     UNINSTALL("Uninstall", Icons.Rounded.DeleteOutline),
+
+    /**
+     * Removes the entry from the library, as opposed to hiding it.
+     *
+     * A rescan that still finds the file will bring it back, unhidden — which is
+     * the point: this is the way to undo a state an entry has got stuck in, not a
+     * way to delete anything from disk. THOR never touches the user's files.
+     */
+    DELETE("Remove from library", Icons.Rounded.DeleteForever),
+
     DELETE_FOLDER("Delete folder", Icons.Rounded.Delete),
 }
 
@@ -113,8 +136,14 @@ fun contextActionsFor(
     add(ContextAction.EDIT)
     if (entry is AppEntry) add(ContextAction.APP_INFO)
     add(ContextAction.TOGGLE_FAVORITE)
-    if (!fromDrawer && entry !is FolderEntry) add(ContextAction.HIDE)
+    if (!fromDrawer && entry !is FolderEntry) {
+        // The direction that applies. A hidden entry is only reachable at all
+        // because "show hidden" is on, and the one thing wanted there is the way
+        // back.
+        if (entry.isHidden) add(ContextAction.UNHIDE) else add(ContextAction.HIDE)
+    }
     if (entry is AppEntry && !entry.isSystemApp) add(ContextAction.UNINSTALL)
+    if (entry !is FolderEntry) add(ContextAction.DELETE)
     if (entry is FolderEntry) add(ContextAction.DELETE_FOLDER)
 }
 

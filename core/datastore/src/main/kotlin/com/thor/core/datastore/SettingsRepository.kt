@@ -10,8 +10,10 @@ import com.thor.core.model.DeveloperSettings
 import com.thor.core.model.DisplaySettings
 import com.thor.core.model.DockSettings
 import com.thor.core.model.GridSpec
+import com.thor.core.model.IconPack
 import com.thor.core.model.LibrarySettings
 import com.thor.core.model.MetadataSettings
+import com.thor.core.model.MouseSettings
 import com.thor.core.model.PerformanceSettings
 import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.ThorSettings
@@ -70,6 +72,8 @@ class SettingsRepository @Inject constructor(
     val grid: Flow<GridSpec> = settings.map { it.grid.coerced() }.distinctUntilChanged()
     val dock: Flow<DockSettings> = settings.map { it.dock }.distinctUntilChanged()
     val library: Flow<LibrarySettings> = settings.map { it.library }.distinctUntilChanged()
+    val iconPacks: Flow<List<IconPack>> = settings.map { it.iconPacks }.distinctUntilChanged()
+    val mouse: Flow<MouseSettings> = settings.map { it.mouse }.distinctUntilChanged()
     val metadata: Flow<MetadataSettings> = settings.map { it.metadata }.distinctUntilChanged()
     val controls: Flow<ControlSettings> = settings.map { it.controls }.distinctUntilChanged()
     val display: Flow<DisplaySettings> = settings.map { it.display }.distinctUntilChanged()
@@ -98,6 +102,14 @@ class SettingsRepository @Inject constructor(
 
     suspend fun updateLibrary(transform: (LibrarySettings) -> LibrarySettings) {
         edit { it.copy(library = transform(it.library)) }
+    }
+
+    suspend fun updateIconPacks(transform: (List<IconPack>) -> List<IconPack>) {
+        edit { it.copy(iconPacks = transform(it.iconPacks)) }
+    }
+
+    suspend fun updateMouse(transform: (MouseSettings) -> MouseSettings) {
+        edit { it.copy(mouse = transform(it.mouse)) }
     }
 
     suspend fun updateMetadata(transform: (MetadataSettings) -> MetadataSettings) {

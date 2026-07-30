@@ -37,6 +37,7 @@ import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.modifier.thorSurface
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.model.CornerStyle
 import com.thor.core.model.LauncherTab
 
 /**
@@ -78,11 +79,22 @@ fun BottomNavBar(
             // Switch, a lit edge on Vision and a hard outline on Retro without
             // this file knowing any of those exist.
             .thorSurface(
-                // Square. The bar spans the full width and sits on the bottom
-                // edge, so rounded top corners left two slivers of wallpaper
-                // showing at the ends and made it read as a floating card rather
-                // than as the frame of the panel.
-                shape = RectangleShape,
+                /*
+                 * Follows the interface-wide corner setting, but only on its top
+                 * edge — the bar sits flush on the bottom of the panel, and
+                 * rounding corners that meet the screen edge leaves two slivers of
+                 * wallpaper showing and reads as a floating card rather than as
+                 * the frame of the panel.
+                 */
+                shape = when (ThorTheme.shapes.style) {
+                    CornerStyle.SQUARE -> RectangleShape
+                    else -> RoundedCornerShape(
+                        topStart = dimens.cornerRadius,
+                        topEnd = dimens.cornerRadius,
+                        bottomStart = 0.dp,
+                        bottomEnd = 0.dp,
+                    )
+                },
                 color = colors.surfaceElevated,
                 level = SurfaceLevel.RAISED,
             )

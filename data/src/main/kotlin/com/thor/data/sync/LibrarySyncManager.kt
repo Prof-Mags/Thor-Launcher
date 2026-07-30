@@ -139,22 +139,27 @@ class LibrarySyncManager @Inject constructor(
      * stays arranged.
      */
     private suspend fun fileGamesByPlatform() {
-        val titles = platformDao.getAll()
-            .map { it.toDomain() }
-            .associate { platform ->
-                // The short label: it is a grid cell, and "SNES" fits where "Super
-                // Nintendo Entertainment System" would be three ellipsised words.
-                platform.id to platform.shortName.ifBlank { platform.name }
-            }
+        val platforms = platformDao.getAll().map { it.toDomain() }
+
+        val titles = platforms.associate { platform ->
+            // The short label: it is a grid cell, and "SNES" fits where "Super
+            // Nintendo Entertainment System" would be three ellipsised words.
+            platform.id to platform.shortName.ifBlank { platform.name }
+        }
+        // So a folder created by this scan is already wearing its platform's icon,
+        // rather than appearing blank until something else dresses it.
+        val icons = platforms.associate { it.id to it.artwork.iconUri }
 
         val gamesByPlatform = gameDao.getVisible().groupBy(
             keySelector = { it.platformId },
             valueTransform = { it.id },
         )
 
-        gridRepository.fileGamesIntoPlatformFolders(gamesByPlatform) { platformId ->
-            titles[platformId] ?: platformId
-        }
+        gridRepository.fileGamesIntoPlatformFolders(
+            gamesByPlatform = gamesByPlatform,
+            titleFor = { platformId -> titles[platformId] ?: platformId },
+            artworkFor = { platformId -> icons[platformId] },
+        )
     }
 
     fun cancelScan() {

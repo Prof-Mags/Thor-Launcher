@@ -13,6 +13,17 @@
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!--
+      Fallback for the pointer's cursor on a secondary display.
+
+      The cursor is normally an accessibility overlay, which the pointer service
+      already has the right to place and which needs nothing further. Whether one
+      may be placed on a *second* display varies by ROM, so this is the fallback
+      for that case only. It is never requested at runtime and the pointer works
+      without it on the main panel; granting it is entirely the user's move.
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- Reading ROM directories granted through the storage access framework. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -120,6 +131,32 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!--
+          The controller pointer.
+
+          An accessibility service because that is the only route an unprivileged
+          app has to a cursor that works outside itself: putting a window over
+          another app and clicking inside it needs `dispatchGesture`, and reading
+          controller buttons while that app has focus needs `onKeyEvent`. Both are
+          accessibility APIs. `INJECT_EVENTS` — the direct route — is signature
+          only and not available to any installable app.
+
+          `exported` is false: nothing else may bind to it. The system binds it
+          through the permission below, which only the system holds.
+        -->
+        <service
+            android:name=".mouse.ThorMouseService"
+            android:exported="false"
+            android:label="@string/mouse_service_summary"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/mouse_accessibility_service" />
+        </service>
 
         <!--
           The metadata scraper and library scanner run as WorkManager jobs; the

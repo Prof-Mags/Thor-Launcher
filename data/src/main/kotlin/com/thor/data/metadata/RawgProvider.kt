@@ -85,17 +85,83 @@ class RawgProvider @Inject constructor(
                 response.body?.string()
             } ?: return emptyList()
 
-            json.decodeFromString<RawgSearchResponse>(body)
+            val candidates = json.decodeFromString<RawgSearchResponse>(body)
                 .results
                 .orEmpty()
                 .map { it.toCandidate(query) }
                 .sortedByDescending(MetadataCandidate::confidence)
+
+            /*
+             * The trailer is a second request, and only for the best match.
+             *
+             * RAWG does not return clips from the search endpoint — they live
+             * behind `/games/{id}/movies`. Fetching one per candidate would mean
+             * five requests to fill a field that only the winner's value is ever
+             * read from, against an API with a rate limit; fetching none is why
+             * modern games have never had a trailer in this launcher.
+             */
+            val best = candidates.firstOrNull()
+            if (best == null || best.confidence < TRAILER_CONFIDENCE_FLOOR) {
+                candidates
+            } else {
+                val trailer = fetchTrailer(best.remoteId, apiKey)
+                if (trailer == null) {
+                    candidates
+                } else {
+                    candidates.mapIndexed { index, candidate ->
+                        if (index == 0) {
+                            candidate.copy(artwork = candidate.artwork.copy(videoUri = trailer))
+                        } else {
+                            candidate
+                        }
+                    }
+                }
+            }
         } catch (e: IOException) {
             ThorLog.w(TAG, "Search failed for '${query.title}'", e)
             emptyList()
         } catch (e: IllegalStateException) {
             ThorLog.w(TAG, "Unexpected response for '${query.title}'", e)
             emptyList()
+        }
+    }
+
+    /**
+     * The best trailer RAWG has for a game, as a direct video URL.
+     *
+     * These are ordinary MP4s on RAWG's own CDN, which is the whole reason this is
+     * worth doing: they play in the launcher's existing ExoPlayer surface with no
+     * embedded browser, no third-party player and no terms to breach. A YouTube
+     * link could do none of that — there is no public API for the stream, and
+     * their terms permit playback only inside their own player.
+     *
+     * Preferring the higher-quality variant when both are offered; the panel is a
+     * full-screen backdrop and the low one is visibly soft on it.
+     */
+    private suspend fun fetchTrailer(remoteId: String, apiKey: String): String? {
+        val url = "$BASE_URL/games/$remoteId/movies".toHttpUrlOrNull()
+            ?.newBuilder()
+            ?.addQueryParameter("key", apiKey)
+            ?.build()
+            ?: return null
+
+        return try {
+            val body = client.newCall(Request.Builder().url(url).build()).await().use { response ->
+                if (!response.isSuccessful) return null
+                response.body?.string()
+            } ?: return null
+
+            json.decodeFromString<RawgMovieResponse>(body)
+                .results
+                .orEmpty()
+                .firstNotNullOfOrNull { movie -> movie.data?.max ?: movie.data?.low }
+                ?.takeIf(String::isNotBlank)
+        } catch (e: IOException) {
+            ThorLog.w(TAG, "Trailer lookup failed for $remoteId", e)
+            null
+        } catch (e: IllegalStateException) {
+            ThorLog.w(TAG, "Unexpected trailer response for $remoteId", e)
+            null
         }
     }
 
@@ -152,6 +218,18 @@ class RawgProvider @Inject constructor(
     )
 
     @Serializable
+    private data class RawgMovieResponse(val results: List<RawgMovie>? = null)
+
+    @Serializable
+    private data class RawgMovie(val id: Int? = null, val data: RawgMovieData? = null)
+
+    @Serializable
+    private data class RawgMovieData(
+        @SerialName("480") val low: String? = null,
+        val max: String? = null,
+    )
+
+    @Serializable
     private data class RawgNamed(val id: Int? = null, val name: String? = null)
 
     @Serializable
@@ -162,5 +240,14 @@ class RawgProvider @Inject constructor(
         private const val TAG = "RAWG"
         private const val BASE_URL = "https://api.rawg.io/api"
         private const val MAX_RESULTS = 5
+
+        /**
+         * Below this, the top match is not confident enough to spend a request on.
+         *
+         * A trailer attached to the wrong game is worse than none: it is
+         * indistinguishable from the launcher being broken, whereas a missing one
+         * simply falls back to stills.
+         */
+        private const val TRAILER_CONFIDENCE_FLOOR = 0.6f
     }
 }

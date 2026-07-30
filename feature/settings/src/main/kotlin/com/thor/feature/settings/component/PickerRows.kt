@@ -62,6 +62,48 @@ fun WallpaperPickerRow(
 }
 
 /**
+ * A row that opens the system file picker for a single file of [mimeTypes].
+ *
+ * Read permission is persisted like every other picked URI, though for an icon
+ * pack it matters less than usual: the archive is copied in immediately and never
+ * read again, so a one-shot grant is enough. It is taken anyway, because the
+ * import runs on a background dispatcher and a grant that expires between the
+ * picker closing and the copy starting would fail for no visible reason.
+ */
+@Composable
+fun FilePickerRow(
+    title: String,
+    subtitle: String?,
+    mimeTypes: Array<String>,
+    focused: Boolean = false,
+    onPicked: (uri: String, displayName: String) -> Unit,
+) {
+    val context = LocalContext.current
+
+    val picker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }.onFailure { error ->
+            ThorLog.w("Settings", "Could not persist file grant for $uri", error)
+        }
+        onPicked(uri.toString(), uri.lastPathSegment?.substringAfterLast('/') ?: "Pack")
+    }
+
+    ActionRow(
+        title = title,
+        subtitle = subtitle,
+        focused = focused,
+        onClick = { picker.launch(mimeTypes) },
+    )
+}
+
+/**
  * A row that opens the system directory picker and reports a ROM folder.
  *
  * Directory grants must be persisted for the same reason as wallpapers, and

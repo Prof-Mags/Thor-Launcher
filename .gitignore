@@ -7,3 +7,10 @@ local.properties
 .cxx/
 captures/
 hs_err_pid*.log
+
+# Icon packs dropped in the working tree for testing the importer.
+# Third-party artwork, tens of megabytes each, and none of it ours to
+# redistribute — THOR ships no packs and imports them at runtime instead.
+/float-ui-*/
+/*-smart-folders-*/
+/iconpacks/

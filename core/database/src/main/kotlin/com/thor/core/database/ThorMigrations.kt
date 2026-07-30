@@ -84,5 +84,29 @@ object ThorMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2)
+    /**
+     * 2 → 3: platforms gain icon-pack artwork.
+     *
+     * Four nullable columns added in place. Unlike 1 → 2 this needs no table
+     * rebuild — nothing is dropped or renamed, and `ALTER TABLE ADD COLUMN` is
+     * the one schema change SQLite has always supported cleanly.
+     *
+     * Every column is nullable with no default, which is exactly right: a
+     * platform with no pack installed has no artwork, and null is what "no
+     * artwork" means everywhere else in this schema.
+     */
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            listOf(
+                "artwork_icon_uri",
+                "artwork_hero_uri",
+                "artwork_logo_uri",
+                "artwork_pack_id",
+            ).forEach { column ->
+                db.execSQL("ALTER TABLE `platforms` ADD COLUMN `$column` TEXT")
+            }
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }

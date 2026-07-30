@@ -46,6 +46,7 @@ import com.thor.core.model.FolderStyle
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
 import com.thor.core.model.GridSpec
+import com.thor.core.model.CornerStyle
 import com.thor.core.model.IconShape
 import com.thor.core.model.Platform
 import com.thor.core.model.ShortcutEntry
@@ -110,7 +111,10 @@ fun GridCell(
         label = "wobbleAngle",
     )
 
-    val shape = spec.iconShape.toComposeShape(dimens.cornerRadius.value)
+    val shape = spec.iconShape.toComposeShape(
+        radius = dimens.cornerRadius.value,
+        cornerStyle = ThorTheme.shapes.style,
+    )
 
     // The user's icon-size preference is expressed as the fraction of the
     // square slot the icon occupies, so growing it can never overflow the cell.
@@ -142,7 +146,16 @@ fun GridCell(
                         // The arrange-mode wobble is a rotation on the layer
                         // rather than a re-layout, so it costs nothing per frame.
                         rotationZ = if (jiggling) wobble else 0f
-                        alpha = if (isHeld) 0.85f else 1f
+                        alpha = when {
+                            // Only reachable at all while "show hidden entries" is
+                            // on, and it has to look like what it is: an entry the
+                            // user hid, showing temporarily so it can be restored
+                            // or removed. Solid, it would read as an ordinary cell
+                            // and the setting as having done nothing.
+                            entry?.isHidden == true -> HIDDEN_ALPHA
+                            isHeld -> 0.85f
+                            else -> 1f
+                        }
                     }
                     // The cell's own shape, so a square icon gets a square cursor
                     // and a circular one a ring, rather than a fixed rounded box
@@ -326,13 +339,35 @@ private fun FolderShell(
     }
 }
 
-/** Converts the user's icon-shape preference into a Compose shape. */
-fun IconShape.toComposeShape(radius: Float): Shape = when (this) {
-    IconShape.SQUARE -> RoundedCornerShape(0.dp)
-    IconShape.ROUNDED -> RoundedCornerShape(radius.dp * 0.45f)
-    IconShape.SQUIRCLE -> RoundedCornerShape(radius.dp * 0.85f)
-    IconShape.CIRCLE -> CircleShape
-    IconShape.HEXAGON -> CutCornerShape(radius.dp * 0.9f)
+/** How faint a hidden entry is drawn while hidden entries are being shown. */
+private const val HIDDEN_ALPHA = 0.4f
+
+/**
+ * Converts the user's icon-shape preference into a Compose shape.
+ *
+ * [cornerStyle] overrides it outright when the user has asked for one shape
+ * across the whole interface. That override is the entire point of the setting:
+ * a launcher whose panels, dialogs, tabs and rows are all square, with rounded
+ * icons in the middle of it, has not applied the choice — it has applied it
+ * everywhere the author remembered.
+ *
+ * [CornerStyle.THEME] defers to the icon shape, because that is the setting that
+ * still means "let each part decide" — and it is the only one of the three that
+ * can express a circle or a hexagon at all.
+ */
+fun IconShape.toComposeShape(
+    radius: Float,
+    cornerStyle: CornerStyle = CornerStyle.THEME,
+): Shape = when (cornerStyle) {
+    CornerStyle.SQUARE -> RoundedCornerShape(0.dp)
+    CornerStyle.ROUNDED -> RoundedCornerShape(radius.dp * 0.45f)
+    CornerStyle.THEME -> when (this) {
+        IconShape.SQUARE -> RoundedCornerShape(0.dp)
+        IconShape.ROUNDED -> RoundedCornerShape(radius.dp * 0.45f)
+        IconShape.SQUIRCLE -> RoundedCornerShape(radius.dp * 0.85f)
+        IconShape.CIRCLE -> CircleShape
+        IconShape.HEXAGON -> CutCornerShape(radius.dp * 0.9f)
+    }
 }
 
 /**

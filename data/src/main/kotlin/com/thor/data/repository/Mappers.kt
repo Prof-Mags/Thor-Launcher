@@ -9,7 +9,9 @@ import com.thor.core.model.AppEntry
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridPlacement
+import com.thor.core.model.BuiltInPlatforms
 import com.thor.core.model.Platform
+import com.thor.core.model.PlatformArtwork
 import com.thor.core.model.PlayStats
 
 /**
@@ -102,6 +104,16 @@ fun PlatformEntity.toDomain(): Platform = Platform(
     isCustom = isCustom,
     isAdded = isAdded,
     sortIndex = sortIndex,
+    artwork = PlatformArtwork(
+        iconUri = artworkIconUri,
+        heroUri = artworkHeroUri,
+        logoUri = artworkLogoUri,
+        packId = artworkPackId,
+    ),
+    // Packaged content, keyed by id rather than stored — so a row written before
+    // these existed still reads back with one, and correcting the text does not
+    // need a schema migration.
+    description = BuiltInPlatforms.descriptionFor(id),
 )
 
 fun Platform.toEntity(): PlatformEntity = PlatformEntity(
@@ -117,6 +129,10 @@ fun Platform.toEntity(): PlatformEntity = PlatformEntity(
     isCustom = isCustom,
     isAdded = isAdded,
     sortIndex = sortIndex,
+    artworkIconUri = artwork.iconUri,
+    artworkHeroUri = artwork.heroUri,
+    artworkLogoUri = artwork.logoUri,
+    artworkPackId = artwork.packId,
 )
 
 fun PlacementEntity.toDomain(): GridPlacement = GridPlacement(

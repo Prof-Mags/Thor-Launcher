@@ -62,6 +62,14 @@ data class ThorThemeState(
  */
 @Immutable
 data class ThorShapes(
+    /**
+     * The user's choice itself, for the few places a `Shape` cannot express it.
+     *
+     * Grid icons are the reason: their shape is chosen from five options
+     * including a circle and a hexagon, which no corner radius describes, so that
+     * call site has to branch on the choice rather than be handed a shape.
+     */
+    val style: CornerStyle,
     /** Panels, cards, sheets, grid cells. */
     val panel: Shape,
     /** Inner elements on a panel: rows, chips, small controls. */
@@ -81,6 +89,7 @@ data class ThorShapes(
          */
         fun build(style: CornerStyle, themeRadius: Dp): ThorShapes = when (style) {
             CornerStyle.SQUARE -> ThorShapes(
+                style = style,
                 panel = RectangleShape,
                 small = RectangleShape,
                 large = RectangleShape,
@@ -88,6 +97,7 @@ data class ThorShapes(
             )
 
             CornerStyle.ROUNDED -> ThorShapes(
+                style = style,
                 panel = RoundedCornerShape(ROUNDED_PANEL.dp),
                 small = RoundedCornerShape(ROUNDED_SMALL.dp),
                 large = RoundedCornerShape(ROUNDED_LARGE.dp),
@@ -95,6 +105,7 @@ data class ThorShapes(
             )
 
             CornerStyle.THEME -> ThorShapes(
+                style = style,
                 panel = RoundedCornerShape(themeRadius),
                 small = RoundedCornerShape(themeRadius * 0.5f),
                 large = RoundedCornerShape(themeRadius * 1.6f),

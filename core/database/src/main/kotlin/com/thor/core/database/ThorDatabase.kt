@@ -60,7 +60,7 @@ abstract class ThorDatabase : RoomDatabase() {
     abstract fun achievementDao(): AchievementDao
 
     companion object {
-        const val VERSION = 2
+        const val VERSION = 3
         const val NAME = "thor-library.db"
     }
 }

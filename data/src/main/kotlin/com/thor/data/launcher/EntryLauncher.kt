@@ -1,4 +1,4 @@
-package com.thor.data.launcher
+﻿package com.thor.data.launcher
 
 import android.app.ActivityOptions
 import android.content.ActivityNotFoundException
@@ -11,6 +11,7 @@ import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Process
+import android.os.UserHandle
 import android.os.UserManager
 import android.provider.Settings
 import android.view.Display
@@ -32,7 +33,14 @@ sealed interface LaunchFailure {
 }
 
 sealed interface LaunchResult {
-    data object Success : LaunchResult
+    /**
+     * @param onRequestedTarget whether the app actually went to the panel that was
+     *   asked for. False when it had to fall back to the default display — which
+     *   the caller has to know, because it may have already stood a panel down for
+     *   an app that is not going to arrive on it.
+     */
+    data class Success(val onRequestedTarget: Boolean = true) : LaunchResult
+
     data class Failed(val reason: LaunchFailure) : LaunchResult
 }
 
@@ -101,26 +109,87 @@ class EntryLauncher @Inject constructor(
     private val displayManager: DisplayManager? =
         context.getSystemService(DisplayManager::class.java)
 
-    /** Launches an installed application, honouring work-profile ownership. */
-    fun launchApp(app: AppEntry, target: LaunchTarget = LaunchTarget.DEFAULT): LaunchResult = try {
+    /**
+     * Launches an installed application, honouring work-profile ownership.
+     *
+     * Tries up to four ways before giving up, because a single refusal used to end
+     * the whole attempt — and a refused launch is not a quiet one: the caller has
+     * already stood the second panel down, so failing puts the grid straight back
+     * and the press reads as having done nothing at all. Trying once was
+     * particularly poor for the two most common refusals, both of which have an
+     * obvious next move:
+     *
+     *  - **The display would not take it.** Pinning an activity to a panel with
+     *    `setLaunchDisplayId` is a request, and the system refuses it for
+     *    activities it will not place there. Dropping the pin and letting the app
+     *    open on the default display is better than not opening it.
+     *  - **The component moved.** A stored `activityName` is a snapshot from the
+     *    last scan; an app that has updated since may have renamed or removed that
+     *    activity. Asking `LauncherApps` what the package launches *now* costs one
+     *    call and fixes it without waiting for a rescan.
+     */
+    fun launchApp(app: AppEntry, target: LaunchTarget = LaunchTarget.DEFAULT): LaunchResult {
         val user = userManager.userProfiles.firstOrNull {
             userManager.getSerialNumberForUser(it) == app.userSerial
         } ?: Process.myUserHandle()
 
-        launcherApps.startMainActivity(
-            ComponentName(app.packageName, app.activityName),
-            user,
-            null,
-            optionsFor(target),
-        )
-        LaunchResult.Success
-    } catch (e: ActivityNotFoundException) {
-        ThorLog.w("Launcher", "No activity for ${app.packageName}", e)
-        LaunchResult.Failed(LaunchFailure.NoHandler(app.packageName))
-    } catch (e: SecurityException) {
-        ThorLog.w("Launcher", "Not permitted to launch ${app.packageName}", e)
-        LaunchResult.Failed(LaunchFailure.Unknown(e))
+        val stored = ComponentName(app.packageName, app.activityName)
+        var failure: LaunchFailure? = null
+
+        fun attempt(component: ComponentName, options: Bundle?): Boolean = try {
+            launcherApps.startMainActivity(component, user, null, options)
+            true
+        } catch (e: ActivityNotFoundException) {
+            ThorLog.w("Launcher", "No activity $component", e)
+            failure = LaunchFailure.NoHandler(app.packageName)
+            false
+        } catch (e: SecurityException) {
+            ThorLog.w("Launcher", "Not permitted to launch $component", e)
+            failure = LaunchFailure.Unknown(e)
+            false
+        } catch (e: IllegalStateException) {
+            // Some ROMs report a refused display placement this way rather than
+            // as a SecurityException. Uncaught it escaped the whole launch path
+            // and left the panel handed over to an app that never started.
+            ThorLog.w("Launcher", "Refused to start $component", e)
+            failure = LaunchFailure.Unknown(e)
+            false
+        }
+
+        val options = optionsFor(target)
+
+        // As stored, on the requested panel.
+        if (attempt(stored, options)) return LaunchResult.Success()
+
+        // Same activity, wherever the system will have it.
+        if (options != null && attempt(stored, null)) {
+            ThorLog.i("Launcher", "${app.packageName} refused the target panel")
+            return LaunchResult.Success(onRequestedTarget = false)
+        }
+
+        // Whatever the package launches now, in case the stored one is stale.
+        val current = currentMainActivity(app.packageName, user)
+        if (current != null && current != stored) {
+            ThorLog.i("Launcher", "Retrying ${app.packageName} as $current")
+            if (attempt(current, options)) return LaunchResult.Success()
+            if (options != null && attempt(current, null)) {
+                return LaunchResult.Success(onRequestedTarget = false)
+            }
+        }
+
+        return LaunchResult.Failed(failure ?: LaunchFailure.NoHandler(app.packageName))
     }
+
+    /**
+     * The activity a package launches with today.
+     *
+     * Read from [LauncherApps] rather than the library, which is only as current
+     * as the last scan.
+     */
+    private fun currentMainActivity(packageName: String, user: UserHandle): ComponentName? =
+        runCatching {
+            launcherApps.getActivityList(packageName, user).firstOrNull()?.componentName
+        }.getOrNull()
 
     /**
      * Launches a game.
@@ -168,7 +237,7 @@ class EntryLauncher @Inject constructor(
 
         return try {
             context.startActivity(intent, optionsFor(target))
-            LaunchResult.Success
+            LaunchResult.Success()
         } catch (e: ActivityNotFoundException) {
             // An explicit component can be wrong if the emulator was updated and
             // renamed its activity; retry letting the system resolve it.
@@ -192,7 +261,7 @@ class EntryLauncher @Inject constructor(
             )
         }
         context.startActivity(fallback, optionsFor(target))
-        LaunchResult.Success
+        LaunchResult.Success()
     } catch (e: ActivityNotFoundException) {
         LaunchResult.Failed(LaunchFailure.NoHandler(emulatorPackage))
     }
@@ -258,7 +327,7 @@ class EntryLauncher @Inject constructor(
             null,
             null,
         )
-        LaunchResult.Success
+        LaunchResult.Success()
     } catch (e: ActivityNotFoundException) {
         LaunchResult.Failed(LaunchFailure.NoHandler(app.packageName))
     } catch (e: SecurityException) {
@@ -279,7 +348,7 @@ class EntryLauncher @Inject constructor(
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             optionsFor(target),
         )
-        LaunchResult.Success
+        LaunchResult.Success()
     } catch (e: ActivityNotFoundException) {
         LaunchResult.Failed(LaunchFailure.NoHandler(intent.action ?: "unknown"))
     } catch (e: SecurityException) {

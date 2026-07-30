@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thor.core.common.coroutines.launchSafely
 import com.thor.core.datastore.SettingsRepository
+import com.thor.core.input.MouseController
 import com.thor.core.input.RawKeyPress
 import com.thor.core.model.AccessibilitySettings
 import com.thor.core.model.ControllerCommand
@@ -22,7 +23,13 @@ import com.thor.core.model.RomDirectory
 import com.thor.core.model.ThemeId
 import com.thor.core.model.ThemeSpec
 import com.thor.core.model.ThorSettings
+import androidx.core.net.toUri
+import com.thor.core.model.IconPack
+import com.thor.data.iconpack.IconPackImport
+import com.thor.data.iconpack.IconPackRepository
+import com.thor.core.model.MouseSettings
 import com.thor.data.launcher.DefaultLauncherManager
+import com.thor.data.launcher.PointerServiceManager
 import com.thor.data.launcher.EntryLauncher
 import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.ProviderStatus
@@ -66,7 +73,102 @@ class SettingsViewModel @Inject constructor(
     private val entryLauncher: EntryLauncher,
     private val aggregator: MetadataAggregator,
     private val defaultLauncherManager: DefaultLauncherManager,
+    private val iconPackRepository: IconPackRepository,
+    private val pointerService: PointerServiceManager,
+    mouse: MouseController,
 ) : ViewModel() {
+
+    // ---- Icon packs --------------------------------------------------------
+
+    val iconPacks: StateFlow<List<IconPack>> = iconPackRepository.installed.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    /**
+     * What the last import did, shown until the next one starts.
+     *
+     * An import copies tens of megabytes and can take a few seconds, so it needs
+     * a running state — and it can partly succeed, covering most platforms while
+     * holding artwork for ones THOR does not model. "Done" is not enough to say.
+     */
+    private val _iconPackStatus = MutableStateFlow<IconPackStatus>(IconPackStatus.Idle)
+    val iconPackStatus: StateFlow<IconPackStatus> = _iconPackStatus.asStateFlow()
+
+    fun installIconPackFromFolder(uri: String) = installIconPack {
+        iconPackRepository.installFromFolder(uri.toUri())
+    }
+
+    fun installIconPackFromZip(uri: String) = installIconPack {
+        iconPackRepository.installFromZip(uri.toUri())
+    }
+
+    private fun installIconPack(block: suspend () -> IconPackImport) {
+        if (_iconPackStatus.value is IconPackStatus.Working) return
+        _iconPackStatus.value = IconPackStatus.Working
+        viewModelScope.launchSafely(
+            tag = TAG,
+            onError = { error ->
+                _iconPackStatus.value = IconPackStatus.Failed(
+                    error.message ?: "The pack could not be imported",
+                )
+            },
+        ) {
+            _iconPackStatus.value = when (val result = block()) {
+                is IconPackImport.Success -> IconPackStatus.Installed(
+                    name = result.pack.name,
+                    applied = result.applied.size,
+                    held = result.held.size,
+                )
+
+                is IconPackImport.Failed -> IconPackStatus.Failed(result.reason)
+            }
+        }
+    }
+
+    // ---- Pointer -----------------------------------------------------------
+
+    private val _pointerServiceEnabled = MutableStateFlow(pointerService.isEnabled())
+    val pointerServiceEnabled: StateFlow<Boolean> = _pointerServiceEnabled.asStateFlow()
+
+    /**
+     * Whether the service is actually running, as opposed to merely permitted.
+     *
+     * These are two different things and the difference is invisible from the
+     * settings screen otherwise: the accessibility toggle can read as on while
+     * the service is not bound — after an update, a force stop, or a ROM that
+     * drops it on reboot. The switch reports the grant; this reports the service
+     * reporting itself alive, which is the one that predicts whether the pointer
+     * will work outside THOR.
+     */
+    val pointerRunning: StateFlow<Boolean> = mouse.serviceConnected
+
+    /**
+     * Re-reads whether the service is on.
+     *
+     * Called when the page is opened, because the only way it changes is the user
+     * leaving for system settings and coming back — there is nothing to observe
+     * while THOR is in front.
+     */
+    fun refreshPointerService() {
+        _pointerServiceEnabled.value = pointerService.isEnabled()
+    }
+
+    fun openPointerServiceSettings() {
+        pointerService.openSettings()
+    }
+
+    fun updateMouse(transform: (MouseSettings) -> MouseSettings) {
+        viewModelScope.launchSafely(TAG) { settingsRepository.updateMouse(transform) }
+    }
+
+    fun removeIconPack(packId: String) {
+        viewModelScope.launchSafely(TAG) {
+            iconPackRepository.remove(packId)
+            _iconPackStatus.value = IconPackStatus.Idle
+        }
+    }
 
     val settings: StateFlow<ThorSettings> = settingsRepository.settings.stateIn(
         scope = viewModelScope,
@@ -185,6 +287,9 @@ class SettingsViewModel @Inject constructor(
             }
 
             _pendingPlatform.value = null
+            // Same as [addPlatform]: a pack may have been holding this system's
+            // artwork since before THOR modelled it.
+            iconPackRepository.applyToNewPlatforms()
             if (romDirectoryUri != null) syncManager.requestFullScan()
         }
     }
@@ -462,7 +567,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun addPlatform(platformId: String) {
-        viewModelScope.launchSafely(TAG) { libraryRepository.addPlatform(platformId) }
+        viewModelScope.launchSafely(TAG) {
+            libraryRepository.addPlatform(platformId)
+            // An installed pack may already hold artwork for this system, imported
+            // when THOR had no platform to put it on. This is the moment it does.
+            iconPackRepository.applyToNewPlatforms()
+        }
     }
 
     fun removePlatform(platformId: String) {
@@ -495,6 +605,11 @@ class SettingsViewModel @Inject constructor(
 
     fun scrapeMetadata(onlyMissing: Boolean) {
         metadataSyncManager.requestScrape(onlyMissing)
+    }
+
+    /** Fetches trailers for games that have none, without re-scraping the rest. */
+    fun refreshTrailers() {
+        metadataSyncManager.requestTrailerRefresh()
     }
 
     fun cancelScrape() {

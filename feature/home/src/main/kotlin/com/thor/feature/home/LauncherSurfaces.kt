@@ -74,6 +74,17 @@ data class KeyboardState(
     val shifted: Boolean = false,
     val cursorRow: Int = 1,
     val cursorColumn: Int = 0,
+    /**
+     * The clipboard sheet, raised over the keys by the clipboard key.
+     *
+     * Part of the keyboard's own state rather than a surface of its own: it is
+     * drawn inside the keyboard, dismissed with the same Back, and while it is up
+     * the keys must not also be typing.
+     */
+    val clipboardOpen: Boolean = false,
+    /** Clips offered by the sheet, most recent first. */
+    val clips: List<String> = emptyList(),
+    val clipIndex: Int = 0,
 )
 
 /**

@@ -1,10 +1,13 @@
 package com.thor.core.input
 
+import android.os.SystemClock
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import com.thor.core.model.ControllerCommand
 import com.thor.core.model.ControllerProfile
+import com.thor.core.model.MouseAction
+import com.thor.core.model.MouseButton
 import com.thor.core.model.NavDirection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -62,6 +65,20 @@ data class ControllerEvent(
  */
 class ControllerInputRouter(
     private val scope: CoroutineScope,
+    /**
+     * The pointer, when one is available.
+     *
+     * The router's only job here is the analogue stick. Everything else the
+     * pointer does — the chord that raises it, the buttons that click — is handled
+     * by the accessibility service, whose `onKeyEvent` fires for THOR exactly as
+     * it does for any other app, and *before* the app sees it. Duplicating that
+     * here would mean two things racing to interpret the same press.
+     *
+     * The stick is the exception, and the reason this hook exists: accessibility
+     * services are never delivered motion events, so while THOR has focus it is
+     * the only component that can see the stick at all.
+     */
+    private val mouse: MouseController? = null,
 ) {
 
     private val _events = MutableSharedFlow<ControllerEvent>(
@@ -86,6 +103,23 @@ class ControllerInputRouter(
 
     /** True while either trigger is past its threshold. */
     private var triggersHeld = false
+
+    /**
+     * The stick's latest deflection, sampled by the pointer's own frame loop.
+     *
+     * Held rather than acted on, because Android only delivers a motion event when
+     * an axis *changes*. Moving the cursor on arrival therefore moved it in bursts
+     * — fast while the stick was being pushed, then nothing at all while it was
+     * held steady, which is the stutter. See [startPointerLoop].
+     */
+    private var pointerStickX = 0f
+    private var pointerStickY = 0f
+    private var pointerLoop: Job? = null
+
+    /** Halves of the pointer chord currently held, and whether it has fired. */
+    private var pointerStartHeld = false
+    private var pointerSelectHeld = false
+    private var pointerChordFired = false
 
     /**
      * Suspends routing while the user is typing.
@@ -174,6 +208,32 @@ class ControllerInputRouter(
      * @return true when the event was consumed and must not propagate.
      */
     fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // The chord comes first and always, so the pointer can be raised and
+        // lowered from any state — including one where something has gone wrong.
+        if (handlePointerChord(keyCode, down = true)) return true
+
+        /*
+         * The pointer takes everything else while it is up.
+         *
+         * Its bound buttons become actions and the rest are swallowed, because a
+         * press that both clicked the cursor and moved the grid underneath it
+         * would do two things at once and look like it had done neither.
+         *
+         * Handled here rather than left to the accessibility service, and that is
+         * the important part: the service is not required for any of this. THOR
+         * sees its own input and owns both its windows, so inside the launcher the
+         * pointer needs no permission at all. The service exists only to carry the
+         * pointer *out* of the launcher.
+         */
+        val pointer = mouse
+        if (pointer != null && pointer.isActive) {
+            val button = pointerButtonFor(keyCode)
+            if (button != null && event.repeatCount == 0) {
+                performPointerAction(pointer, pointer.bindings.actionFor(button))
+            }
+            return true
+        }
+
         // Everything falls through to the focused field while typing, including
         // Back — which the text surface uses to dismiss itself.
         if (textInputActive) return false
@@ -225,6 +285,10 @@ class ControllerInputRouter(
     }
 
     fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (handlePointerChord(keyCode, down = false)) return true
+        // Matched to the press, or a release would still fire the command whose
+        // press the pointer swallowed.
+        if (mouse?.isActive == true) return true
         if (textInputActive) return false
         // Swallowed to match the press, or a release would still fire a command.
         if (captureMode && !isEscape(keyCode)) return true
@@ -276,6 +340,26 @@ class ControllerInputRouter(
         val stickX = event.getAxisValue(MotionEvent.AXIS_X)
         val stickY = event.getAxisValue(MotionEvent.AXIS_Y)
 
+        /*
+         * The pointer takes the stick whole while it is up.
+         *
+         * The event only records the deflection; the movement is done by a clock.
+         * Motion events arrive when an axis changes and not otherwise, so a stick
+         * pushed and then held produces a burst and then silence — a cursor moved
+         * on arrival lurches and stalls with it. Sampling a held value on a fixed
+         * frame gives the smooth travel, and makes speed a property of the setting
+         * rather than of the device's sample rate.
+         */
+        val pointer = mouse
+        if (pointer != null && pointer.isActive) {
+            val x = if (abs(hatX) > 0.5f) hatX else stickX
+            val y = if (abs(hatY) > 0.5f) hatY else stickY
+            pointerStickX = if (abs(x) < deadZone) 0f else x
+            pointerStickY = if (abs(y) < deadZone) 0f else y
+            startPointerLoop()
+            return true
+        }
+
         val x = if (abs(hatX) > 0.5f) hatX else stickX
         val y = if (abs(hatY) > 0.5f) hatY else stickY
 
@@ -299,6 +383,113 @@ class ControllerInputRouter(
         return true
     }
 
+    /**
+     * Drives the cursor from the held stick, on a fixed frame.
+     *
+     * Runs only while the pointer is up and the stick is off centre, and stops
+     * itself as soon as either stops being true — a stick returning to centre
+     * always produces the motion event that reports it, so nothing has to poll for
+     * the end. Elapsed time is measured rather than assumed so a frame the system
+     * delays does not lose the distance it was owed, and capped so one long stall
+     * cannot fling the cursor across the panel.
+     */
+    private fun startPointerLoop() {
+        val pointer = mouse ?: return
+        if (pointerLoop?.isActive == true) return
+
+        pointerLoop = scope.launch {
+            var last = SystemClock.uptimeMillis()
+            while (isActive) {
+                delay(FRAME_MS)
+
+                val x = pointerStickX
+                val y = pointerStickY
+                if (!pointer.isActive || (x == 0f && y == 0f)) return@launch
+
+                val now = SystemClock.uptimeMillis()
+                val elapsed = ((now - last).coerceIn(1L, MAX_FRAME_MS)) / 1000f
+                last = now
+                pointer.moveByStick(x, y, elapsed)
+            }
+        }
+    }
+
+    private fun stopPointerLoop() {
+        pointerLoop?.cancel()
+        pointerLoop = null
+        pointerStickX = 0f
+        pointerStickY = 0f
+    }
+
+    /**
+     * Start + Select, held together, raises and lowers the pointer.
+     *
+     * Fires once per press of the pair rather than repeatedly while both are
+     * down, which would toggle several times a second. Returns true for either
+     * half while the pointer is up, so the launcher does not also open the Start
+     * panel on the way out.
+     */
+    private fun handlePointerChord(keyCode: Int, down: Boolean): Boolean {
+        val pointer = mouse ?: return false
+
+        val isStart = keyCode == KeyEvent.KEYCODE_BUTTON_START || keyCode == KeyEvent.KEYCODE_MENU
+        val isSelect = keyCode == KeyEvent.KEYCODE_BUTTON_SELECT ||
+            keyCode == KeyEvent.KEYCODE_BUTTON_MODE
+        if (!isStart && !isSelect) return false
+
+        if (isStart) pointerStartHeld = down
+        if (isSelect) pointerSelectHeld = down
+
+        if (pointerStartHeld && pointerSelectHeld && !pointerChordFired) {
+            pointerChordFired = true
+            pointer.toggle()
+            return true
+        }
+        if (!pointerStartHeld && !pointerSelectHeld) pointerChordFired = false
+
+        return pointer.isActive
+    }
+
+    /**
+     * Carries out a pointer action inside the launcher.
+     *
+     * Three of them are not about the place the cursor is sitting, and sending
+     * them out on a flow that carries a position was the reason they did nothing:
+     * the only consumer of that flow is the layer drawing the cursor, which can
+     * dispatch a touch and not much else — so a request for the keyboard arrived
+     * somewhere with no keyboard to open and was quietly dropped. They are done
+     * here instead, where the launcher's own machinery is already to hand.
+     *
+     * The rest do depend on where the cursor is, and still go out to the window
+     * that can reach whatever is under it.
+     */
+    private fun performPointerAction(pointer: MouseController, action: MouseAction) {
+        when (action) {
+            MouseAction.NONE -> Unit
+            MouseAction.OPEN_KEYBOARD -> pointer.requestKeyboard()
+            MouseAction.TOGGLE_OFF -> pointer.setActive(false)
+            // The launcher's own Back, not the system's: inside THOR this should
+            // close the open panel, which is what every other Back press does.
+            MouseAction.BACK -> emit(ControllerEvent(ControllerCommand.BACK))
+            else -> pointer.requestAction(action)
+        }
+    }
+
+    /** The controller button a keycode is, for the pointer's bindings. */
+    private fun pointerButtonFor(keyCode: Int): MouseButton? = when (keyCode) {
+        KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> MouseButton.A
+        KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> MouseButton.B
+        KeyEvent.KEYCODE_BUTTON_X -> MouseButton.X
+        KeyEvent.KEYCODE_BUTTON_Y -> MouseButton.Y
+        KeyEvent.KEYCODE_BUTTON_L1 -> MouseButton.L1
+        KeyEvent.KEYCODE_BUTTON_R1 -> MouseButton.R1
+        KeyEvent.KEYCODE_BUTTON_L2 -> MouseButton.L2
+        KeyEvent.KEYCODE_BUTTON_R2 -> MouseButton.R2
+        KeyEvent.KEYCODE_BUTTON_THUMBL -> MouseButton.L3
+        KeyEvent.KEYCODE_BUTTON_THUMBR -> MouseButton.R3
+        else -> null
+    }
+
     /** Releases every held key. Call when the launcher loses window focus. */
     fun releaseAll() {
         heldDirections.values.forEach(Job::cancel)
@@ -307,6 +498,10 @@ class ControllerInputRouter(
         longPressFired = false
         stickDirection = null
         triggersHeld = false
+        // A stick held at the moment focus moved away is never seen to return to
+        // centre, so the cursor would keep travelling against a window that can no
+        // longer see the stick at all.
+        stopPointerLoop()
     }
 
     private fun startAutoRepeat(command: ControllerCommand, profile: ControllerProfile) {
@@ -354,5 +549,23 @@ class ControllerInputRouter(
 
     private companion object {
         const val TRIGGER_THRESHOLD = 0.6f
+
+        /**
+         * Ceiling on one pointer frame.
+         *
+         * The first motion event after the pointer is raised is measured against a
+         * stale timestamp, which without a cap would move the cursor the width of
+         * the panel in a single step.
+         */
+        const val MAX_FRAME_MS = 64L
+
+        /**
+         * The pointer's frame interval.
+         *
+         * Faster than the display refreshes on purpose: the cursor's position is
+         * then always at most one of these stale when a frame is drawn, rather
+         * than beating against the refresh and losing one move in every few.
+         */
+        const val FRAME_MS = 8L
     }
 }

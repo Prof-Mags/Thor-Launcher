@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  THOR's pointer service.
+
+  It observes nothing. `accessibilityEventTypes` is empty and the feedback type is
+  generic because this service is not reading the screen — it exists solely to
+  receive controller buttons while another app has focus, draw a cursor over that
+  app, and dispatch the taps the cursor makes. Requesting event types it does not
+  use would mean being woken for every window change on the device.
+
+  `canRequestFilterKeyEvents` plus `flagRequestFilterKeyEvents` is what allows
+  `onKeyEvent` to see buttons at all, and to consume them so a click does not also
+  reach the game underneath.
+
+  `canPerformGestures` is what allows `dispatchGesture`, which is the only way an
+  unprivileged app can click inside another one.
+-->
+<accessibility-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
+    android:canPerformGestures="true"
+    android:canRequestFilterKeyEvents="true"
+    android:description="@string/mouse_service_description"
+    android:notificationTimeout="0"
+    android:summary="@string/mouse_service_summary" />

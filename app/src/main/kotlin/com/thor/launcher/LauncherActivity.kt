@@ -15,6 +15,7 @@ import com.thor.core.display.ThorDisplayMonitor
 import com.thor.core.display.hideSystemBars
 import com.thor.core.input.ControllerInputRouter
 import com.thor.core.input.ControllerProfiles
+import com.thor.core.input.MouseController
 import com.thor.data.launcher.HomeRequests
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
@@ -43,8 +44,18 @@ class LauncherActivity : ComponentActivity() {
      * outliving it.
      */
     private val inputRouter: ControllerInputRouter by lazy {
-        ControllerInputRouter(lifecycleScope)
+        ControllerInputRouter(lifecycleScope, mouse)
     }
+
+    /**
+     * The controller pointer.
+     *
+     * Injected here rather than reached through the view model because the router
+     * is built from the activity and needs it before any composition exists — and
+     * because the same instance is held by the accessibility service, which is how
+     * the pointer stays in one place as focus moves between them.
+     */
+    @Inject lateinit var mouse: MouseController
 
     /**
      * Home presses, from either display.
@@ -121,6 +132,7 @@ class LauncherActivity : ComponentActivity() {
             ThorApp(
                 inputRouter = inputRouter,
                 displayMonitor = displayMonitor,
+                mouse = mouse,
                 homeRequests = homeRequests.requests,
             )
         }
@@ -162,6 +174,10 @@ class LauncherActivity : ComponentActivity() {
         // Losing focus while a direction is held would otherwise leave the
         // auto-repeat timer running against a window that can no longer see the
         // key-up event.
+        // Which half of the pointer drives it. The presentation reports its own
+        // focus separately; either window counts as the launcher being in front.
+        mouse.setActivityFocused(hasFocus)
+
         if (!hasFocus) {
             inputRouter.releaseAll()
         } else {

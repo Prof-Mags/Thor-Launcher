@@ -66,23 +66,43 @@ class LibraryRepository @Inject constructor(
      * deliberately added from the drawer would vanish whenever the
      * "add all apps" preference was off, while still occupying its cell.
      */
+    /**
+     * Whether entries the user hid are shown anyway.
+     *
+     * Filtered here in memory rather than by swapping between the DAO's visible
+     * and unfiltered queries: switching query would tear down and re-establish a
+     * table observer every time the setting changed, and the hidden set is a
+     * predicate over a list already in hand.
+     */
+    private val showHidden: Flow<Boolean> =
+        settings.library.map { it.showHiddenEntries }.distinctUntilChanged()
+
     val entriesById: Flow<Map<String, GridEntry>> = combine(
-        appDao.observeVisible(),
-        gameDao.observeVisible(),
+        appDao.observeAll(),
+        gameDao.observeAll(),
         folderDao.observeAll(),
-    ) { apps, games, folders ->
+        showHidden,
+    ) { apps, games, folders, revealHidden ->
         buildMap<String, GridEntry> {
-            apps.forEach { put(it.id, it.toDomain()) }
-            games.forEach { put(it.id, it.toDomain()) }
-            folders.forEach { put(it.id, it.toDomain()) }
+            apps.filter { revealHidden || !it.isHidden }.forEach { put(it.id, it.toDomain()) }
+            games.filter { revealHidden || !it.isHidden }.forEach { put(it.id, it.toDomain()) }
+            folders.filter { revealHidden || !it.isHidden }.forEach { put(it.id, it.toDomain()) }
         }
     }.flowOn(defaultDispatcher).distinctUntilChanged()
 
-    val games: Flow<List<GameEntry>> =
-        gameDao.observeVisible().map { list -> list.map(GameEntity::toDomain) }
+    val games: Flow<List<GameEntry>> = combine(
+        gameDao.observeAll(),
+        showHidden,
+    ) { list, revealHidden ->
+        list.filter { revealHidden || !it.isHidden }.map(GameEntity::toDomain)
+    }.flowOn(defaultDispatcher).distinctUntilChanged()
 
-    val apps: Flow<List<AppEntry>> =
-        appDao.observeVisible().map { list -> list.map(AppEntity::toDomain) }
+    val apps: Flow<List<AppEntry>> = combine(
+        appDao.observeAll(),
+        showHidden,
+    ) { list, revealHidden ->
+        list.filter { revealHidden || !it.isHidden }.map(AppEntity::toDomain)
+    }.flowOn(defaultDispatcher).distinctUntilChanged()
 
     val folders: Flow<List<FolderEntry>> =
         folderDao.observeAll().map { list -> list.map(FolderEntity::toDomain) }
@@ -315,6 +335,33 @@ class LibraryRepository @Inject constructor(
         when {
             entryId.startsWith("app:") -> appDao.setHidden(entryId, hidden)
             entryId.startsWith("game:") -> gameDao.setHidden(entryId, hidden)
+        }
+    }
+
+    /**
+     * Removes an entry from the library outright.
+     *
+     * Distinct from hiding, and the difference is worth stating because the two
+     * read alike from the grid. Hiding is a durable *decision about* an entry: the
+     * row stays, the flag survives rescans, and the entry never comes back on its
+     * own. Deleting removes the row, so a rescan that still finds the underlying
+     * ROM re-adds it — freshly, and not hidden.
+     *
+     * That is what makes this the way out of a library the user has tangled: a
+     * hidden entry whose hidden-ness has outlived its reason can be deleted and
+     * re-found in its default state, rather than staying invisible forever because
+     * the flag is stickier than the thing that set it.
+     *
+     * Versions and play history go with a game; both are keyed to the id and would
+     * otherwise be orphaned rows referencing an entry that no longer exists.
+     */
+    suspend fun deleteEntry(entryId: String) = withContext(defaultDispatcher) {
+        when {
+            entryId.startsWith("app:") -> appDao.deleteByIds(listOf(entryId))
+            entryId.startsWith("game:") -> {
+                gameDao.deleteVersionsFor(entryId)
+                gameDao.deleteByIds(listOf(entryId))
+            }
         }
     }
 

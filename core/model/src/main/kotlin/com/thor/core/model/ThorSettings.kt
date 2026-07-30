@@ -24,6 +24,16 @@ data class ThorSettings(
     val accessibility: AccessibilitySettings = AccessibilitySettings(),
     val cloud: CloudSettings = CloudSettings(),
     val developer: DeveloperSettings = DeveloperSettings(),
+    val mouse: MouseSettings = MouseSettings(),
+    /**
+     * Installed platform icon packs, newest last.
+     *
+     * Top level rather than inside one of the settings groups because it is not a
+     * preference: it is a record of content the user installed, including the
+     * artwork held for platforms THOR does not model yet. Losing it would orphan
+     * every copied file on disk with no way to know what they belonged to.
+     */
+    val iconPacks: List<IconPack> = emptyList(),
     /** Bumped by migrations in `SettingsSerializer`. */
     val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
 ) {
@@ -56,6 +66,15 @@ data class PersonalizationSettings(
      * its hard-edged panels. This is one answer for the whole interface.
      */
     val cornerStyle: CornerStyle = CornerStyle.THEME,
+    /**
+     * Plays a game's trailer on the information panel while it is highlighted.
+     *
+     * On by default: a shelf of games that move is most of what makes a library
+     * feel browsable rather than filed. The bumpers put the stills up instead for
+     * whichever game is highlighted, and performance mode turns it off entirely —
+     * a decoder per dwell is exactly the sort of cost that switch exists to avoid.
+     */
+    val autoplayTrailers: Boolean = true,
     val fontScale: Float = 1.0f,
     val transitionSpeed: Float = 1.0f,
     val clockStyle: ClockStyle = ClockStyle.DIGITAL_24,
@@ -214,6 +233,19 @@ data class LibrarySettings(
      * Apps added by hand from the drawer are unaffected by this.
      */
     val showAppsOnGrid: Boolean = false,
+    /**
+     * Reveals entries hidden from the grid, dimmed, so they can be got back.
+     *
+     * Hiding is durable by design — it survives rescans, because an entry the
+     * user hid should not reappear every time the library is refreshed. That is
+     * correct and also a trap: a hidden entry has no cell, so there is nothing to
+     * long-press, and nothing anywhere else that lists it. Hide a game and it is
+     * gone with no route back at all.
+     *
+     * This is that route. Off by default, because the hidden things are hidden on
+     * purpose; on, they return dimmed and can be unhidden or removed outright.
+     */
+    val showHiddenEntries: Boolean = false,
     val defaultSort: SortOrder = SortOrder.MANUAL,
     val sortDescending: Boolean = false,
 )

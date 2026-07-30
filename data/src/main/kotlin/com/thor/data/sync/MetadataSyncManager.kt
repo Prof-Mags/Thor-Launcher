@@ -70,7 +70,16 @@ class MetadataSyncManager @Inject constructor(
      *   is the normal case; a full re-scrape is only useful after changing
      *   provider priority or credentials.
      */
-    fun requestScrape(onlyMissing: Boolean = true) {
+    /**
+     * Fetches trailers for games that have none.
+     *
+     * A separate entry point rather than a flag on the scrape button, because it
+     * answers a different question: not "fill in what is missing" but "go and get
+     * this one field for everything that could have it".
+     */
+    fun requestTrailerRefresh() = requestScrape(onlyMissing = false, trailersOnly = true)
+
+    fun requestScrape(onlyMissing: Boolean = true, trailersOnly: Boolean = false) {
         if (isRunning) return
         /*
          * [launchSafely] rather than `runCatching`, and the difference is visible to
@@ -89,7 +98,7 @@ class MetadataSyncManager @Inject constructor(
                 _state.value = ScrapeState.Failed(error.message ?: "Scrape failed")
             },
         ) {
-            scrape(onlyMissing)
+            scrape(onlyMissing = onlyMissing, trailersOnly = trailersOnly)
         }
     }
 
@@ -99,7 +108,10 @@ class MetadataSyncManager @Inject constructor(
         _state.value = ScrapeState.Idle
     }
 
-    private suspend fun scrape(onlyMissing: Boolean) = withContext(ioDispatcher) {
+    private suspend fun scrape(
+        onlyMissing: Boolean,
+        trailersOnly: Boolean = false,
+    ) = withContext(ioDispatcher) {
         // A provider that is enabled but unconfigured contributes nothing, so a
         // scrape with none usable would churn through the whole library and
         // change not one row. Say so instead. The providers are asked directly
@@ -111,10 +123,20 @@ class MetadataSyncManager @Inject constructor(
 
         val platforms = platformDao.getAll().associateBy { it.id }
         val all = gameDao.getVisible()
-        val targets = if (onlyMissing) {
-            all.filter { it.metadata.lastScrapedEpochMs == null }
-        } else {
-            all
+        val targets = when {
+            /*
+             * Games with no trailer, whether or not they have been scraped.
+             *
+             * Trailers arrived after most libraries were already scraped, and
+             * "only missing" means *never scraped* — so every existing game was
+             * skipped and no trailer ever appeared. Re-scraping the whole library
+             * to fetch them is hundreds of rate-limited calls for a field most of
+             * them will not have; this asks only about the ones that could gain
+             * one.
+             */
+            trailersOnly -> all.filter { it.metadata.artwork.videoUri.isNullOrBlank() }
+            onlyMissing -> all.filter { it.metadata.lastScrapedEpochMs == null }
+            else -> all
         }
 
         if (targets.isEmpty()) {

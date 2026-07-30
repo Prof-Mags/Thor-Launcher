@@ -39,7 +39,14 @@ import com.thor.feature.settings.component.SliderRow
 import com.thor.feature.settings.component.SwitchRow
 import com.thor.feature.settings.component.SystemRow
 import com.thor.feature.settings.component.TextFieldRow
+import androidx.compose.runtime.LaunchedEffect
 import com.thor.core.model.CornerStyle
+import com.thor.core.model.IconPack
+import com.thor.core.model.MouseAction
+import com.thor.core.model.MouseButton
+import com.thor.feature.settings.IconPackStatus
+import com.thor.feature.settings.component.DirectoryPickerRow
+import com.thor.feature.settings.component.FilePickerRow
 import com.thor.feature.settings.component.ThemePreviewRow
 import com.thor.feature.settings.component.WallpaperPickerRow
 
@@ -71,6 +78,10 @@ fun SettingsPageContent(
     isDefaultLauncher: Boolean,
     keyCaptureEnabled: Boolean,
     capturedKeys: List<RawKeyPress>,
+    iconPacks: List<IconPack>,
+    iconPackStatus: IconPackStatus,
+    pointerServiceEnabled: Boolean,
+    pointerRunning: Boolean,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         when (page) {
@@ -86,6 +97,9 @@ fun SettingsPageContent(
             )
             SettingsPage.ROM_FOLDERS -> RomFoldersPage(settings, focusedRow, viewModel)
             SettingsPage.SCANNING -> ScanningPage(settings, focusedRow, viewModel)
+            SettingsPage.ICON_PACKS -> IconPacksPage(
+                focusedRow, viewModel, iconPacks, iconPackStatus,
+            )
             SettingsPage.METADATA -> MetadataPage(
                 settings, focusedRow, viewModel, scrapeState, providerStatus,
                 checkingProviders, artworkOnlyProviders,
@@ -93,6 +107,9 @@ fun SettingsPageContent(
             SettingsPage.SORTING -> SortingPage(settings, focusedRow, viewModel)
 
             SettingsPage.NAVIGATION -> NavigationPage(settings, focusedRow, viewModel)
+            SettingsPage.POINTER -> PointerPage(
+                settings, focusedRow, viewModel, pointerServiceEnabled, pointerRunning,
+            )
             SettingsPage.FEEDBACK -> FeedbackPage(settings, focusedRow, viewModel)
 
             SettingsPage.DUAL_SCREEN -> DualScreenPage(settings, focusedRow, viewModel)
@@ -113,8 +130,8 @@ fun SettingsPageContent(
  * Kept beside the pages themselves so the two are edited together; a count that
  * overshoots produces presses that appear to do nothing.
  */
-fun rowCountFor(page: SettingsPage, platformCount: Int): Int = when (page) {
-    SettingsPage.THEME -> 4
+fun rowCountFor(page: SettingsPage, platformCount: Int, iconPackCount: Int = 0): Int = when (page) {
+    SettingsPage.THEME -> 5
     SettingsPage.WALLPAPER -> 3
     SettingsPage.GRID -> 5
     SettingsPage.DOCK -> 6
@@ -123,10 +140,15 @@ fun rowCountFor(page: SettingsPage, platformCount: Int): Int = when (page) {
     // One row per platform plus the add button.
     SettingsPage.PLATFORMS -> platformCount + 1
     SettingsPage.ROM_FOLDERS -> 1
-    SettingsPage.SCANNING -> 6
-    SettingsPage.METADATA -> 11
+    SettingsPage.SCANNING -> 7
+    // Two import rows, then one row per installed pack.
+    SettingsPage.ICON_PACKS -> 2 + iconPackCount
+    // Scrape, only-missing, trailers, check, one per provider, then four credentials.
+    SettingsPage.METADATA -> PROVIDER_FIRST_ROW + PROVIDERS.size + 4
     SettingsPage.SORTING -> 2
     SettingsPage.NAVIGATION -> 4
+    // Enable, permission, speed, span, then one row per bindable button.
+    SettingsPage.POINTER -> 4 + MouseButton.entries.size
     SettingsPage.FEEDBACK -> 5
     SettingsPage.DUAL_SCREEN -> 4
     SettingsPage.PERFORMANCE -> 3
@@ -173,6 +195,17 @@ private fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
         },
     )
     RowDivider()
+    SwitchRow(
+        title = "Autoplay trailers",
+        subtitle = "Play a game's trailer on the info panel while it is highlighted; " +
+            "L1 or R1 shows screenshots instead",
+        checked = personalization.autoplayTrailers,
+        focused = focusedRow == 3,
+        onCheckedChange = { on ->
+            viewModel.updatePersonalization { it.copy(autoplayTrailers = on) }
+        },
+    )
+    RowDivider()
     // One answer for every corner in the launcher. On the Theme page rather than
     // Interface because it overrides something the theme itself declares, and the
     // two are only comprehensible next to each other.
@@ -182,12 +215,209 @@ private fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
         options = CornerStyle.entries,
         selected = personalization.cornerStyle,
         label = CornerStyle::label,
-        focused = focusedRow == 3,
+        focused = focusedRow == 4,
         onSelected = { style ->
             viewModel.updatePersonalization { it.copy(cornerStyle = style) }
         },
     )
 }
+
+/**
+ * Import, list and remove platform icon packs.
+ *
+ * Two ways in because packs arrive both ways: extracted into a folder, or still
+ * as the archive they were downloaded as. Neither is more correct than the other
+ * and guessing wrong means the user cannot find their pack in the picker.
+ */
+@Composable
+private fun IconPacksPage(
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+    packs: List<IconPack>,
+    status: IconPackStatus,
+) {
+    DirectoryPickerRow(
+        title = "Import from folder",
+        subtitle = "Pick an extracted pack folder",
+        focused = focusedRow == 0,
+        onPicked = { uri, _ -> viewModel.installIconPackFromFolder(uri) },
+    )
+    RowDivider()
+    FilePickerRow(
+        title = "Import from archive",
+        subtitle = "Pick a .zip pack",
+        mimeTypes = ZIP_MIME_TYPES,
+        focused = focusedRow == 1,
+        onPicked = { uri, _ -> viewModel.installIconPackFromZip(uri) },
+    )
+
+    // Said out loud rather than left to be inferred from the list: an import can
+    // succeed for most platforms and hold artwork for the rest, and a silent
+    // partial success reads as a broken pack.
+    status.message?.let { message ->
+        RowDivider()
+        InfoRow("Last import", message)
+    }
+
+    if (packs.isEmpty()) {
+        RowDivider()
+        InfoRow(
+            "Installed",
+            "None. THOR ships no packs — platform artwork comes from ones you import.",
+        )
+        return
+    }
+
+    packs.forEachIndexed { index, pack ->
+        RowDivider()
+        ActionRow(
+            title = pack.name,
+            subtitle = buildString {
+                append("${pack.author} · v${pack.version} · ")
+                append("${pack.appliedCount} platform")
+                if (pack.appliedCount != 1) append("s")
+                if (pack.heldCount > 0) append(", ${pack.heldCount} held")
+            },
+            focused = focusedRow == IMPORT_ROWS + index,
+            destructive = true,
+            trailingLabel = "Remove",
+            onClick = { viewModel.removeIconPack(pack.id) },
+        )
+    }
+}
+
+/**
+ * Zip, spelled several ways.
+ *
+ * Providers disagree on what a `.zip` is: the Downloads provider usually reports
+ * `application/zip`, some file managers report `application/x-zip-compressed`, and
+ * anything that has lost the association reports `application/octet-stream`.
+ * Filtering on the first alone hides the file the user came to pick.
+ */
+private val ZIP_MIME_TYPES = arrayOf(
+    "application/zip",
+    "application/x-zip-compressed",
+    "application/octet-stream",
+)
+
+/** Rows above the list of installed packs. */
+private const val IMPORT_ROWS = 2
+
+/**
+ * The controller pointer.
+ *
+ * The permission row comes second, right under the switch, because the feature
+ * does nothing without it and there is no dialog to ask — the user has to be told
+ * plainly and taken to the right screen.
+ */
+@Composable
+private fun PointerPage(
+    settings: ThorSettings,
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+    serviceEnabled: Boolean,
+    pointerRunning: Boolean,
+) {
+    val mouse = settings.mouse
+
+    // The one thing that can change while this page is open is the permission,
+    // and only by leaving for system settings and coming back.
+    LaunchedEffect(Unit) { viewModel.refreshPointerService() }
+
+    SwitchRow(
+        title = "Controller pointer",
+        subtitle = "Hold Start and Select to raise a cursor. Works inside THOR " +
+            "straight away; see below to use it in other apps.",
+        checked = mouse.enabled,
+        focused = focusedRow == 0,
+        onCheckedChange = { on -> viewModel.updateMouse { it.copy(enabled = on) } },
+    )
+    RowDivider()
+
+    /*
+     * The permission is for *other apps only*, and saying so matters.
+     *
+     * Inside THOR the pointer needs nothing: the launcher sees its own buttons and
+     * owns its own windows. Presenting accessibility access as "required" made the
+     * whole feature look broken until it was granted, when in fact the half most
+     * people want was already working.
+     */
+    /*
+     * Always an action, never just a status line.
+     *
+     * Accessibility access cannot be requested — Android shows no dialog for it,
+     * so nothing will ever prompt and the row has to be the way in. It stays
+     * pressable once granted too, because the other reason the pointer does
+     * nothing outside THOR is the service being switched off again, and the same
+     * screen is where that is fixed.
+     */
+    ActionRow(
+        title = "Use the pointer in other apps",
+        subtitle = when {
+            pointerRunning ->
+                "Working. The pointer can be used in games and apps."
+
+            serviceEnabled ->
+                "Granted, but the service is not running yet. Try switching it off " +
+                    "and on again in Accessibility."
+
+            else ->
+                "Not granted. Android shows no prompt for this — open Accessibility " +
+                    "and turn on “Controller pointer”. Until then the pointer works " +
+                    "inside THOR only."
+        },
+        focused = focusedRow == 1,
+        trailingLabel = if (pointerRunning) "Accessibility" else "Open",
+        onClick = viewModel::openPointerServiceSettings,
+    )
+    RowDivider()
+
+    IntSliderRow(
+        title = "Pointer speed",
+        subtitle = "Pixels per second at full stick",
+        value = mouse.speed.toInt(),
+        range = SPEED_RANGE,
+        focused = focusedRow == 2,
+        onValueChange = { value ->
+            viewModel.updateMouse { it.copy(speed = value.toFloat()) }
+        },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Cross between screens",
+        subtitle = "Moving off the bottom of one panel continues onto the other",
+        checked = mouse.spanDisplays,
+        focused = focusedRow == 3,
+        onCheckedChange = { on -> viewModel.updateMouse { it.copy(spanDisplays = on) } },
+    )
+
+    /*
+     * One row per button.
+     *
+     * Every button is listed, including the unbound ones, so the page is a map of
+     * the controller rather than a list of the choices already made — otherwise
+     * there is no way to discover that a button *could* be bound.
+     */
+    MouseButton.entries.forEachIndexed { index, button ->
+        RowDivider()
+        ChoiceRow(
+            title = button.label,
+            options = MouseAction.entries,
+            selected = mouse.actionFor(button),
+            label = MouseAction::label,
+            focused = focusedRow == POINTER_FIXED_ROWS + index,
+            onSelected = { action ->
+                viewModel.updateMouse { current ->
+                    current.copy(bindings = current.bindings + (button to action))
+                }
+            },
+        )
+    }
+}
+
+/** Enable, permission, speed and span, before the per-button rows. */
+private const val POINTER_FIXED_ROWS = 4
+private val SPEED_RANGE = 400..3_000
 
 @Composable
 private fun WallpaperPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
@@ -591,10 +821,22 @@ private fun ScanningPage(settings: ThorSettings, focusedRow: Int, viewModel: Set
         onCheckedChange = { on -> viewModel.updateLibrary { it.copy(hideSystemApps = on) } },
     )
     RowDivider()
+    // The way back. Hiding survives rescans, so without this an entry hidden by
+    // mistake has no cell to long-press and no list that mentions it.
+    SwitchRow(
+        title = "Show hidden entries",
+        subtitle = "Reveal hidden games and apps, dimmed, so they can be restored",
+        checked = library.showHiddenEntries,
+        focused = focusedRow == 5,
+        onCheckedChange = { on ->
+            viewModel.updateLibrary { it.copy(showHiddenEntries = on) }
+        },
+    )
+    RowDivider()
     ActionRow(
         title = "Scan library now",
         subtitle = "Apply these settings to the whole library",
-        focused = focusedRow == 5,
+        focused = focusedRow == 6,
         trailingLabel = "Scan",
         onClick = viewModel::scanLibrary,
     )
@@ -643,12 +885,29 @@ private fun MetadataPage(
         focused = focusedRow == 1,
         onCheckedChange = { on -> viewModel.updateMetadata { it.copy(scrapeOnlyMissing = on) } },
     )
+    RowDivider()
+    /*
+     * Trailers, for libraries scraped before THOR could fetch them.
+     *
+     * Its own action rather than a full re-scrape: "only missing" means *never
+     * scraped*, so every existing game is skipped and no trailer ever arrives —
+     * but re-scraping everything is hundreds of rate-limited calls to fill one
+     * field most of them will not have. This asks only about games without one.
+     */
+    ActionRow(
+        title = "Fetch missing trailers",
+        subtitle = "Look up trailers for games that have none, without re-scraping " +
+            "everything else",
+        focused = focusedRow == 2,
+        trailingLabel = "Fetch",
+        onClick = viewModel::refreshTrailers,
+    )
 
     RowDivider()
     ActionRow(
         title = "Check connections",
         subtitle = "Verify each provider's credentials actually work",
-        focused = focusedRow == 2,
+        focused = focusedRow == 3,
         trailingLabel = if (checking) "Checking…" else "Check",
         onClick = viewModel::checkProviderConnections,
     )
@@ -674,7 +933,7 @@ private fun MetadataPage(
                 else -> providerStatus[provider.first].describe()
             },
             checked = provider.first in metadata.enabledProviders,
-            focused = focusedRow == 3 + index,
+            focused = focusedRow == PROVIDER_FIRST_ROW + index,
             onCheckedChange = { on ->
                 viewModel.updateMetadata { current ->
                     current.copy(
@@ -696,7 +955,7 @@ private fun MetadataPage(
         value = metadata.apiKeys[PROVIDER_STEAMGRIDDB].orEmpty(),
         placeholder = "API key",
         isSecret = true,
-        focused = focusedRow == 7,
+        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size,
         onValueChange = { viewModel.setApiKey(PROVIDER_STEAMGRIDDB, it) },
     )
     RowDivider()
@@ -706,7 +965,7 @@ private fun MetadataPage(
         value = metadata.apiKeys[PROVIDER_RAWG].orEmpty(),
         placeholder = "API key",
         isSecret = true,
-        focused = focusedRow == 8,
+        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 1,
         onValueChange = { viewModel.setApiKey(PROVIDER_RAWG, it) },
     )
     RowDivider()
@@ -715,7 +974,7 @@ private fun MetadataPage(
         subtitle = "Optional — raises the daily quota and image quality",
         value = metadata.screenScraperUser,
         placeholder = "Username",
-        focused = focusedRow == 9,
+        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 2,
         onValueChange = viewModel::setScreenScraperUser,
     )
     RowDivider()
@@ -724,10 +983,20 @@ private fun MetadataPage(
         value = metadata.screenScraperPassword,
         placeholder = "Password",
         isSecret = true,
-        focused = focusedRow == 10,
+        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 3,
         onValueChange = viewModel::setScreenScraperPassword,
     )
 }
+
+/**
+ * Where the provider switches start on the Metadata page.
+ *
+ * Named, and the credential rows below are counted from it, because the fixed
+ * rows above have been renumbered by hand twice now — and every time, the rows
+ * after them silently stopped matching the cursor. An index expressed as
+ * arithmetic cannot drift from the list it is indexing.
+ */
+private const val PROVIDER_FIRST_ROW = 4
 
 @Composable
 private fun SortingPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {

@@ -24,6 +24,7 @@ import com.thor.core.model.LauncherTab
 import com.thor.core.model.SortOrder
 import com.thor.data.capture.RecordingState
 import com.thor.data.capture.ScreenRecorder
+import com.thor.data.clipboard.ThorClipboard
 import com.thor.data.launcher.EntryLauncher
 import com.thor.data.launcher.LaunchTarget
 import com.thor.data.launcher.SystemPanel
@@ -78,6 +79,7 @@ class LauncherViewModel @Inject constructor(
     private val syncManager: LibrarySyncManager,
     private val playtimeTracker: PlaytimeTracker,
     private val screenRecorder: ScreenRecorder,
+    private val clipboard: ThorClipboard,
 ) : ViewModel() {
 
     private val cursor = MutableStateFlow(CursorPosition(0, 0))
@@ -476,6 +478,8 @@ class LauncherViewModel @Inject constructor(
 
             KeyboardKey.Shift -> _keyboard.update { it.copy(shifted = !it.shifted) }
 
+            KeyboardKey.Clipboard -> toggleClipboardSheet()
+
             KeyboardKey.Layer -> _keyboard.update { state ->
                 val next = when (state.layer) {
                     KeyboardLayer.LETTERS -> KeyboardLayer.SYMBOLS
@@ -509,8 +513,85 @@ class LauncherViewModel @Inject constructor(
      * so the button never traps the user on a surface they cannot leave and never
      * throws away a query in one press.
      */
+    /**
+     * Opens or closes the clipboard sheet.
+     *
+     * The clip is read on the way in rather than watched. Android only lets the
+     * focused app read the clipboard, and THOR is focused exactly now — pressing
+     * the key is the moment it is both allowed and worth doing.
+     */
+    fun toggleClipboardSheet() {
+        val open = !_keyboard.value.clipboardOpen
+        if (open) clipboard.refresh()
+        _keyboard.update { state ->
+            state.copy(
+                clipboardOpen = open,
+                clips = if (open) clipboard.history.value else emptyList(),
+                clipIndex = 0,
+            )
+        }
+    }
+
+    /** Inserts a clip at the caret and closes the sheet. */
+    fun pasteClip(text: String) {
+        _keyboard.update { state ->
+            state.copy(
+                text = state.text + text,
+                clipboardOpen = false,
+                clips = emptyList(),
+            )
+        }
+    }
+
+    /** Copies what is in the field onto the system clipboard. */
+    fun copyFieldText() {
+        val text = _keyboard.value.text
+        if (text.isBlank()) return
+        clipboard.copy(text)
+        _keyboard.update { it.copy(clipboardOpen = false, clips = emptyList()) }
+        emit(LauncherEffect.ShowMessage("Copied"))
+    }
+
+    /**
+     * Controller input while the clipboard sheet is up.
+     *
+     * A list, so up and down move and Confirm pastes. Handled before the keys,
+     * because while the sheet is open the keyboard underneath must not also be
+     * typing what the user is scrolling past.
+     */
+    private fun onClipboardCommand(command: ControllerCommand) {
+        val state = _keyboard.value
+        // One past the clips is the "copy this field" row, which is why the sheet
+        // is navigable even with nothing on the clipboard.
+        val lastIndex = state.clips.size
+        when (command) {
+            ControllerCommand.NAVIGATE_UP -> _keyboard.update {
+                it.copy(clipIndex = (it.clipIndex - 1).coerceAtLeast(0))
+            }
+
+            ControllerCommand.NAVIGATE_DOWN -> _keyboard.update {
+                it.copy(clipIndex = (it.clipIndex + 1).coerceAtMost(lastIndex))
+            }
+
+            ControllerCommand.CONFIRM -> {
+                val clip = state.clips.getOrNull(state.clipIndex)
+                if (clip != null) pasteClip(clip) else copyFieldText()
+            }
+
+            ControllerCommand.BACK -> _keyboard.update {
+                it.copy(clipboardOpen = false, clips = emptyList())
+            }
+
+            else -> Unit
+        }
+    }
+
     private fun onKeyboardCommand(command: ControllerCommand) {
         val state = _keyboard.value
+        if (state.clipboardOpen) {
+            onClipboardCommand(command)
+            return
+        }
         when (command) {
             ControllerCommand.NAVIGATE_UP -> moveKeyboardCursor(NavDirection.UP)
             ControllerCommand.NAVIGATE_DOWN -> moveKeyboardCursor(NavDirection.DOWN)
@@ -794,9 +875,37 @@ class LauncherViewModel @Inject constructor(
         initialValue = 0,
     )
 
-    /** Steps the highlighted game's screenshot forward or back, wrapping around. */
+    /**
+     * The game whose trailer the user has dismissed with the bumpers.
+     *
+     * Keyed by entry rather than a bare flag, so moving to another game brings its
+     * trailer back — dismissing one is a decision about that game, not a mode.
+     * Cleared implicitly by the id no longer matching, which is the same trick
+     * [screenshotCursor] uses and for the same reason: no reset call to thread
+     * through cursor movement.
+     */
+    private val _trailerDismissedFor = MutableStateFlow<String?>(null)
+    val trailerDismissedFor: StateFlow<String?> = _trailerDismissedFor.asStateFlow()
+
+    /**
+     * Steps the highlighted game's screenshot forward or back, wrapping around.
+     *
+     * The first press while a trailer is playing puts the stills up instead of
+     * moving through them. That is what makes the bumpers a way *out* of the
+     * trailer rather than a control the trailer hides — pressing one and watching
+     * an invisible index advance behind a video would read as the button doing
+     * nothing.
+     */
     fun cycleScreenshot(delta: Int) {
         val game = uiState.value.selection as? GameEntry ?: return
+
+        if (_trailerDismissedFor.value != game.id &&
+            !game.metadata.artwork.videoUri.isNullOrBlank()
+        ) {
+            _trailerDismissedFor.value = game.id
+            return
+        }
+
         val count = game.metadata.artwork.cappedScreenshots.size
         if (count <= 1) return
         val current = screenshotIndex.value
@@ -1699,7 +1808,11 @@ class LauncherViewModel @Inject constructor(
                 }
             }
 
-            ContextAction.HIDE -> hideEntry(entry)
+            ContextAction.HIDE -> setEntryHidden(entry, hidden = true)
+
+            ContextAction.UNHIDE -> setEntryHidden(entry, hidden = false)
+
+            ContextAction.DELETE -> deleteEntry(entry)
 
             ContextAction.UNINSTALL -> uninstall(entry)
 
@@ -1777,17 +1890,26 @@ class LauncherViewModel @Inject constructor(
                 }
             }
 
-            // Nothing arrived, so the panel comes straight back rather than being
-            // left standing down for an app that never appeared.
-            if (result is LaunchResult.Failed && target == LaunchTarget.SECOND_SCREEN) {
+            /*
+             * The panel comes back unless something is actually on it.
+             *
+             * Two ways that happens, and both used to be one: a launch that failed
+             * outright, and a launch that succeeded somewhere else. The second is
+             * new — an app the system refuses to place on the second panel now
+             * opens on the default display rather than not opening at all, and if
+             * the launcher went on believing the panel was occupied it would sit
+             * blank, showing the secondary home behind a presentation that had
+             * stood down for an app that never came.
+             */
+            val arrivedOnSecondPanel = target == LaunchTarget.SECOND_SCREEN &&
+                (result as? LaunchResult.Success)?.onRequestedTarget == true
+            if (target == LaunchTarget.SECOND_SCREEN && !arrivedOnSecondPanel) {
                 _secondScreenOccupied.value = false
             }
             if (result is LaunchResult.Success) {
-                emit(
-                    LauncherEffect.Launched(
-                        onSecondaryPanel = target == LaunchTarget.SECOND_SCREEN,
-                    ),
-                )
+                // Reports where the app *landed*, not where it was aimed, so the
+                // shell yields focus for the panel actually being taken.
+                emit(LauncherEffect.Launched(onSecondaryPanel = arrivedOnSecondPanel))
             }
             handleResult(result, entry.id)
             closeContextMenu()
@@ -1808,10 +1930,27 @@ class LauncherViewModel @Inject constructor(
         closeContextMenu()
     }
 
-    fun hideEntry(entry: GridEntry) {
+    fun setEntryHidden(entry: GridEntry, hidden: Boolean) {
         viewModelScope.launchSafely(TAG) {
-            libraryRepository.setHidden(entry.id, true)
+            libraryRepository.setHidden(entry.id, hidden)
             closeContextMenu()
+        }
+    }
+
+    /**
+     * Removes an entry from the library.
+     *
+     * Its placement goes too. A placement carries no foreign key — that is what
+     * lets one point at an app, a game, a folder or a shortcut — so nothing would
+     * clean it up on its own, and the cell would stay occupied by an entry that no
+     * longer exists.
+     */
+    fun deleteEntry(entry: GridEntry) {
+        viewModelScope.launchSafely(TAG) {
+            closeContextMenu()
+            gridRepository.removePlacement(entry.id)
+            libraryRepository.deleteEntry(entry.id)
+            emit(LauncherEffect.ShowMessage("Removed ${entry.title} from the library"))
         }
     }
 

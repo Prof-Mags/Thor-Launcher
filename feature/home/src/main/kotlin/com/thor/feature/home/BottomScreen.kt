@@ -49,6 +49,9 @@ import com.thor.feature.home.component.NAV_BAR_HEIGHT
 import com.thor.feature.home.component.dockHeightFor
 import com.thor.core.model.LauncherFeatures.DOCK_ENABLED
 import com.thor.core.model.LauncherTab
+import com.thor.core.model.PlatformFolders
+import com.thor.core.ui.component.ArtworkImage
+import androidx.compose.ui.layout.ContentScale
 
 /**
  * The bottom display: wallpaper, grid, page indicators, dock and Start panel.
@@ -149,6 +152,12 @@ fun BottomScreen(
                         title = folder.title,
                         count = state.openFolderContents.size,
                         onClose = onFolderClosed,
+                        // A platform folder wears its system's wordmark when an
+                        // installed pack supplied one.
+                        logoUri = PlatformFolders.platformIdOf(folder.id)
+                            ?.let { state.platformsById[it] }
+                            ?.artwork
+                            ?.logoUri,
                         modifier = Modifier
                             .align(Alignment.CenterHorizontally)
                             .padding(top = dimens.spacingSmall, bottom = dimens.spacingTiny),
@@ -340,6 +349,12 @@ private fun OpenFolderBanner(
     title: String,
     count: Int,
     onClose: () -> Unit,
+    /**
+     * The platform's wordmark, when this folder is a platform's and a pack
+     * supplied one. Drawn instead of the title, not beside it — a logo *is* the
+     * name, and showing both reads as a rendering mistake.
+     */
+    logoUri: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -366,16 +381,29 @@ private fun OpenFolderBanner(
                 tint = colors.cursor,
                 modifier = Modifier.size(15.dp),
             )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                // Shrinks to fit rather than pushing the count and the close chip off
-                // the end of a capped row.
-                modifier = Modifier.weight(1f, fill = false),
-            )
+            if (logoUri != null) {
+                ArtworkImage(
+                    model = logoUri,
+                    // The title is still the accessible name; the logo is how it
+                    // is drawn.
+                    contentDescription = title,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .height(LOGO_HEIGHT.dp)
+                        .widthIn(max = LOGO_MAX_WIDTH.dp),
+                )
+            } else {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // Shrinks to fit rather than pushing the count and the close
+                    // chip off the end of a capped row.
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
             Text(
                 text = count.toString(),
                 style = MaterialTheme.typography.labelSmall,
@@ -413,3 +441,14 @@ private fun ScanBanner(label: String?, modifier: Modifier = Modifier) {
 
 /** Keeps a long folder name from stretching its banner across the panel. */
 private const val BANNER_MAX_WIDTH = 300
+
+/**
+ * The platform wordmark's box in the banner.
+ *
+ * Fitted rather than cropped, and capped in both directions: pack logos come at
+ * wildly different aspect ratios — a tall Nintendo seal next to a very wide
+ * PlayStation wordmark — and either would set the banner's height on its own
+ * without a ceiling.
+ */
+private const val LOGO_HEIGHT = 16
+private const val LOGO_MAX_WIDTH = 120

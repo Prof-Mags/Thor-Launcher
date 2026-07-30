@@ -128,6 +128,8 @@ fun TopScreen(
         ) { _ ->
             Backdrop(
                 selection = selection,
+                platform = platform,
+                folderChildren = folderChildren,
                 wallpaperUri = wallpaperUri,
                 screenshotIndex = selectedScreenshot,
             )
@@ -163,7 +165,17 @@ fun TopScreen(
                     onScreenshotSelected = onScreenshotSelected,
                 )
 
-                is FolderEntry -> FolderDetailPanel(folder = entry, children = folderChildren)
+                // A platform's folder is a system, not a folder, and gets a panel
+                // that says so — name, maker, year and a paragraph about it.
+                is FolderEntry -> if (platform != null) {
+                    PlatformDetailPanel(
+                        platform = platform,
+                        folderTitle = entry.title,
+                        children = folderChildren,
+                    )
+                } else {
+                    FolderDetailPanel(folder = entry, children = folderChildren)
+                }
                 is AppEntry -> AppDetailPanel(app = entry)
                 else -> IdleWallpaperPanel(wallpaper = wallpaper, wallpaperUri = wallpaperUri)
             }
@@ -253,17 +265,49 @@ private fun Hint(text: String) {
 @Composable
 private fun Backdrop(
     selection: GridEntry?,
+    platform: Platform?,
+    folderChildren: List<GridEntry>,
     wallpaperUri: String?,
     screenshotIndex: Int,
 ) {
+    /*
+     * Ordered by how specific it is to what is selected — with one exception.
+     *
+     * For a game, the platform's hero sits between the entry's own artwork and the
+     * wallpaper, and that position is the useful one: most of a fresh library has
+     * never been scraped, so an unscraped SNES game still looks like a SNES game,
+     * with no network and no scrape.
+     *
+     * For a **platform folder** the hero comes *first*, ahead of the folder's own
+     * artwork, and that is deliberate rather than an inconsistency. A platform
+     * folder's artwork is the pack's square icon — the same image the detail panel
+     * draws beside the title — so preferring it here filled the backdrop with a
+     * stretched copy of the icon already on screen. The hero is the wide image the
+     * pack ships *for* this job; the icon is not, and there is no sense in which a
+     * blown-up icon is a better backdrop than the artwork made to be one.
+     */
     val image = when (selection) {
         is GameEntry -> {
             val artwork = selection.metadata.artwork
-            artwork.cappedScreenshots.getOrNull(screenshotIndex) ?: artwork.backgroundImage
+            artwork.cappedScreenshots.getOrNull(screenshotIndex)
+                ?: artwork.backgroundImage
+                ?: platform?.artwork?.heroUri
         }
 
-        is FolderEntry -> selection.artworkUri
-        else -> null
+        /*
+         * A platform folder with no pack installed falls back to a game rather
+         * than to the wallpaper.
+         *
+         * That is the default state of a fresh install, and the same wallpaper
+         * behind every system says nothing about any of them. A screenshot from
+         * the most-played game on that platform does, costs no scrape and no
+         * network, and comes from artwork the library already has.
+         */
+        is FolderEntry -> platform?.artwork?.heroUri
+            ?: selection.artworkUri
+            ?: representativeImageFor(folderChildren)
+
+        else -> platform?.artwork?.heroUri
     } ?: wallpaperUri
 
     if (image != null) {

@@ -38,6 +38,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.rounded.ContentPaste
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
@@ -74,6 +78,12 @@ fun ThorKeyboard(
     cursorColumn: Int,
     onKey: (KeyboardKey) -> Unit,
     onDismiss: () -> Unit,
+    /** Clips on offer; the sheet is up when this is non-null. */
+    clips: List<String>? = null,
+    /** Which row the controller is on: a clip, or one past them to copy. */
+    clipIndex: Int = 0,
+    onPasteClip: (String) -> Unit = {},
+    onCopyText: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -113,19 +123,33 @@ fun ThorKeyboard(
 
                 TypedText(text = text)
 
-                Column(verticalArrangement = Arrangement.spacedBy(KEY_GAP.dp)) {
-                    rows.forEachIndexed { rowIndex, keys ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(KEY_GAP.dp)) {
-                            keys.forEachIndexed { columnIndex, key ->
-                                KeyCap(
-                                    key = key,
-                                    shifted = shifted,
-                                    focused = rowIndex == cursorRow && columnIndex == cursorColumn,
-                                    onClick = { onKey(key) },
-                                    // Wider keys earn their width from the same row
-                                    // budget, so every row still spans the card.
-                                    modifier = Modifier.weight(key.weight()),
-                                )
+                // The sheet replaces the keys rather than covering them. Two grids
+                // of things to point a cursor at, stacked, would be two places the
+                // cursor could appear to be.
+                if (clips != null) {
+                    ClipboardSheet(
+                        clips = clips,
+                        focusedIndex = clipIndex,
+                        canCopy = text.isNotBlank(),
+                        onPaste = onPasteClip,
+                        onCopy = onCopyText,
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(KEY_GAP.dp)) {
+                        rows.forEachIndexed { rowIndex, keys ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(KEY_GAP.dp)) {
+                                keys.forEachIndexed { columnIndex, key ->
+                                    KeyCap(
+                                        key = key,
+                                        shifted = shifted,
+                                        focused = rowIndex == cursorRow &&
+                                            columnIndex == cursorColumn,
+                                        onClick = { onKey(key) },
+                                        // Wider keys earn their width from the same
+                                        // row budget, so every row still spans the card.
+                                        modifier = Modifier.weight(key.weight()),
+                                    )
+                                }
                             }
                         }
                     }
@@ -134,7 +158,11 @@ fun ThorKeyboard(
                 // Named because a keyboard driven by a game pad is not something a
                 // user can be expected to guess.
                 Text(
-                    text = "A select · B delete · X space · Y shift · L2/R2 symbols · Start done",
+                    text = if (clips != null) {
+                        "A paste · B back"
+                    } else {
+                        "A select · B delete · X space · Y shift · L2/R2 symbols · Start done"
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.onSurfaceVariant,
                     maxLines = 1,
@@ -142,6 +170,95 @@ fun ThorKeyboard(
                 )
             }
         }
+    }
+}
+
+/**
+ * Recent clips, and a way to put this field's text back on the clipboard.
+ *
+ * This is the *system* clipboard, so anything copied elsewhere with the platform
+ * keyboard is here and anything copied here is available to it — there is one
+ * primary clip and every app shares it. What is not shared is another keyboard's
+ * *history*; Gboard keeps its list to itself with no API over it, so the entries
+ * below are the clips THOR has seen while it was in front.
+ *
+ * The copy row is always last and always present, so the sheet is worth opening
+ * even with an empty clipboard.
+ */
+@Composable
+private fun ClipboardSheet(
+    clips: List<String>,
+    focusedIndex: Int,
+    canCopy: Boolean,
+    onPaste: (String) -> Unit,
+    onCopy: () -> Unit,
+) {
+    val colors = ThorTheme.colors
+    val dimens = ThorTheme.dimens
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(KEY_GAP.dp),
+        // Capped and scrollable: the sheet stands in for the keys, and a long
+        // clipboard must not make the keyboard taller than the panel.
+        modifier = Modifier
+            .heightIn(max = SHEET_MAX_HEIGHT.dp)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        if (clips.isEmpty()) {
+            Text(
+                text = "Nothing has been copied yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = dimens.spacingSmall),
+            )
+        }
+
+        clips.forEachIndexed { index, clip ->
+            ClipRow(
+                text = clip,
+                focused = index == focusedIndex,
+                onClick = { onPaste(clip) },
+            )
+        }
+
+        ClipRow(
+            text = if (canCopy) "Copy what is typed" else "Nothing to copy",
+            focused = focusedIndex == clips.size,
+            emphasised = true,
+            onClick = { if (canCopy) onCopy() },
+        )
+    }
+}
+
+@Composable
+private fun ClipRow(
+    text: String,
+    focused: Boolean,
+    emphasised: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val colors = ThorTheme.colors
+    val dimens = ThorTheme.dimens
+    val shape = ThorTheme.shapes.small
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surfaceElevated, shape)
+            .thorCursor(focused = focused, shape = shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = dimens.spacing, vertical = dimens.spacingSmall),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (emphasised) colors.cursor else colors.onSurface,
+            // One line: a clipboard entry can be a whole article, and the sheet is
+            // for recognising which clip it is rather than reading it.
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -259,6 +376,7 @@ private fun KeyboardKey.icon(): ImageVector? = when (this) {
     KeyboardKey.Layer -> Icons.Rounded.Tune
     KeyboardKey.Enter -> Icons.AutoMirrored.Rounded.KeyboardReturn
     KeyboardKey.Cancel -> Icons.Rounded.Close
+    KeyboardKey.Clipboard -> Icons.Rounded.ContentPaste
 }
 
 private fun KeyboardKey.label(shifted: Boolean): String = when (this) {
@@ -275,6 +393,7 @@ private fun KeyboardKey.describe(): String = when (this) {
     KeyboardKey.Layer -> "Symbols"
     KeyboardKey.Enter -> "Done"
     KeyboardKey.Cancel -> "Cancel"
+    KeyboardKey.Clipboard -> "Clipboard"
 }
 
 /**
@@ -295,6 +414,14 @@ private fun KeyboardKey.weight(): Float = when (this) {
 
 private const val KEY_HEIGHT = 40
 private const val KEY_GAP = 5
+
+/**
+ * Ceiling on the clipboard sheet.
+ *
+ * About the height the key rows occupy, so opening the sheet does not make the
+ * keyboard card jump taller than the panel it is pinned to.
+ */
+private const val SHEET_MAX_HEIGHT = 220
 private const val KEY_ICON_SIZE = 18
 private const val CARET_WIDTH = 2
 private const val CARET_HEIGHT = 22

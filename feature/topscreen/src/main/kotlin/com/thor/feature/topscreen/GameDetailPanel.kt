@@ -315,7 +315,7 @@ private fun AchievementBlock(summary: AchievementSummary) {
                 modifier = Modifier.size(16.dp),
             )
             Text(
-                text = "${summary.earned} / ${summary.total} Â· " +
+                text = "${summary.earned} / ${summary.total} · " +
                     "${summary.earnedPoints} pts",
                 style = MaterialTheme.typography.labelMedium,
                 color = colors.onSurface,

@@ -71,6 +71,20 @@ data class PlatformEntity(
     /** True once the user adds this system to their setup. */
     @ColumnInfo(name = "is_added", defaultValue = "0") val isAdded: Boolean = false,
     @ColumnInfo(name = "sort_index") val sortIndex: Int = 0,
+    /*
+     * Artwork supplied by an installed icon pack.
+     *
+     * Columns on the platform rather than a table of their own: a platform wears
+     * at most one pack's artwork at a time, so this is a one-to-one relationship
+     * and a join table would be three extra queries to express "sometimes null".
+     * [artworkPackId] is what lets removing a pack put back exactly what it
+     * changed — without it, uninstalling would have to either strip every
+     * platform's artwork or leave orphans behind.
+     */
+    @ColumnInfo(name = "artwork_icon_uri") val artworkIconUri: String? = null,
+    @ColumnInfo(name = "artwork_hero_uri") val artworkHeroUri: String? = null,
+    @ColumnInfo(name = "artwork_logo_uri") val artworkLogoUri: String? = null,
+    @ColumnInfo(name = "artwork_pack_id") val artworkPackId: String? = null,
 )
 
 @Entity(

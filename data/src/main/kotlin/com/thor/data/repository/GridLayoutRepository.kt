@@ -12,6 +12,7 @@ import com.thor.core.datastore.SettingsRepository
 import com.thor.core.model.FolderIcons
 import com.thor.core.model.GridPage
 import com.thor.core.model.GridPlacement
+import com.thor.core.model.PlatformFolders
 import com.thor.core.model.GridSpec
 import com.thor.core.model.SmartQuery
 import kotlinx.coroutines.CoroutineDispatcher
@@ -318,6 +319,16 @@ class GridLayoutRepository @Inject constructor(
     suspend fun fileGamesIntoPlatformFolders(
         gamesByPlatform: Map<String, List<String>>,
         titleFor: (String) -> String,
+        /**
+         * The platform's icon-pack artwork, if any.
+         *
+         * Folders are born wearing it. Without this the ordering defeats the
+         * feature entirely: adding a platform applies the pack's artwork to the
+         * *platform*, but its folder does not exist yet — the scan creates it
+         * moments later, blank — so the cell the user actually looks at stayed
+         * undressed until the pack was removed and imported again.
+         */
+        artworkFor: (String) -> String? = { null },
     ) = withContext(defaultDispatcher) {
         if (gamesByPlatform.isEmpty()) return@withContext
 
@@ -334,14 +345,33 @@ class GridLayoutRepository @Inject constructor(
             // a different shape.
             if (fresh.isEmpty() && existing == null) continue
 
-            val folder = existing ?: run {
-                val title = titleFor(platformId)
-                FolderEntity(
-                    id = folderId,
-                    title = title,
-                    sortTitle = TitleNormalizer.sortKey(title),
-                    iconKey = FolderIcons.DEFAULT,
-                ).also { folderDao.upsert(it) }
+            val artwork = artworkFor(platformId)
+
+            val folder = when {
+                existing == null -> {
+                    val title = titleFor(platformId)
+                    FolderEntity(
+                        id = folderId,
+                        title = title,
+                        sortTitle = TitleNormalizer.sortKey(title),
+                        iconKey = FolderIcons.DEFAULT,
+                        artworkUri = artwork,
+                    ).also { folderDao.upsert(it) }
+                }
+
+                /*
+                 * An existing folder is filled in only when it has none.
+                 *
+                 * This covers the other ordering — folder first, pack installed
+                 * afterwards — without overwriting artwork on every scan, which
+                 * would silently undo a cover the user picked for that folder by
+                 * hand. Replacing artwork is what installing a pack does, and that
+                 * path is explicit.
+                 */
+                existing.artworkUri == null && artwork != null ->
+                    existing.copy(artworkUri = artwork).also { folderDao.upsert(it) }
+
+                else -> existing
             }
 
             folderIds += folderId
@@ -380,7 +410,8 @@ class GridLayoutRepository @Inject constructor(
      * Deterministic on purpose: the folder has to be found again on the next scan,
      * and searching by title would lose it the moment the user renamed it.
      */
-    private fun platformFolderId(platformId: String): String = "folder:platform:$platformId"
+    private fun platformFolderId(platformId: String): String =
+        PlatformFolders.idFor(platformId)
 
     /** Adds an entry to an existing folder. */
     suspend fun addToFolder(entryId: String, folderId: String) = withContext(defaultDispatcher) {

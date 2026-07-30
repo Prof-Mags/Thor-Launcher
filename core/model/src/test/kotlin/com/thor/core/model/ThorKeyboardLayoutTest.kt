@@ -9,12 +9,60 @@ import org.junit.Test
 /**
  * Cursor movement over the on-screen keyboard.
  *
- * The rows are ragged — ten across the top, nine in the home row, six along the
+ * The rows are ragged — ten across the top, nine in the home row, seven along the
  * bottom — so every vertical move has to re-clamp the column. Worth testing rather
  * than eyeballing: an off-by-one here types the wrong letter, which is the kind of
  * bug that is obvious to a user and invisible in a screenshot.
  */
 class ThorKeyboardLayoutTest {
+
+    /**
+     * The clipboard key is on both layers.
+     *
+     * It lives in the shared function row, so a regression that dropped it from
+     * one layer would leave paste available only while typing letters — which is
+     * exactly when a URL or a code is least likely to be what is being pasted.
+     */
+    @Test
+    fun `the clipboard key is on every layer`() {
+        KeyboardLayer.entries.forEach { layer ->
+            val keys = ThorKeyboardLayout.rows(layer).flatten()
+            assertTrue("$layer has no clipboard key", KeyboardKey.Clipboard in keys)
+        }
+    }
+
+    /** Adding it must not have displaced the punctuation it sits beside. */
+    @Test
+    fun `the function row still carries its punctuation`() {
+        val functions = ThorKeyboardLayout.rows(KeyboardLayer.LETTERS).last()
+        assertTrue("comma missing", KeyboardKey.Character(',', ',') in functions)
+        assertTrue("full stop missing", KeyboardKey.Character('.', '.') in functions)
+        assertTrue("space missing", KeyboardKey.Space in functions)
+        assertTrue("enter missing", KeyboardKey.Enter in functions)
+    }
+
+    /** Every key in the row has to be reachable by walking right along it. */
+    @Test
+    fun `the clipboard key can be walked to`() {
+        val rows = ThorKeyboardLayout.rows(KeyboardLayer.LETTERS)
+        val functions = rows.last()
+        val target = functions.indexOf(KeyboardKey.Clipboard)
+        assertTrue("clipboard key is not in the function row", target >= 0)
+
+        var cursor = KeyboardCursor(rows.lastIndex, 0)
+        repeat(target) {
+            cursor = ThorKeyboardLayout.move(
+                layer = KeyboardLayer.LETTERS,
+                row = cursor.row,
+                column = cursor.column,
+                direction = NavDirection.RIGHT,
+            )
+        }
+        assertEquals(
+            KeyboardKey.Clipboard,
+            ThorKeyboardLayout.keyAt(KeyboardLayer.LETTERS, cursor.row, cursor.column),
+        )
+    }
 
     @Test
     fun `both layers share the bottom row`() {

@@ -55,6 +55,10 @@ enum class SettingsPage(
         SettingsCategory.LIBRARY, "Scanning",
         "How games and apps are found",
     ),
+    ICON_PACKS(
+        SettingsCategory.LIBRARY, "Icon packs",
+        "Platform artwork imported from a pack",
+    ),
     METADATA(
         SettingsCategory.LIBRARY, "Metadata & accounts",
         "Artwork providers and their credentials",
@@ -68,6 +72,10 @@ enum class SettingsPage(
     NAVIGATION(
         SettingsCategory.CONTROLS, "Navigation",
         "Cursor movement and stick behaviour",
+    ),
+    POINTER(
+        SettingsCategory.CONTROLS, "Pointer",
+        "Controller mouse for apps and games",
     ),
     FEEDBACK(
         SettingsCategory.CONTROLS, "Feedback",

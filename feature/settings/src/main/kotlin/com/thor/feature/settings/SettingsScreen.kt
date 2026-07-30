@@ -83,6 +83,10 @@ fun SettingsScreen(
     val keyCaptureEnabled by viewModel.keyCaptureEnabled.collectAsStateWithLifecycle()
     val capturedKeys by viewModel.capturedKeys.collectAsStateWithLifecycle()
     val isDefaultLauncher by viewModel.isDefaultLauncher.collectAsStateWithLifecycle()
+    val iconPacks by viewModel.iconPacks.collectAsStateWithLifecycle()
+    val iconPackStatus by viewModel.iconPackStatus.collectAsStateWithLifecycle()
+    val pointerServiceEnabled by viewModel.pointerServiceEnabled.collectAsStateWithLifecycle()
+    val pointerRunning by viewModel.pointerRunning.collectAsStateWithLifecycle()
 
     val pages = SettingsPage.forCategory(category)
 
@@ -94,10 +98,10 @@ fun SettingsScreen(
 
     // The focusable row count depends on which level is showing: a category
     // shows one row per page, a page shows its own controls.
-    LaunchedEffect(category, openPage, platformOptions.size) {
+    LaunchedEffect(category, openPage, platformOptions.size, iconPacks.size) {
         onRowCountChanged(
             when {
-                openPage != null -> rowCountFor(openPage!!, platformOptions.size)
+                openPage != null -> rowCountFor(openPage!!, platformOptions.size, iconPacks.size)
                 category == SettingsCategory.ABOUT -> 0
                 else -> pages.size
             },
@@ -181,6 +185,10 @@ fun SettingsScreen(
                                 keyCaptureEnabled = keyCaptureEnabled,
                                 capturedKeys = capturedKeys,
                                 isDefaultLauncher = isDefaultLauncher,
+                                iconPacks = iconPacks,
+                                iconPackStatus = iconPackStatus,
+                                pointerServiceEnabled = pointerServiceEnabled,
+                                pointerRunning = pointerRunning,
                             )
                         }
 
