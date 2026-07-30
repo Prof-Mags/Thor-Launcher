@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What survives a backup and restore.
+
+  An include list is a whitelist: nothing outside it is backed up, so the artwork
+  and HTTP caches need no exclusion of their own. They live in `cacheDir`, which
+  Auto Backup never captures in any case — the excludes that used to be here named
+  `domain="file"` (which is `filesDir`) and so referred to paths that do not
+  exist.
+-->
+<full-backup-content>
+    <!-- Settings, themes, grid layout. -->
+    <include domain="file" path="datastore/" />
+    <!-- The library itself: placements, folders, play history. -->
+    <include domain="database" path="thor-library.db" />
+
+    <!--
+      The open play session is machine state, not user data. Restoring one from
+      another device would credit that device's session to this one.
+    -->
+    <exclude domain="file" path="datastore/thor-playback.json" />
+</full-backup-content>

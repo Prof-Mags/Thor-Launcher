@@ -1,0 +1,211 @@
+package com.thor.feature.topscreen
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.model.AnimatedWallpaper
+import com.thor.core.model.AppEntry
+import com.thor.core.ui.component.AnimatedWallpaperBackground
+import com.thor.core.model.FolderEntry
+import com.thor.core.model.GameEntry
+import com.thor.core.model.GridEntry
+import com.thor.core.ui.component.ArtworkImage
+
+/** Detail view for a highlighted folder. */
+@Composable
+fun FolderDetailPanel(
+    folder: FolderEntry,
+    children: List<GridEntry>,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ThorTheme.colors
+    val dimens = ThorTheme.dimens
+    val accent = folder.accentArgb?.let(::Color) ?: colors.primary
+
+    Row(
+        modifier = modifier.fillMaxSize().padding(dimens.spacingLarge),
+        horizontalArrangement = Arrangement.spacedBy(dimens.spacingLarge),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight(0.7f)
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(dimens.cornerRadius))
+                .background(accent.copy(alpha = 0.22f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (folder.artworkUri != null) {
+                ArtworkImage(
+                    model = folder.artworkUri,
+                    contentDescription = folder.title,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.Folder,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(72.dp),
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+        ) {
+            Text(
+                text = folder.title,
+                style = MaterialTheme.typography.displaySmall,
+                color = colors.onBackground,
+            )
+
+            val games = children.filterIsInstance<GameEntry>()
+            val platforms = games.map(GameEntry::platformId).distinct()
+
+            Text(
+                text = "${children.size} items" +
+                    if (platforms.isNotEmpty()) " · ${platforms.size} platforms" else "",
+                style = MaterialTheme.typography.titleSmall,
+                color = colors.onSurfaceVariant,
+            )
+
+            if (folder.description.isNotBlank()) {
+                Text(
+                    text = folder.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            if (folder.isSmart) {
+                Text(
+                    text = "Smart folder — contents update automatically",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = accent,
+                )
+            }
+
+            val recent = games
+                .filter { it.stats.hasBeenPlayed }
+                .sortedByDescending { it.stats.lastPlayedEpochMs ?: 0L }
+                .take(6)
+
+            if (recent.isNotEmpty()) {
+                Text(
+                    text = "RECENTLY PLAYED",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall)) {
+                    items(recent, key = GameEntry::id) { game ->
+                        ArtworkImage(
+                            model = game.metadata.artwork.cellImage,
+                            contentDescription = game.title,
+                            fallbackText = game.title,
+                            modifier = Modifier
+                                .height(110.dp)
+                                .aspectRatio(3f / 4f)
+                                .clip(RoundedCornerShape(dimens.cornerRadiusSmall)),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Detail view for a highlighted application. */
+@Composable
+fun AppDetailPanel(app: AppEntry, modifier: Modifier = Modifier) {
+    val colors = ThorTheme.colors
+    val dimens = ThorTheme.dimens
+
+    Column(
+        modifier = modifier.fillMaxSize().padding(dimens.spacingHuge),
+        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+    ) {
+        Text(
+            text = app.title,
+            style = MaterialTheme.typography.displaySmall,
+            color = colors.onBackground,
+        )
+        Text(
+            text = app.packageName,
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(dimens.spacingLarge)) {
+            app.versionName?.let { LabelledValue("Version", it) }
+            LabelledValue("Times opened", app.launchCount.toString())
+            app.lastPlayedEpochMs?.let { LabelledValue("Last opened", formatRelative(it)) }
+            if (app.isEmulator) LabelledValue("Type", "Emulator")
+        }
+    }
+}
+
+@Composable
+private fun LabelledValue(label: String, value: String) {
+    val colors = ThorTheme.colors
+    Column {
+        Text(
+            text = label.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurface,
+        )
+    }
+}
+
+/**
+ * Shown when nothing is highlighted.
+ *
+ * Delegates to the shared wallpaper renderer so the info screen and the grid
+ * screen show the same effect — previously this drew its own private gradient,
+ * which meant changing the wallpaper setting visibly altered one screen and not
+ * the other.
+ */
+@Composable
+fun IdleWallpaperPanel(
+    wallpaper: AnimatedWallpaper,
+    wallpaperUri: String?,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedWallpaperBackground(
+        wallpaper = wallpaper,
+        imageUri = wallpaperUri,
+        modifier = modifier.fillMaxSize(),
+    )
+}

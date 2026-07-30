@@ -1,0 +1,57 @@
+package com.thor.core.model
+
+/**
+ * One tile in the shortcut panel.
+ *
+ * The panel is the surface the AYN Thor's own button raises, so it holds the
+ * things a player wants *without leaving what they are doing*: the launcher
+ * surfaces that are otherwise two or three presses away, and the system panels
+ * that would otherwise mean quitting to Android settings. Anything that needs a
+ * privileged permission is deliberately absent — a tile that silently does
+ * nothing is worse than no tile.
+ */
+enum class ShortcutAction(val label: String, val description: String) {
+
+    APPS("Apps", "Open the app drawer"),
+    SEARCH("Search", "Search the whole library"),
+    THOR_SETTINGS("THOR", "Open THOR's settings"),
+    SWAP_SCREENS("Swap screens", "Move the grid to the other panel"),
+    SCAN_LIBRARY("Rescan", "Look for newly added games"),
+    RECORD("Record", "Capture both panels to a video"),
+
+    WIFI("Wi-Fi", "Open the Wi-Fi panel"),
+    BLUETOOTH("Bluetooth", "Open Bluetooth settings"),
+    VOLUME("Volume", "Open the volume panel"),
+    SYSTEM_SETTINGS("Android", "Open Android settings"),
+}
+
+/**
+ * Layout and cursor arithmetic for the shortcut panel.
+ *
+ * Kept out of the view model and out of the composable so the movement rules are
+ * testable on their own — the panel is a grid whose last row is usually partly
+ * empty, which is exactly where off-by-one cursor bugs live.
+ */
+object ShortcutGrid {
+
+    /** Tiles per row. Ten actions fall into three tidy rows at this width. */
+    const val COLUMNS = 4
+
+    /** The tiles, in the order they are laid out. */
+    val ACTIONS: List<ShortcutAction> = ShortcutAction.entries.toList()
+
+    /**
+     * Moves the focus by [delta] tiles, clamped to the tiles that exist.
+     *
+     * Horizontal steps are ±1 and vertical steps are ±[COLUMNS], so the panel
+     * navigates as one continuous strip: pressing Right at the end of a row moves
+     * to the start of the next rather than stopping dead, and pressing Down from
+     * the last full row lands on the final tile instead of nothing. Clamping
+     * rather than wrapping keeps the two ends of the list from being one press
+     * apart, which makes it easy to overshoot back to the top.
+     */
+    fun move(index: Int, delta: Int, count: Int): Int {
+        if (count <= 0) return 0
+        return (index + delta).coerceIn(0, count - 1)
+    }
+}

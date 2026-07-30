@@ -1,0 +1,1073 @@
+package com.thor.feature.settings.pane
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import com.thor.core.input.RawKeyPress
+import com.thor.core.model.AnimatedWallpaper
+import com.thor.core.model.ClockStyle
+import com.thor.core.model.ColorBlindMode
+import com.thor.core.model.CursorAnimation
+import com.thor.core.model.CursorStyle
+import com.thor.core.model.DockStyle
+import com.thor.core.model.DualScreenMode
+import com.thor.core.model.FolderStyle
+import com.thor.core.model.GridSpec
+import com.thor.core.model.IconShape
+import com.thor.core.model.Platform
+import com.thor.core.model.RomDirectory
+import com.thor.core.model.SortOrder
+import com.thor.core.model.ThorSettings
+import com.thor.data.metadata.ProviderStatus
+import com.thor.data.sync.ScrapeState
+import com.thor.data.sync.SyncState
+import com.thor.feature.settings.PlatformEmulatorOption
+import com.thor.feature.settings.SettingsPage
+import com.thor.feature.settings.SettingsViewModel
+import com.thor.feature.settings.component.ActionRow
+import com.thor.feature.settings.component.AddSystemRow
+import com.thor.feature.settings.component.ChoiceRow
+import com.thor.feature.settings.component.ColorRow
+import com.thor.feature.settings.component.DirectoryPickerRow
+import com.thor.feature.settings.component.InfoRow
+import com.thor.feature.settings.component.IntSliderRow
+import com.thor.feature.settings.component.RowDivider
+import com.thor.feature.settings.component.SliderRow
+import com.thor.feature.settings.component.SwitchRow
+import com.thor.feature.settings.component.SystemRow
+import com.thor.feature.settings.component.TextFieldRow
+import com.thor.feature.settings.component.ThemePreviewRow
+import com.thor.feature.settings.component.WallpaperPickerRow
+
+/**
+ * The contents of every settings page.
+ *
+ * Each page is a flat column of rows bound directly to one slice of
+ * [ThorSettings]. There is no per-page state holder, because every control is
+ * already a pure function of the persisted value and writes straight back
+ * through the view model.
+ *
+ * `focusedRow` indices must run contiguously from zero within each page —
+ * a gap is a controller press that highlights nothing, and the count reported
+ * by [rowCountFor] must match the highest index used.
+ */
+@Composable
+fun SettingsPageContent(
+    page: SettingsPage,
+    settings: ThorSettings,
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+    platformOptions: List<PlatformEmulatorOption>,
+    availablePlatforms: List<Platform>,
+    scanState: SyncState,
+    scrapeState: ScrapeState,
+    providerStatus: Map<String, ProviderStatus>,
+    checkingProviders: Boolean,
+    artworkOnlyProviders: Boolean,
+    isDefaultLauncher: Boolean,
+    keyCaptureEnabled: Boolean,
+    capturedKeys: List<RawKeyPress>,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        when (page) {
+            SettingsPage.THEME -> ThemePage(settings, focusedRow, viewModel)
+            SettingsPage.WALLPAPER -> WallpaperPage(settings, focusedRow, viewModel)
+            SettingsPage.GRID -> GridPage(settings, focusedRow, viewModel)
+            SettingsPage.DOCK -> DockPage(settings, focusedRow, viewModel)
+            SettingsPage.CURSOR -> CursorPage(settings, focusedRow, viewModel)
+            SettingsPage.INTERFACE -> InterfacePage(settings, focusedRow, viewModel)
+
+            SettingsPage.PLATFORMS -> PlatformsPage(
+                settings, focusedRow, viewModel, platformOptions, availablePlatforms, scanState,
+            )
+            SettingsPage.ROM_FOLDERS -> RomFoldersPage(settings, focusedRow, viewModel)
+            SettingsPage.SCANNING -> ScanningPage(settings, focusedRow, viewModel)
+            SettingsPage.METADATA -> MetadataPage(
+                settings, focusedRow, viewModel, scrapeState, providerStatus,
+                checkingProviders, artworkOnlyProviders,
+            )
+            SettingsPage.SORTING -> SortingPage(settings, focusedRow, viewModel)
+
+            SettingsPage.NAVIGATION -> NavigationPage(settings, focusedRow, viewModel)
+            SettingsPage.FEEDBACK -> FeedbackPage(settings, focusedRow, viewModel)
+
+            SettingsPage.DUAL_SCREEN -> DualScreenPage(settings, focusedRow, viewModel)
+            SettingsPage.PERFORMANCE -> PerformancePage(settings, focusedRow, viewModel)
+
+            SettingsPage.ACCESSIBILITY -> AccessibilityPage(settings, focusedRow, viewModel)
+            SettingsPage.DIAGNOSTICS -> DiagnosticsPage(
+                settings, focusedRow, viewModel, isDefaultLauncher,
+                keyCaptureEnabled, capturedKeys,
+            )
+        }
+    }
+}
+
+/**
+ * Focusable rows per page.
+ *
+ * Kept beside the pages themselves so the two are edited together; a count that
+ * overshoots produces presses that appear to do nothing.
+ */
+fun rowCountFor(page: SettingsPage, platformCount: Int): Int = when (page) {
+    SettingsPage.THEME -> 3
+    SettingsPage.WALLPAPER -> 3
+    SettingsPage.GRID -> 5
+    SettingsPage.DOCK -> 6
+    SettingsPage.CURSOR -> 3
+    SettingsPage.INTERFACE -> 6
+    // One row per platform plus the add button.
+    SettingsPage.PLATFORMS -> platformCount + 1
+    SettingsPage.ROM_FOLDERS -> 1
+    SettingsPage.SCANNING -> 6
+    SettingsPage.METADATA -> 11
+    SettingsPage.SORTING -> 2
+    SettingsPage.NAVIGATION -> 4
+    SettingsPage.FEEDBACK -> 5
+    SettingsPage.DUAL_SCREEN -> 4
+    SettingsPage.PERFORMANCE -> 3
+    SettingsPage.ACCESSIBILITY -> 5
+    SettingsPage.DIAGNOSTICS -> 4
+}
+
+// ---------------------------------------------------------------- Appearance
+
+@Composable
+private fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val personalization = settings.personalization
+
+    // A gallery rather than a dropdown of names: with twenty themes, choosing
+    // from a list meant leaving Settings to see each one.
+    ThemePreviewRow(
+        selected = personalization.themeId,
+        focused = focusedRow == 0,
+        onSelected = viewModel::selectTheme,
+        onTakesHorizontalInput = { takes -> viewModel.setRowTakesHorizontal(0, takes) },
+    )
+    RowDivider()
+    ColorRow(
+        title = "Accent colour",
+        subtitle = "Overrides the theme's own accent",
+        colorsToPick = ACCENT_SWATCHES,
+        selected = personalization.accentOverrideArgb?.let(::Color),
+        focused = focusedRow == 1,
+        onSelected = { color ->
+            // Stored as an unsigned 32-bit ARGB value in a Long, matching the
+            // representation every other colour in the model uses.
+            val argb = color?.toArgb()?.toLong()?.and(0xFFFFFFFFL)
+            viewModel.updatePersonalization { it.copy(accentOverrideArgb = argb) }
+        },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Dynamic colour",
+        subtitle = "Derive the palette from the system wallpaper (Android 12+)",
+        checked = personalization.useDynamicColor,
+        focused = focusedRow == 2,
+        onCheckedChange = { on ->
+            viewModel.updatePersonalization { it.copy(useDynamicColor = on) }
+        },
+    )
+}
+
+@Composable
+private fun WallpaperPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val personalization = settings.personalization
+
+    ChoiceRow(
+        title = "Background effect",
+        subtitle = "Animated layer drawn behind both screens",
+        options = AnimatedWallpaper.entries,
+        selected = personalization.animatedWallpaper,
+        focused = focusedRow == 0,
+        label = AnimatedWallpaper::label,
+        onSelected = { wallpaper ->
+            viewModel.updatePersonalization { it.copy(animatedWallpaper = wallpaper) }
+        },
+    )
+    RowDivider()
+    WallpaperPickerRow(
+        title = "Grid wallpaper",
+        subtitle = "Image for the grid screen",
+        currentUri = personalization.wallpaperUri,
+        focused = focusedRow == 1,
+        onPicked = { uri -> viewModel.updatePersonalization { it.copy(wallpaperUri = uri) } },
+    )
+    RowDivider()
+    WallpaperPickerRow(
+        title = "Info screen wallpaper",
+        subtitle = "Shown when nothing is highlighted",
+        currentUri = personalization.topScreenWallpaperUri,
+        focused = focusedRow == 2,
+        onPicked = { uri ->
+            viewModel.updatePersonalization { it.copy(topScreenWallpaperUri = uri) }
+        },
+    )
+}
+
+@Composable
+private fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val grid = settings.grid
+
+    // One picker rather than separate column and row sliders. The two together
+    // could reach a matrix with another size's spacing, which is the crowded
+    // in-between state the presets exist to remove — and pinch already steps
+    // through exactly this list, so the two controls now agree.
+    ChoiceRow(
+        title = "Layout",
+        subtitle = "Also reachable by pinching the grid",
+        options = GridSpec.PRESETS,
+        selected = grid.preset,
+        focused = focusedRow == 0,
+        label = { "${it.label}  ·  ${it.columns} × ${it.rows}" },
+        onSelected = { preset -> viewModel.updateGrid(preset::applyTo) },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Icon size",
+        subtitle = "Fine-tunes how much of each cell the artwork fills",
+        value = grid.iconScale,
+        range = GridSpec.MIN_ICON_SCALE..GridSpec.MAX_ICON_SCALE,
+        focused = focusedRow == 1,
+        valueLabel = { "${(it * 100).toInt()}%" },
+        onValueChange = { scale -> viewModel.updateGrid { it.copy(iconScale = scale) } },
+    )
+    RowDivider()
+    IntSliderRow(
+        title = "Icon spacing",
+        subtitle = "Percent of a cell left as gutter",
+        value = grid.spacingDp,
+        range = 0..48,
+        focused = focusedRow == 2,
+        suffix = "%",
+        onValueChange = { spacing -> viewModel.updateGrid { it.copy(spacingDp = spacing) } },
+    )
+    RowDivider()
+    ChoiceRow(
+        title = "Icon shape",
+        options = IconShape.entries,
+        selected = grid.iconShape,
+        focused = focusedRow == 3,
+        label = IconShape::label,
+        onSelected = { shape -> viewModel.updateGrid { it.copy(iconShape = shape) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Show labels",
+        checked = grid.showLabels,
+        focused = focusedRow == 4,
+        onCheckedChange = { on -> viewModel.updateGrid { it.copy(showLabels = on) } },
+    )
+}
+
+@Composable
+private fun DockPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val dock = settings.dock
+
+    SwitchRow(
+        title = "Show dock",
+        checked = dock.visible,
+        focused = focusedRow == 0,
+        onCheckedChange = { on -> viewModel.updateDock { it.copy(visible = on) } },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Size",
+        value = dock.scale,
+        range = 0.7f..1.4f,
+        focused = focusedRow == 1,
+        valueLabel = { "${(it * 100).toInt()}%" },
+        onValueChange = { scale -> viewModel.updateDock { it.copy(scale = scale) } },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Transparency",
+        value = dock.backgroundAlpha,
+        range = 0f..1f,
+        focused = focusedRow == 2,
+        valueLabel = { "${(it * 100).toInt()}%" },
+        onValueChange = { alpha -> viewModel.updateDock { it.copy(backgroundAlpha = alpha) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Translucent background",
+        subtitle = "Off makes the dock solid, which reads better over artwork",
+        checked = dock.blurEnabled,
+        focused = focusedRow == 3,
+        onCheckedChange = { on -> viewModel.updateDock { it.copy(blurEnabled = on) } },
+    )
+    RowDivider()
+    ChoiceRow(
+        title = "Shape",
+        subtitle = "Square matches the grid's own cells",
+        options = DockStyle.entries,
+        selected = dock.style,
+        focused = focusedRow == 4,
+        label = DockStyle::label,
+        onSelected = { style -> viewModel.updateDock { it.copy(style = style) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Auto-hide",
+        subtitle = "Only show the dock when a slot is selected",
+        checked = dock.autoHide,
+        focused = focusedRow == 5,
+        onCheckedChange = { on -> viewModel.updateDock { it.copy(autoHide = on) } },
+    )
+}
+
+@Composable
+private fun CursorPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val personalization = settings.personalization
+
+    ChoiceRow(
+        title = "Style",
+        options = CursorStyle.entries,
+        selected = personalization.cursorStyle,
+        focused = focusedRow == 0,
+        label = CursorStyle::label,
+        onSelected = { style -> viewModel.updatePersonalization { it.copy(cursorStyle = style) } },
+    )
+    RowDivider()
+    ChoiceRow(
+        title = "Animation",
+        options = CursorAnimation.entries,
+        selected = personalization.cursorAnimation,
+        focused = focusedRow == 1,
+        label = CursorAnimation::label,
+        onSelected = { animation ->
+            viewModel.updatePersonalization { it.copy(cursorAnimation = animation) }
+        },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Glow",
+        value = personalization.highlightGlow,
+        range = 0f..1f,
+        focused = focusedRow == 2,
+        valueLabel = { "${(it * 100).toInt()}%" },
+        onValueChange = { glow ->
+            viewModel.updatePersonalization { it.copy(highlightGlow = glow) }
+        },
+    )
+}
+
+@Composable
+private fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val personalization = settings.personalization
+
+    SwitchRow(
+        title = "Glass effects",
+        subtitle = "Translucent panels with a blurred backdrop",
+        checked = personalization.glassEffects,
+        focused = focusedRow == 0,
+        onCheckedChange = { on ->
+            viewModel.updatePersonalization { it.copy(glassEffects = on) }
+        },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Text size",
+        value = personalization.fontScale,
+        range = 0.8f..1.5f,
+        focused = focusedRow == 1,
+        valueLabel = { "${(it * 100).toInt()}%" },
+        onValueChange = { scale ->
+            viewModel.updatePersonalization { it.copy(fontScale = scale) }
+        },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Transition speed",
+        subtitle = "Higher is faster",
+        value = personalization.transitionSpeed,
+        range = 0.5f..2f,
+        focused = focusedRow == 2,
+        valueLabel = { "${"%.1f".format(it)}x" },
+        onValueChange = { speed ->
+            viewModel.updatePersonalization { it.copy(transitionSpeed = speed) }
+        },
+    )
+    RowDivider()
+    ChoiceRow(
+        title = "Clock",
+        options = ClockStyle.entries,
+        selected = personalization.clockStyle,
+        focused = focusedRow == 3,
+        label = ClockStyle::label,
+        onSelected = { style -> viewModel.updatePersonalization { it.copy(clockStyle = style) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Status bar",
+        subtitle = "Clock and battery above the grid",
+        checked = personalization.showStatusBar,
+        focused = focusedRow == 4,
+        onCheckedChange = { on ->
+            viewModel.updatePersonalization { it.copy(showStatusBar = on) }
+        },
+    )
+    RowDivider()
+    ChoiceRow(
+        title = "Folder style",
+        options = FolderStyle.entries,
+        selected = personalization.folderStyle,
+        focused = focusedRow == 5,
+        label = FolderStyle::label,
+        onSelected = { style -> viewModel.updatePersonalization { it.copy(folderStyle = style) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Page indicators",
+        checked = personalization.showPageIndicators,
+        onCheckedChange = { on ->
+            viewModel.updatePersonalization { it.copy(showPageIndicators = on) }
+        },
+    )
+}
+
+// ------------------------------------------------------------------- Library
+
+@Composable
+private fun PlatformsPage(
+    settings: ThorSettings,
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+    platformOptions: List<PlatformEmulatorOption>,
+    availablePlatforms: List<Platform>,
+    scanState: SyncState,
+) {
+    platformOptions.forEachIndexed { index, option ->
+        if (index > 0) RowDivider()
+        SystemRow(
+            platform = option.platform,
+            installedEmulators = option.installed,
+            romFolder = settings.library.romDirectoryUris
+                .firstOrNull { it.platformId == option.platform.id }
+                ?.displayName,
+            focused = focusedRow == index,
+            onToggleEmulator = { packageName ->
+                viewModel.togglePlatformEmulator(option.platform.id, packageName)
+            },
+            onRemove = { viewModel.removePlatform(option.platform.id) },
+        )
+    }
+
+    if (platformOptions.isNotEmpty()) RowDivider()
+
+    AddSystemRow(
+        available = availablePlatforms,
+        focused = focusedRow == platformOptions.size,
+        onAdd = viewModel::beginAddPlatform,
+    )
+
+    if (platformOptions.isNotEmpty()) {
+        RowDivider()
+        ActionRow(
+            title = "Scan library now",
+            subtitle = when (scanState) {
+                is SyncState.Scanning -> "Scanning ${scanState.label} — ${scanState.found} found"
+                is SyncState.Completed ->
+                    "Found ${scanState.gamesFound} games and ${scanState.appsFound} apps"
+
+                is SyncState.Failed -> scanState.message
+                SyncState.Idle -> "Re-read every configured folder"
+            },
+            trailingLabel = if (scanState is SyncState.Scanning) "Running" else "Scan",
+            onClick = viewModel::scanLibrary,
+        )
+    }
+}
+
+@Composable
+private fun RomFoldersPage(
+    settings: ThorSettings,
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+) {
+    val library = settings.library
+    val extras = library.romDirectoryUris.filter { it.platformId == null }
+
+    if (extras.isEmpty()) {
+        InfoRow(
+            title = "No extra folders",
+            value = "Platforms bring their own",
+        )
+        RowDivider()
+    }
+
+    extras.forEach { directory ->
+        ActionRow(
+            title = directory.displayName,
+            subtitle = "Mixed folder — platform detected per file",
+            trailingLabel = "Remove",
+            onClick = {
+                viewModel.updateLibrary { current ->
+                    current.copy(romDirectoryUris = current.romDirectoryUris - directory)
+                }
+            },
+        )
+        RowDivider()
+    }
+
+    DirectoryPickerRow(
+        title = "Add folder",
+        subtitle = "For collections spanning several systems",
+        focused = focusedRow == 0,
+        onPicked = { uri, name ->
+            viewModel.updateLibrary { current ->
+                // Re-adding a folder must not create a duplicate that would then
+                // be scanned twice.
+                if (current.romDirectoryUris.any { it.uri == uri }) {
+                    current
+                } else {
+                    current.copy(
+                        romDirectoryUris = current.romDirectoryUris +
+                            RomDirectory(uri = uri, displayName = name),
+                    )
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun ScanningPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val library = settings.library
+
+    SwitchRow(
+        title = "Look inside archives",
+        subtitle = "Scan .zip and .7z containers",
+        checked = library.scanArchives,
+        focused = focusedRow == 0,
+        onCheckedChange = { on -> viewModel.updateLibrary { it.copy(scanArchives = on) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Detect duplicates",
+        checked = library.detectDuplicates,
+        focused = focusedRow == 1,
+        onCheckedChange = { on -> viewModel.updateLibrary { it.copy(detectDuplicates = on) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Group versions",
+        subtitle = "Collapse regional variants and revisions into one entry",
+        checked = library.groupVersions,
+        focused = focusedRow == 2,
+        onCheckedChange = { on -> viewModel.updateLibrary { it.copy(groupVersions = on) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Show apps on the grid",
+        checked = library.showAppsOnGrid,
+        focused = focusedRow == 3,
+        onCheckedChange = { on -> viewModel.updateLibrary { it.copy(showAppsOnGrid = on) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Hide system apps",
+        checked = library.hideSystemApps,
+        focused = focusedRow == 4,
+        onCheckedChange = { on -> viewModel.updateLibrary { it.copy(hideSystemApps = on) } },
+    )
+    RowDivider()
+    ActionRow(
+        title = "Scan library now",
+        subtitle = "Apply these settings to the whole library",
+        focused = focusedRow == 5,
+        trailingLabel = "Scan",
+        onClick = viewModel::scanLibrary,
+    )
+}
+
+@Composable
+private fun MetadataPage(
+    settings: ThorSettings,
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+    scrapeState: ScrapeState,
+    providerStatus: Map<String, ProviderStatus>,
+    checking: Boolean,
+    artworkOnly: Boolean,
+) {
+    val metadata = settings.metadata
+
+    ActionRow(
+        title = "Download metadata",
+        subtitle = when (scrapeState) {
+            is ScrapeState.Running ->
+                "${scrapeState.done} of ${scrapeState.total} — ${scrapeState.currentTitle}"
+
+            is ScrapeState.Completed ->
+                "Updated ${scrapeState.updated}, skipped ${scrapeState.skipped}"
+
+            is ScrapeState.Failed -> scrapeState.message
+            ScrapeState.NotConfigured -> "Add credentials below before scraping"
+            ScrapeState.Idle -> "Fetch artwork and details for your games"
+        },
+        focused = focusedRow == 0,
+        trailingLabel = if (scrapeState is ScrapeState.Running) "Cancel" else "Start",
+        onClick = {
+            if (scrapeState is ScrapeState.Running) {
+                viewModel.cancelScrape()
+            } else {
+                viewModel.scrapeMetadata(onlyMissing = metadata.scrapeOnlyMissing)
+            }
+        },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Only fill in missing data",
+        subtitle = "Leave already-scraped entries alone",
+        checked = metadata.scrapeOnlyMissing,
+        focused = focusedRow == 1,
+        onCheckedChange = { on -> viewModel.updateMetadata { it.copy(scrapeOnlyMissing = on) } },
+    )
+
+    RowDivider()
+    ActionRow(
+        title = "Check connections",
+        subtitle = "Verify each provider's credentials actually work",
+        focused = focusedRow == 2,
+        trailingLabel = if (checking) "Checking…" else "Check",
+        onClick = viewModel::checkProviderConnections,
+    )
+
+    // Artwork arriving while every text field stays blank looks like a broken
+    // scraper. It is usually just SteamGridDB being the only configured provider,
+    // and SteamGridDB serves artwork only — so say which providers supply text.
+    if (artworkOnly) {
+        RowDivider()
+        InfoRow(
+            "Artwork only",
+            "SteamGridDB has no developer, publisher, description or genre data. " +
+                "Add a RAWG API key below to fill those in.",
+        )
+    }
+
+    PROVIDERS.forEachIndexed { index, provider ->
+        RowDivider()
+        SwitchRow(
+            title = provider.second,
+            subtitle = when {
+                provider.first !in IMPLEMENTED_PROVIDERS -> "Not yet implemented"
+                else -> providerStatus[provider.first].describe()
+            },
+            checked = provider.first in metadata.enabledProviders,
+            focused = focusedRow == 3 + index,
+            onCheckedChange = { on ->
+                viewModel.updateMetadata { current ->
+                    current.copy(
+                        enabledProviders = if (on) {
+                            current.enabledProviders + provider.first
+                        } else {
+                            current.enabledProviders - provider.first
+                        },
+                    )
+                }
+            },
+        )
+    }
+
+    RowDivider()
+    TextFieldRow(
+        title = "SteamGridDB key",
+        subtitle = "Artwork. From steamgriddb.com/profile/preferences/api",
+        value = metadata.apiKeys[PROVIDER_STEAMGRIDDB].orEmpty(),
+        placeholder = "API key",
+        isSecret = true,
+        focused = focusedRow == 7,
+        onValueChange = { viewModel.setApiKey(PROVIDER_STEAMGRIDDB, it) },
+    )
+    RowDivider()
+    TextFieldRow(
+        title = "RAWG key",
+        subtitle = "Descriptions and credits. From rawg.io/apidocs",
+        value = metadata.apiKeys[PROVIDER_RAWG].orEmpty(),
+        placeholder = "API key",
+        isSecret = true,
+        focused = focusedRow == 8,
+        onValueChange = { viewModel.setApiKey(PROVIDER_RAWG, it) },
+    )
+    RowDivider()
+    TextFieldRow(
+        title = "ScreenScraper account",
+        subtitle = "Optional — raises the daily quota and image quality",
+        value = metadata.screenScraperUser,
+        placeholder = "Username",
+        focused = focusedRow == 9,
+        onValueChange = viewModel::setScreenScraperUser,
+    )
+    RowDivider()
+    TextFieldRow(
+        title = "ScreenScraper password",
+        value = metadata.screenScraperPassword,
+        placeholder = "Password",
+        isSecret = true,
+        focused = focusedRow == 10,
+        onValueChange = viewModel::setScreenScraperPassword,
+    )
+}
+
+@Composable
+private fun SortingPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val library = settings.library
+
+    ChoiceRow(
+        title = "Default sort",
+        options = SortOrder.entries,
+        selected = library.defaultSort,
+        focused = focusedRow == 0,
+        label = SortOrder::label,
+        onSelected = { order -> viewModel.updateLibrary { it.copy(defaultSort = order) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Reverse order",
+        checked = library.sortDescending,
+        focused = focusedRow == 1,
+        onCheckedChange = { on -> viewModel.updateLibrary { it.copy(sortDescending = on) } },
+    )
+}
+
+// ------------------------------------------------------------------ Controls
+
+@Composable
+private fun NavigationPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val controls = settings.controls
+
+    SwitchRow(
+        title = "Wrap at edges",
+        subtitle = "Moving past the last column returns to the first",
+        checked = controls.wrapNavigation,
+        focused = focusedRow == 0,
+        onCheckedChange = { on -> viewModel.updateControls { it.copy(wrapNavigation = on) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Edge turns the page",
+        checked = controls.edgeFlipsPage,
+        focused = focusedRow == 1,
+        onCheckedChange = { on -> viewModel.updateControls { it.copy(edgeFlipsPage = on) } },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Stick sensitivity",
+        value = controls.stickSensitivity,
+        range = 0.5f..2f,
+        focused = focusedRow == 2,
+        valueLabel = { "${"%.1f".format(it)}x" },
+        onValueChange = { value -> viewModel.updateControls { it.copy(stickSensitivity = value) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Touch input",
+        subtitle = "Off makes the launcher controller-only",
+        checked = controls.touchEnabled,
+        focused = focusedRow == 3,
+        onCheckedChange = { on -> viewModel.updateControls { it.copy(touchEnabled = on) } },
+    )
+}
+
+@Composable
+private fun FeedbackPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val controls = settings.controls
+    val audio = settings.audio
+
+    SwitchRow(
+        title = "Haptics",
+        checked = controls.hapticsEnabled,
+        focused = focusedRow == 0,
+        onCheckedChange = { on -> viewModel.updateControls { it.copy(hapticsEnabled = on) } },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Haptic intensity",
+        value = controls.hapticIntensity,
+        range = 0f..1f,
+        focused = focusedRow == 1,
+        valueLabel = { "${(it * 100).toInt()}%" },
+        onValueChange = { value -> viewModel.updateControls { it.copy(hapticIntensity = value) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Sound effects",
+        subtitle = "Plays at the system media volume",
+        checked = audio.soundEffectsEnabled,
+        focused = focusedRow == 2,
+        onCheckedChange = { on ->
+            viewModel.updateAudio { it.copy(soundEffectsEnabled = on) }
+        },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Navigation sounds",
+        subtitle = "Cursor ticks and page turns, not just launches",
+        checked = audio.navigationSounds,
+        focused = focusedRow == 3,
+        onCheckedChange = { on ->
+            // Both flags move together: the settings screen offers one switch,
+            // and leaving launch sounds on while navigation sounds are off would
+            // be a state the user could not see or explain.
+            viewModel.updateAudio { it.copy(navigationSounds = on, launchSounds = on) }
+        },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Sound effect volume",
+        value = audio.uiVolume,
+        range = 0f..1f,
+        focused = focusedRow == 4,
+        valueLabel = { "${(it * 100).toInt()}%" },
+        onValueChange = { volume -> viewModel.updateAudio { it.copy(uiVolume = volume) } },
+    )
+}
+
+// ------------------------------------------------------------------- Display
+
+@Composable
+private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val display = settings.display
+
+    ChoiceRow(
+        title = "Screen mode",
+        subtitle = "Automatic uses the second panel when one is attached",
+        options = DualScreenMode.entries,
+        selected = display.mode,
+        focused = focusedRow == 0,
+        label = DualScreenMode::label,
+        onSelected = { mode -> viewModel.updateDisplay { it.copy(mode = mode) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Swap screens",
+        subtitle = "Put the grid on the main panel instead",
+        checked = display.swapScreens,
+        focused = focusedRow == 1,
+        onCheckedChange = { on -> viewModel.updateDisplay { it.copy(swapScreens = on) } },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Split ratio",
+        subtitle = "How much of a single display the info panel takes",
+        value = display.splitRatio,
+        range = 0.25f..0.75f,
+        focused = focusedRow == 2,
+        valueLabel = { "${(it * 100).toInt()}%" },
+        onValueChange = { ratio -> viewModel.updateDisplay { it.copy(splitRatio = ratio) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Keep screen awake",
+        checked = display.keepTopScreenAwake,
+        focused = focusedRow == 3,
+        onCheckedChange = { on -> viewModel.updateDisplay { it.copy(keepTopScreenAwake = on) } },
+    )
+}
+
+@Composable
+private fun PerformancePage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val performance = settings.performance
+
+    SwitchRow(
+        title = "Performance mode",
+        subtitle = "Disables blur and animated wallpaper in one switch",
+        checked = performance.performanceMode,
+        focused = focusedRow == 0,
+        onCheckedChange = { on -> viewModel.updatePerformance { it.copy(performanceMode = on) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Animations",
+        checked = performance.animationsEnabled,
+        focused = focusedRow == 1,
+        onCheckedChange = { on ->
+            viewModel.updatePerformance { it.copy(animationsEnabled = on) }
+        },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Background blur",
+        checked = performance.blurEnabled,
+        focused = focusedRow == 2,
+        onCheckedChange = { on -> viewModel.updatePerformance { it.copy(blurEnabled = on) } },
+    )
+}
+
+// -------------------------------------------------------------------- System
+
+@Composable
+private fun AccessibilityPage(
+    settings: ThorSettings,
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+) {
+    val accessibility = settings.accessibility
+
+    SwitchRow(
+        title = "High contrast",
+        checked = accessibility.highContrast,
+        focused = focusedRow == 0,
+        onCheckedChange = { on -> viewModel.updateAccessibility { it.copy(highContrast = on) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Large text",
+        checked = accessibility.largeText,
+        focused = focusedRow == 1,
+        onCheckedChange = { on -> viewModel.updateAccessibility { it.copy(largeText = on) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Reduce motion",
+        subtitle = "Removes transitions and idle animation",
+        checked = accessibility.reduceMotion,
+        focused = focusedRow == 2,
+        onCheckedChange = { on -> viewModel.updateAccessibility { it.copy(reduceMotion = on) } },
+    )
+    RowDivider()
+    ChoiceRow(
+        title = "Colour vision",
+        options = ColorBlindMode.entries,
+        selected = accessibility.colorBlindMode,
+        focused = focusedRow == 3,
+        label = ColorBlindMode::label,
+        onSelected = { mode -> viewModel.updateAccessibility { it.copy(colorBlindMode = mode) } },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Touch target size",
+        value = accessibility.touchTargetScale,
+        range = 1f..1.6f,
+        focused = focusedRow == 4,
+        valueLabel = { "${(it * 100).toInt()}%" },
+        onValueChange = { scale ->
+            viewModel.updateAccessibility { it.copy(touchTargetScale = scale) }
+        },
+    )
+}
+
+@Composable
+private fun DiagnosticsPage(
+    settings: ThorSettings,
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+    isDefaultLauncher: Boolean,
+    keyCaptureEnabled: Boolean,
+    capturedKeys: List<RawKeyPress>,
+) {
+    ActionRow(
+        title = "Set as default launcher",
+        subtitle = if (isDefaultLauncher) {
+            "THOR is your home app"
+        } else {
+            "Opens Android's home app chooser"
+        },
+        focused = focusedRow == 0,
+        trailingLabel = if (isDefaultLauncher) "Active" else "Choose",
+        onClick = viewModel::requestDefaultLauncher,
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Verbose logging",
+        subtitle = "Writes detailed output to logcat",
+        checked = settings.developer.verboseLogging,
+        focused = focusedRow == 1,
+        onCheckedChange = { on -> viewModel.updateDeveloper { it.copy(verboseLogging = on) } },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Button tester",
+        subtitle = "Reports what each button sends, without acting on it. " +
+            "Use Back to leave.",
+        checked = keyCaptureEnabled,
+        focused = focusedRow == 2,
+        onCheckedChange = viewModel::setKeyCapture,
+    )
+
+    if (keyCaptureEnabled) {
+        if (capturedKeys.isEmpty()) {
+            InfoRow(
+                "Listening",
+                "Press any button. A button that never appears here is being " +
+                    "handled by the system before the launcher sees it, and cannot " +
+                    "be remapped by an app.",
+            )
+        } else {
+            capturedKeys.forEach { press ->
+                InfoRow(
+                    press.keyName,
+                    buildString {
+                        append("code ${press.keyCode}")
+                        press.deviceName?.let { append(" · $it") }
+                        append(" · ")
+                        append(press.boundTo?.let { "bound to ${it.label}" } ?: "unbound")
+                    },
+                )
+            }
+        }
+    }
+
+    RowDivider()
+    ActionRow(
+        title = "Reset all settings",
+        subtitle = "Restores every option to its default. Library data is untouched.",
+        focused = focusedRow == 3,
+        destructive = true,
+        onClick = viewModel::resetToDefaults,
+    )
+}
+
+// --------------------------------------------------------------------- About
+
+@Composable
+fun AboutPane(settings: ThorSettings) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        InfoRow("Active theme", settings.personalization.themeId.displayName)
+        RowDivider()
+        InfoRow("Grid", "${settings.grid.columns} × ${settings.grid.rows}")
+        RowDivider()
+        InfoRow("Platforms configured", settings.library.romDirectoryUris.size.toString())
+        RowDivider()
+        InfoRow("Settings schema", settings.schemaVersion.toString())
+        RowDivider()
+        InfoRow("Built for", "AYN Thor dual screen handheld")
+    }
+}
+
+private const val PROVIDER_STEAMGRIDDB = "steamgriddb"
+private const val PROVIDER_RAWG = "rawg"
+
+private val ACCENT_SWATCHES = listOf(
+    Color(0xFF4F8CFF), Color(0xFF8B5CF6), Color(0xFF00E5FF), Color(0xFF39FF14),
+    Color(0xFFFF2E88), Color(0xFFF57C00), Color(0xFFE53935), Color(0xFF00C3E3),
+)
+
+private val PROVIDERS = listOf(
+    PROVIDER_STEAMGRIDDB to "SteamGridDB",
+    "wikidata" to "Wikidata",
+    PROVIDER_RAWG to "RAWG",
+    "screenscraper" to "ScreenScraper",
+)
+
+/** Providers with a working client; the rest are listed but inert. */
+private val IMPLEMENTED_PROVIDERS = setOf(
+    PROVIDER_STEAMGRIDDB,
+    "wikidata",
+    PROVIDER_RAWG,
+    "screenscraper",
+)
+
+/** Human-readable form of a provider probe result. */
+private fun ProviderStatus?.describe(): String = when (this) {
+    null, ProviderStatus.Unknown -> "Not checked"
+    ProviderStatus.NotConfigured -> "No credentials"
+    ProviderStatus.Connected -> "Connected"
+    ProviderStatus.InvalidCredentials -> "Rejected — check the key"
+    is ProviderStatus.Unreachable -> "Unreachable — $detail"
+    is ProviderStatus.Error -> detail
+}

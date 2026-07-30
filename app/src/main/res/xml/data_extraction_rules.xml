@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ equivalent of the backup rules, split by destination.
+
+  As with `backup_rules.xml`, the include list is a whitelist, so the artwork and
+  HTTP caches in `cacheDir` need no explicit exclusion.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="datastore/" />
+        <include domain="database" path="thor-library.db" />
+        <!-- An in-flight play session belongs to the device that started it. -->
+        <exclude domain="file" path="datastore/thor-playback.json" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="datastore/" />
+        <include domain="database" path="thor-library.db" />
+        <exclude domain="file" path="datastore/thor-playback.json" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,245 @@
+package com.thor.data.sync
+
+import com.thor.core.common.dispatchers.ApplicationScope
+import com.thor.core.common.dispatchers.Dispatcher
+import com.thor.core.common.dispatchers.ThorDispatcher
+import com.thor.core.common.log.ThorLog
+import com.thor.core.database.dao.FolderDao
+import com.thor.core.database.dao.GameDao
+import com.thor.core.database.dao.PlatformDao
+import com.thor.core.database.model.GameEntity
+import com.thor.core.datastore.SettingsRepository
+import com.thor.core.model.GameMetadata
+import com.thor.data.metadata.MetadataAggregator
+import com.thor.data.metadata.MetadataQuery
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/** Progress of a metadata scrape. */
+sealed interface ScrapeState {
+    data object Idle : ScrapeState
+    data class Running(val done: Int, val total: Int, val currentTitle: String) : ScrapeState
+    data class Completed(val updated: Int, val skipped: Int) : ScrapeState
+    data class Failed(val message: String) : ScrapeState
+
+    /** No provider is enabled and configured, so a scrape would do nothing. */
+    data object NotConfigured : ScrapeState
+}
+
+/**
+ * Downloads metadata and artwork for the library.
+ *
+ * Separate from [LibrarySyncManager] because the two have different costs and
+ * different failure modes: a file scan is local and fast, while a scrape is
+ * hundreds of rate-limited network calls that the user may want to start,
+ * watch and cancel independently of finding their games.
+ */
+@Singleton
+class MetadataSyncManager @Inject constructor(
+    private val aggregator: MetadataAggregator,
+    private val gameDao: GameDao,
+    private val folderDao: FolderDao,
+    private val platformDao: PlatformDao,
+    private val settings: SettingsRepository,
+    @ApplicationScope private val scope: CoroutineScope,
+    @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
+) {
+
+    private val _state = MutableStateFlow<ScrapeState>(ScrapeState.Idle)
+    val state: StateFlow<ScrapeState> = _state.asStateFlow()
+
+    private var runningJob: Job? = null
+
+    val isRunning: Boolean get() = runningJob?.isActive == true
+
+    /**
+     * Starts a scrape.
+     *
+     * @param onlyMissing when true, entries already scraped are skipped. This
+     *   is the normal case; a full re-scrape is only useful after changing
+     *   provider priority or credentials.
+     */
+    fun requestScrape(onlyMissing: Boolean = true) {
+        if (isRunning) return
+        runningJob = scope.launch {
+            runCatching { scrape(onlyMissing) }
+                .onFailure { error ->
+                    ThorLog.e(TAG, "Metadata scrape failed", error)
+                    _state.value = ScrapeState.Failed(error.message ?: "Scrape failed")
+                }
+        }
+    }
+
+    fun cancel() {
+        runningJob?.cancel()
+        runningJob = null
+        _state.value = ScrapeState.Idle
+    }
+
+    private suspend fun scrape(onlyMissing: Boolean) = withContext(ioDispatcher) {
+        // A provider that is enabled but unconfigured contributes nothing, so a
+        // scrape with none usable would churn through the whole library and
+        // change not one row. Say so instead. The providers are asked directly
+        // because their credential requirements differ.
+        if (!aggregator.hasUsableProvider()) {
+            _state.value = ScrapeState.NotConfigured
+            return@withContext
+        }
+
+        val platforms = platformDao.getAll().associateBy { it.id }
+        val all = gameDao.getVisible()
+        val targets = if (onlyMissing) {
+            all.filter { it.metadata.lastScrapedEpochMs == null }
+        } else {
+            all
+        }
+
+        if (targets.isEmpty()) {
+            _state.value = ScrapeState.Completed(updated = 0, skipped = all.size)
+            return@withContext
+        }
+
+        var updated = 0
+        var skipped = 0
+
+        targets.forEachIndexed { index, game ->
+            currentCoroutineContext().ensureActive()
+            _state.value = ScrapeState.Running(
+                done = index,
+                total = targets.size,
+                currentTitle = game.title,
+            )
+
+            val platform = platforms[game.platformId]
+            val merged = aggregator.scrape(
+                query = MetadataQuery(
+                    title = game.title,
+                    sortTitle = game.sortTitle,
+                    platformId = game.platformId,
+                    providerPlatformId = platform?.providerIds?.get("screenscraper"),
+                    fileName = game.fileName,
+                    fileSizeBytes = game.fileSizeBytes,
+                    releaseYearHint = game.metadata.releaseYear,
+                    region = game.metadata.region,
+                ),
+                existing = game.metadata,
+            )
+
+            if (merged != game.metadata) {
+                gameDao.setMetadata(game.id, merged)
+                updated++
+            } else {
+                skipped++
+            }
+        }
+
+        updated += scrapeFolderArtwork(onlyMissing)
+
+        _state.value = ScrapeState.Completed(updated = updated, skipped = skipped)
+    }
+
+    /**
+     * Gives folders artwork from the same providers as games.
+     *
+     * A folder is usually named after a series or a system — "Zelda", "Mario
+     * Kart", "Arcade" — so the providers can find cover art for it exactly as
+     * they would for a title. Hand-picking an image for every folder is the only
+     * alternative, and it is the sort of chore that leaves folders looking like
+     * placeholder glyphs forever.
+     *
+     * Smart folders are included; their artwork is presentation, not contents.
+     * Folders whose artwork the user chose by hand are never touched — that URI is
+     * their own, and a scrape overwriting it would be the same silent revert the
+     * locked-field mechanism exists to prevent for games.
+     *
+     * @return how many folders gained artwork
+     */
+    private suspend fun scrapeFolderArtwork(onlyMissing: Boolean): Int {
+        val folders = folderDao.getAll()
+        val targets = if (onlyMissing) folders.filter { it.artworkUri == null } else folders
+        if (targets.isEmpty()) return 0
+
+        var updated = 0
+        targets.forEachIndexed { index, folder ->
+            currentCoroutineContext().ensureActive()
+            _state.value = ScrapeState.Running(
+                done = index,
+                total = targets.size,
+                currentTitle = folder.title,
+            )
+
+            val scraped = aggregator.scrape(
+                query = MetadataQuery(
+                    title = folder.title,
+                    sortTitle = folder.sortTitle,
+                    // No platform: a folder spans systems, and constraining the
+                    // search to one would miss most of the matches.
+                    platformId = "",
+                    providerPlatformId = null,
+                    // A folder has no file, so the filename and size matchers
+                    // have nothing to work with and only title matching applies.
+                    fileName = folder.title,
+                    fileSizeBytes = 0L,
+                ),
+                existing = GameMetadata.EMPTY,
+            )
+
+            // Square art first, then the cover: a folder renders in the same
+            // square cell a game does.
+            val artwork = scraped.artwork.icon
+                ?: scraped.artwork.boxArt
+                ?: scraped.artwork.hero
+            if (artwork != null) {
+                folderDao.upsert(folder.copy(artworkUri = artwork))
+                updated++
+            }
+        }
+        return updated
+    }
+
+    /** Scrapes one entry, used by the "refresh metadata" context action. */
+    fun requestScrapeFor(gameId: String) {
+        if (isRunning) return
+        runningJob = scope.launch {
+            runCatching {
+                withContext(ioDispatcher) {
+                    val game: GameEntity = gameDao.getById(gameId) ?: return@withContext
+                    val platform = platformDao.getById(game.platformId)
+                    _state.value = ScrapeState.Running(0, 1, game.title)
+
+                    val merged = aggregator.scrape(
+                        query = MetadataQuery(
+                            title = game.title,
+                            sortTitle = game.sortTitle,
+                            platformId = game.platformId,
+                            providerPlatformId = platform?.providerIds?.get("screenscraper"),
+                            fileName = game.fileName,
+                            fileSizeBytes = game.fileSizeBytes,
+                        ),
+                        existing = game.metadata,
+                    )
+                    gameDao.setMetadata(gameId, merged)
+                    _state.value = ScrapeState.Completed(updated = 1, skipped = 0)
+                }
+            }.onFailure { error ->
+                ThorLog.e(TAG, "Scrape failed for $gameId", error)
+                _state.value = ScrapeState.Failed(error.message ?: "Scrape failed")
+            }
+        }
+    }
+
+    private companion object {
+        const val TAG = "MetadataSync"
+    }
+}
