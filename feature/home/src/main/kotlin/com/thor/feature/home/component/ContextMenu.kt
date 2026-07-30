@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.core.model.AppEntry
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
@@ -270,11 +272,16 @@ private fun ContextRow(
     }
     val destructive = action == ContextAction.UNINSTALL || action == ContextAction.DELETE_FOLDER
 
+    // Lit by the controller cursor or by the pointer, indistinguishably.
+    val hover = rememberPointerHover()
+    val lit = focused || hover.isHovered
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
-            .thorCursor(focused = focused, cornerRadius = dimens.cornerRadiusSmall)
+            .thorCursor(focused = lit, cornerRadius = dimens.cornerRadiusSmall)
+            .pointerHover(hover)
             .clickable(onClick = onClick)
             .padding(horizontal = dimens.spacingSmall, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -285,7 +292,7 @@ private fun ContextRow(
             contentDescription = null,
             tint = when {
                 destructive -> colors.error
-                focused -> colors.cursor
+                lit -> colors.cursor
                 else -> colors.onSurfaceVariant
             },
             modifier = Modifier.size(20.dp),

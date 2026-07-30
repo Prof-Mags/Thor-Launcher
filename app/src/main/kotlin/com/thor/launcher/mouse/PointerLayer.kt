@@ -7,21 +7,29 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.thor.core.common.log.ThorLog
+import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.input.MouseController
 import com.thor.core.input.PointerPosition
 import com.thor.core.model.MouseAction
+import com.thor.core.ui.pointer.LocalPointerHoverFeedback
+import com.thor.core.ui.pointer.LocalPointerPosition
 
 /**
  * The pointer, inside THOR's own windows.
@@ -41,10 +49,13 @@ import com.thor.core.model.MouseAction
  * @param displayId the panel this instance is drawn on
  */
 @Composable
-fun PointerLayer(
+fun PointerHost(
     mouse: MouseController,
     displayId: Int?,
+    /** Buzzes when the cursor arrives over something. */
+    onHoverFeedback: () -> Unit,
     modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
 ) {
     val view = LocalView.current
 
@@ -52,10 +63,11 @@ fun PointerLayer(
      * The cursor's position is deliberately *not* collected into composition.
      *
      * It changes on every frame the stick is held, and a value read during
-     * composition re-runs composition and layout for the whole layer each time it
-     * does — for a shape that has only moved. Held in a plain state that nothing
-     * but the draw lambda reads, the frame becomes a redraw of one canvas, which
-     * is what a moving cursor should cost. This was most of the stutter.
+     * composition re-runs composition and layout for every reader each time it
+     * does — for a shape that has only moved. Held in a plain state that only the
+     * draw lambda and a `derivedStateOf` read, a frame becomes one canvas redraw
+     * and at most two elements changing their highlight. This was most of the
+     * stutter, and it is also what makes hover affordable at all.
      */
     val cursor = remember { mutableStateOf<PointerPosition?>(null) }
 
@@ -65,6 +77,24 @@ fun PointerLayer(
                 ?.takeIf { state.active && it.displayId == displayId }
         }
     }
+
+    // Derived once here rather than converted by every element that wants it.
+    val hoverPoint = remember(cursor) {
+        derivedStateOf { cursor.value?.let { Offset(it.x, it.y) } }
+    }
+
+    /*
+     * Both locals below must be referentially stable, and that is not a detail.
+     *
+     * `staticCompositionLocalOf` does not track reads — when its value changes it
+     * recomposes the entire subtree. The caller's lambda is a fresh instance on
+     * every recomposition of the shell, so providing it directly would recompose
+     * the whole launcher every time anything in it changed. Held once and
+     * redirected through `rememberUpdatedState`, the provided value never changes
+     * while the latest callback is still the one that runs.
+     */
+    val latestFeedback = rememberUpdatedState(onHoverFeedback)
+    val stableFeedback: () -> Unit = remember { { latestFeedback.value.invoke() } }
 
     /*
      * Actions are performed by whichever layer the pointer is currently over.
@@ -87,8 +117,16 @@ fun PointerLayer(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        Cursor(position = cursor)
+    CompositionLocalProvider(
+        LocalPointerPosition provides hoverPoint,
+        LocalPointerHoverFeedback provides stableFeedback,
+    ) {
+        Box(modifier = modifier.fillMaxSize()) {
+            content()
+            // Over everything this window draws, so the cursor is never behind the
+            // thing it is pointing at.
+            Cursor(position = cursor)
+        }
     }
 }
 
@@ -164,6 +202,20 @@ private fun Cursor(position: State<PointerPosition?>) {
     // to undo.
     val path = remember { Path() }
 
+    /*
+     * The arrow wears the theme's cursor colour — the same one the selection ring
+     * is drawn in, because they are the same idea pointed at the same thing.
+     *
+     * The outline is chosen against it rather than fixed. A pointer has to stay
+     * legible over arbitrary content: box art, a white settings sheet, a dark
+     * game. Filling it with an accent and stroking it with whatever the theme
+     * calls "outline" would work for some palettes and vanish for others, so the
+     * stroke is simply whichever of black or white the fill is furthest from.
+     */
+    val fill = ThorTheme.colors.cursor
+    val glow = ThorTheme.colors.glow
+    val outline = if (fill.luminance() > MID_LUMINANCE) DARK_OUTLINE else Color.White
+
     Canvas(modifier = Modifier.fillMaxSize()) {
         // Read here and nowhere else: inside the draw lambda this subscribes the
         // draw phase alone, so a move repaints without recomposing or re-laying out.
@@ -192,12 +244,10 @@ private fun Cursor(position: State<PointerPosition?>) {
         translate(left = size * 0.06f, top = size * 0.08f) {
             drawPath(path, Color.Black.copy(alpha = 0.28f))
         }
-        drawPath(path, Color.White)
-        drawPath(
-            path = path,
-            color = Color(0xFF101216),
-            style = Stroke(width = size * 0.075f),
-        )
+        // The theme's glow behind it, matching the selection ring's halo.
+        drawPath(path, glow.copy(alpha = GLOW_ALPHA), style = Stroke(width = size * 0.22f))
+        drawPath(path, fill)
+        drawPath(path, outline, style = Stroke(width = size * 0.075f))
     }
 }
 
@@ -205,6 +255,11 @@ private fun Cursor(position: State<PointerPosition?>) {
 private const val CURSOR_SIZE = 26
 private const val TAP_MS = 40L
 private const val LONG_PRESS_MS = 600L
+
+/** Above this, a fill is light enough to need a dark outline rather than a pale one. */
+private const val MID_LUMINANCE = 0.45f
+private val DARK_OUTLINE = Color(0xFF101216)
+private const val GLOW_ALPHA = 0.30f
 
 /** One scroll press moves about a third of a panel. */
 private const val SCROLL_PX = 320f

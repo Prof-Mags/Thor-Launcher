@@ -38,14 +38,20 @@ class PointerOverlay(private val context: Context) {
         val view: PointerView,
     )
 
-    /** Shows the pointer at [position], moving it between panels as needed. */
-    fun show(position: PointerPosition, sizeDp: Int) {
+    /**
+     * Shows the pointer at [position], moving it between panels as needed.
+     *
+     * @param fillArgb the theme's cursor colour, so the pointer looks like part
+     *   of the launcher even while standing over somebody else's app
+     */
+    fun show(position: PointerPosition, sizeDp: Int, fillArgb: Long) {
         // Hidden on every other panel, so the pointer is never in two places.
         windows.filterKeys { it != position.displayId }.keys.forEach(::hideOn)
 
         val window = windows.getOrPut(position.displayId) {
             create(position.displayId) ?: return
         }
+        window.view.setFill(fillArgb.toInt())
         window.view.moveTo(position.x, position.y, sizeDp)
     }
 
@@ -147,6 +153,25 @@ private class PointerView(context: Context) : View(context) {
         strokeJoin = Paint.Join.ROUND
     }
 
+    /**
+     * Takes the theme's cursor colour, and picks its own outline against it.
+     *
+     * The same rule the in-launcher cursor uses: this arrow sits over content
+     * nobody chose — a game, a browser, a store page — so the outline is whichever
+     * of black or white the fill is furthest from, rather than a fixed colour that
+     * would disappear for half the palettes.
+     */
+    fun setFill(argb: Int) {
+        if (fill.color == argb) return
+        fill.color = argb
+        stroke.color = if (Color.luminance(argb) > MID_LUMINANCE) {
+            Color.argb(220, 16, 18, 22)
+        } else {
+            Color.argb(220, 255, 255, 255)
+        }
+        invalidate()
+    }
+
     private val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = Color.argb(70, 0, 0, 0)
@@ -200,5 +225,8 @@ private class PointerView(context: Context) : View(context) {
 
     private companion object {
         const val STROKE_FRACTION = 0.075f
+
+        /** Above this, a fill needs a dark outline rather than a pale one. */
+        const val MID_LUMINANCE = 0.45f
     }
 }

@@ -58,7 +58,7 @@ import com.thor.core.display.ThorDisplayMonitor
 import com.thor.core.input.ControllerInputRouter
 import com.thor.core.input.MouseController
 import com.thor.core.input.PointerDisplay
-import com.thor.launcher.mouse.PointerLayer
+import com.thor.launcher.mouse.PointerHost
 import kotlinx.coroutines.flow.drop
 import com.thor.data.capture.RecordingState
 import com.thor.core.model.ControllerCommand
@@ -1199,17 +1199,24 @@ fun ThorApp(
                         onDispose { mouse.setPresentationFocus(null) }
                     }
 
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        inner()
-                        // Over everything this window draws, so the cursor is never
-                        // behind the thing it is pointing at.
-                        PointerLayer(mouse = mouse, displayId = secondary?.displayId)
-                    }
+                    PointerHost(
+                        mouse = mouse,
+                        displayId = secondary?.displayId,
+                        onHoverFeedback = { feedback.play(FeedbackCue.NAVIGATE) },
+                        content = inner,
+                    )
                 }
             }
         }
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        // Hosts the pointer over this window, whichever surfaces it holds, and
+        // publishes the cursor's position to everything inside so elements can
+        // light up under it. The presentation hosts its own; see `secondWindow`.
+        PointerHost(
+            mouse = mouse,
+            displayId = primaryPanel?.displayId,
+            onHoverFeedback = { feedback.play(FeedbackCue.NAVIGATE) },
+        ) {
         when (mode) {
             DualScreenMode.DUAL_DISPLAY -> {
                 val gridWindowContent: @Composable () -> Unit = {
@@ -1365,9 +1372,6 @@ fun ThorApp(
             }
         }
 
-        // The pointer over this window, whichever surfaces it happens to hold.
-        // The presentation draws its own; see `secondWindow`.
-        PointerLayer(mouse = mouse, displayId = primaryPanel?.displayId)
         }
         }
     }

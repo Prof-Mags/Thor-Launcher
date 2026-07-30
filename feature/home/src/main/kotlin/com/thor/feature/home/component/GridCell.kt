@@ -40,6 +40,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.modifier.thorCursor
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AppEntry
 import com.thor.core.model.FolderEntry
@@ -85,11 +87,26 @@ fun GridCell(
     val motion = ThorTheme.motion
     val dimens = ThorTheme.dimens
 
+    /*
+     * The pointer highlights exactly as the controller cursor does.
+     *
+     * Deliberately the same treatment rather than a second one. A cell under the
+     * cursor and a cell under the pointer are the same fact — "this is what a
+     * press will act on" — and the launcher already has a visual language for it.
+     * Inventing a hover style would have put two different marks on screen
+     * meaning one thing, and left the pointer looking like a guest.
+     *
+     * An empty cell is skipped: it has nothing to act on, and lighting up the
+     * gaps as the cursor crossed them would strobe.
+     */
+    val hover = rememberPointerHover()
+    val highlighted = focused || (entry != null && hover.isHovered)
+
     // A held icon lifts further than a merely focused one, so the two states
     // are distinguishable at a glance while dragging.
     val targetScale = when {
         isHeld -> 1.14f
-        focused -> 1.07f
+        highlighted -> 1.07f
         else -> 1f
     }
     val focusScale by animateFloatAsState(
@@ -161,7 +178,11 @@ fun GridCell(
                     // The cell's own shape, so a square icon gets a square cursor
                     // and a circular one a ring, rather than a fixed rounded box
                     // that matched only one of the five shapes on offer.
-                    .thorCursor(focused = focused, shape = shape)
+                    .thorCursor(focused = highlighted, shape = shape)
+                    // Bounds taken from the icon itself, not the whole cell, so
+                    // the highlight appears when the cursor is over the artwork
+                    // rather than anywhere in the surrounding gutter.
+                    .pointerHover(hover)
                     .clip(shape)
                     .background(theme.surfaceElevated, shape),
                 contentAlignment = Alignment.Center,

@@ -50,6 +50,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.core.ui.input.LocalThorTextInput
 import com.thor.core.ui.input.ThorInputField
 import kotlin.math.roundToInt
@@ -153,13 +155,28 @@ private fun SettingsRowShell(
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
 
+    /*
+     * Every settings row passes through here, so the pointer highlights all of
+     * them from one place — pickers, switches, sliders and actions alike.
+     *
+     * Only rows that do something light up. A read-only row has nothing for a
+     * click to land on, and highlighting it would promise otherwise; the
+     * controller cursor already skips them for the same reason.
+     */
+    val hover = rememberPointerHover()
+    val lit = focused || (onClick != null && hover.isHovered)
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = ROW_HEIGHT.dp)
+            // Keyed on controller focus alone: scrolling a row into view because
+            // the *pointer* drifted over it would drag the list out from under
+            // the cursor that was aiming at it.
             .revealWhenFocused(focused)
             .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
-            .thorCursor(focused = focused, cornerRadius = dimens.cornerRadiusSmall)
+            .thorCursor(focused = lit, cornerRadius = dimens.cornerRadiusSmall)
+            .pointerHover(hover)
             .let { if (onClick != null) it.clickable(onClick = onClick) else it }
             // Horizontal padding is inside the cursor bounds: without it the
             // highlight ring is drawn straight over the first and last

@@ -37,6 +37,8 @@ import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.modifier.thorSurface
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.core.model.CornerStyle
 import com.thor.core.model.LauncherTab
 
@@ -135,6 +137,11 @@ private fun NavTab(
     val dimens = ThorTheme.dimens
     val motion = ThorTheme.motion
 
+    // The pointer lights a tab the same way the controller cursor does; see the
+    // note in GridCell for why it is the same treatment and not a second one.
+    val hover = rememberPointerHover()
+    val lit = cursorOn || hover.isHovered
+
     val tint by animateColorAsState(
         targetValue = if (selected) colors.cursor else colors.onSurfaceVariant,
         animationSpec = motion.tweenSpec(motion.cursorMillis),
@@ -144,7 +151,7 @@ private fun NavTab(
     // Lifts under the cursor the way a focused tile does on a television, and
     // the same amount the theme cards lift, so the two read as one system.
     val lift by animateFloatAsState(
-        targetValue = if (cursorOn) 1f else 0f,
+        targetValue = if (lit) 1f else 0f,
         animationSpec = motion.tweenSpec(motion.cursorMillis),
         label = "navTabLift",
     )
@@ -181,7 +188,8 @@ private fun NavTab(
                     Modifier
                 },
             )
-            .thorCursor(focused = cursorOn, shape = shape)
+            .thorCursor(focused = lit, shape = shape)
+            .pointerHover(hover)
             .clickable(
                 interactionSource = interaction,
                 indication = null,

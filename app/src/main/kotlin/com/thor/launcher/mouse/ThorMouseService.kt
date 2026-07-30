@@ -17,6 +17,8 @@ import com.thor.core.input.PointerPosition
 import com.thor.core.model.MouseAction
 import com.thor.core.model.MouseButton
 import com.thor.core.model.MouseSettings
+import com.thor.core.model.ThemeId
+import com.thor.core.model.ThemeSpec
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +64,9 @@ class ThorMouseService : AccessibilityService() {
     private var overlay: PointerOverlay? = null
     private var settings = MouseSettings()
 
+    /** The theme's cursor colour; the default theme's until settings arrive. */
+    private var cursorArgb: Long = ThemeSpec.of(ThemeId.DARK).cursorArgb
+
     /** Buttons of the toggle chord currently held. */
     private var startHeld = false
     private var selectHeld = false
@@ -88,11 +93,18 @@ class ThorMouseService : AccessibilityService() {
         // Drawn from the shared state rather than from this service's own idea of
         // where the pointer is, so the cursor is in the same place whether the
         // launcher or this service last moved it.
+        // The theme's cursor colour, so the pointer looks like THOR's even while
+        // it is standing over somebody else's app. Read from the spec rather than
+        // from the Compose theme, which does not exist out here.
+        settingsRepository.personalization
+            .onEach { cursorArgb = ThemeSpec.of(it.themeId).cursorArgb }
+            .launchIn(scope)
+
         mouse.state
             .onEach { state ->
                 val position = state.position
                 if (state.active && position != null) {
-                    overlay?.show(position, settings.cursorSizeDp)
+                    overlay?.show(position, settings.cursorSizeDp, cursorArgb)
                 } else {
                     overlay?.hide()
                 }
