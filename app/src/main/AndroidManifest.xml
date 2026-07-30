@@ -88,10 +88,27 @@
           activity is singleTask, so claiming the role there would have the system
           move the launcher's one instance onto the second display.
         -->
+        <!--
+          `singleTop`, not `singleTask`, and the difference matters here.
+
+          `singleTask` means "be the root of the task with my affinity". This activity
+          has no explicit affinity, so it inherits the package's — the same one
+          LauncherActivity roots, on the *default* display. Two singleTask activities
+          competing for one affinity is not a configuration the system can satisfy on
+          two displays at once, and a secondary-display home that cannot be placed in
+          that display's home task is one the system gives up on, falling back to the
+          platform's own: the stock home screen appearing on the panel THOR should own.
+
+          `singleTop` sidesteps the question entirely. It does no affinity-based task
+          reuse, so the system is free to place this in whichever display's home task
+          it is starting — and because a home activity sits at the top of that task, a
+          repeated Home press still arrives at onNewIntent rather than creating
+          anything. This is the configuration AOSP's own SecondaryDisplayLauncher uses.
+        -->
         <activity
             android:name=".SecondaryHomeActivity"
             android:exported="true"
-            android:launchMode="singleTask"
+            android:launchMode="singleTop"
             android:stateNotNeeded="true"
             android:excludeFromRecents="true"
             android:resizeableActivity="true"

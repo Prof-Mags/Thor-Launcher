@@ -29,6 +29,19 @@ class SettingsSerializer @Inject constructor() : Serializer<ThorSettings> {
         // A corrupt settings file must not brick the launcher; DataStore replaces
         // it with the default once we signal corruption.
         throw CorruptionException("Unable to read THOR settings", e)
+    } catch (e: IllegalArgumentException) {
+        /*
+         * Not every malformed document arrives as a `SerializationException`.
+         *
+         * `isLenient` widens what the parser will accept, and what it rejects it can
+         * reject as a plain `IllegalArgumentException` — a bad numeric literal or an
+         * out-of-range enum ordinal, say. Those escaped the catch above and came out
+         * of `readFrom` unhandled, which DataStore treats as a read failure rather
+         * than as corruption: it does not replace the file, so every subsequent read
+         * fails the same way and the launcher cannot load its settings again at all.
+         * Signalling corruption is what lets it recover to defaults.
+         */
+        throw CorruptionException("Unable to read THOR settings", e)
     }
 
     override suspend fun writeTo(t: ThorSettings, output: OutputStream) {

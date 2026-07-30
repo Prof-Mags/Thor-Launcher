@@ -240,6 +240,28 @@ class LauncherViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Ends a recording that outlived the launcher.
+     *
+     * [ScreenRecorder] is application-scoped — it has to be, because it owns a
+     * `VirtualDisplay` and a hardware encoder that must not be torn down by a
+     * configuration change — and nothing else ever stopped it. So a recording left
+     * running when this view model went away kept the encoder open, kept writing, and
+     * kept a `VirtualDisplay` alive that the launcher had stopped rendering onto. The
+     * file was worse than the leak: `MediaStore` entries are created `IS_PENDING`, and
+     * one whose writer dies without clearing that flag is invisible to galleries and
+     * cannot be removed by the user.
+     *
+     * Stopping here publishes what was captured up to this point instead.
+     */
+    override fun onCleared() {
+        super.onCleared()
+        if (screenRecorder.isRecording) {
+            ThorLog.w(TAG, "Launcher went away mid-recording; closing the file")
+            screenRecorder.stop()
+        }
+    }
+
     // ---- Cold-start intro --------------------------------------------------
 
     /**
@@ -1584,7 +1606,13 @@ class LauncherViewModel @Inject constructor(
             if (result is LaunchResult.Failed && target == LaunchTarget.SECOND_SCREEN) {
                 _secondScreenOccupied.value = false
             }
-            if (result is LaunchResult.Success) emit(LauncherEffect.Launched)
+            if (result is LaunchResult.Success) {
+                emit(
+                    LauncherEffect.Launched(
+                        onSecondaryPanel = target == LaunchTarget.SECOND_SCREEN,
+                    ),
+                )
+            }
             handleResult(result, entry.id)
             closeContextMenu()
         }

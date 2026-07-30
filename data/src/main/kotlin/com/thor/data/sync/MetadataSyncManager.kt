@@ -1,5 +1,6 @@
 package com.thor.data.sync
 
+import com.thor.core.common.coroutines.launchSafely
 import com.thor.core.common.dispatchers.ApplicationScope
 import com.thor.core.common.dispatchers.Dispatcher
 import com.thor.core.common.dispatchers.ThorDispatcher
@@ -21,7 +22,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -72,12 +72,24 @@ class MetadataSyncManager @Inject constructor(
      */
     fun requestScrape(onlyMissing: Boolean = true) {
         if (isRunning) return
-        runningJob = scope.launch {
-            runCatching { scrape(onlyMissing) }
-                .onFailure { error ->
-                    ThorLog.e(TAG, "Metadata scrape failed", error)
-                    _state.value = ScrapeState.Failed(error.message ?: "Scrape failed")
-                }
+        /*
+         * [launchSafely] rather than `runCatching`, and the difference is visible to
+         * the user.
+         *
+         * `runCatching` catches `Throwable`, which includes `CancellationException` —
+         * so pressing Cancel reported the cancellation it had just asked for as a
+         * failure: [cancel] set the state to Idle, the coroutine then unwound through
+         * `ensureActive`, and the handler immediately overwrote Idle with
+         * "Failed: Job was cancelled". `launchSafely` rethrows cancellation and
+         * handles only real errors.
+         */
+        runningJob = scope.launchSafely(
+            tag = TAG,
+            onError = { error ->
+                _state.value = ScrapeState.Failed(error.message ?: "Scrape failed")
+            },
+        ) {
+            scrape(onlyMissing)
         }
     }
 
@@ -211,30 +223,32 @@ class MetadataSyncManager @Inject constructor(
     /** Scrapes one entry, used by the "refresh metadata" context action. */
     fun requestScrapeFor(gameId: String) {
         if (isRunning) return
-        runningJob = scope.launch {
-            runCatching {
-                withContext(ioDispatcher) {
-                    val game: GameEntity = gameDao.getById(gameId) ?: return@withContext
-                    val platform = platformDao.getById(game.platformId)
-                    _state.value = ScrapeState.Running(0, 1, game.title)
-
-                    val merged = aggregator.scrape(
-                        query = MetadataQuery(
-                            title = game.title,
-                            sortTitle = game.sortTitle,
-                            platformId = game.platformId,
-                            providerPlatformId = platform?.providerIds?.get("screenscraper"),
-                            fileName = game.fileName,
-                            fileSizeBytes = game.fileSizeBytes,
-                        ),
-                        existing = game.metadata,
-                    )
-                    gameDao.setMetadata(gameId, merged)
-                    _state.value = ScrapeState.Completed(updated = 1, skipped = 0)
-                }
-            }.onFailure { error ->
+        // Cancellation-safe for the same reason as [requestScrape].
+        runningJob = scope.launchSafely(
+            tag = TAG,
+            onError = { error ->
                 ThorLog.e(TAG, "Scrape failed for $gameId", error)
                 _state.value = ScrapeState.Failed(error.message ?: "Scrape failed")
+            },
+        ) {
+            withContext(ioDispatcher) {
+                val game: GameEntity = gameDao.getById(gameId) ?: return@withContext
+                val platform = platformDao.getById(game.platformId)
+                _state.value = ScrapeState.Running(0, 1, game.title)
+
+                val merged = aggregator.scrape(
+                    query = MetadataQuery(
+                        title = game.title,
+                        sortTitle = game.sortTitle,
+                        platformId = game.platformId,
+                        providerPlatformId = platform?.providerIds?.get("screenscraper"),
+                        fileName = game.fileName,
+                        fileSizeBytes = game.fileSizeBytes,
+                    ),
+                    existing = game.metadata,
+                )
+                gameDao.setMetadata(gameId, merged)
+                _state.value = ScrapeState.Completed(updated = 1, skipped = 0)
             }
         }
     }

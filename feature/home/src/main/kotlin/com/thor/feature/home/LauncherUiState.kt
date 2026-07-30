@@ -142,7 +142,13 @@ sealed interface LauncherEffect {
      * The shell releases its panel-focus lock on this, so the window the app is
      * arriving in wins focus rather than having to take it from a launcher panel the
      * user happened to touch last — which is the touch that started it.
+     *
+     * @param onSecondaryPanel whether the app was sent to the display the launcher's
+     *   *presentation* projects onto. The shell releases its claim only then: an app
+     *   arriving on the activity's own display is not competing with the second panel
+     *   for focus, and standing that panel down for it left the screen the user was
+     *   actually holding visible but unable to answer the controller at all.
      */
-    data object Launched : LauncherEffect
+    data class Launched(val onSecondaryPanel: Boolean) : LauncherEffect
     data object OpenPowerMenu : LauncherEffect
 }

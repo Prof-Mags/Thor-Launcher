@@ -21,6 +21,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.modifier.thorCursor
@@ -77,8 +81,22 @@ fun ThemePreviewRow(
      * there was nothing on screen saying where the controller was — the row scrolled
      * and themes changed with no indication of what was about to be picked.
      */
-    var highlighted by remember(selected) {
+    var highlighted by remember {
         mutableIntStateOf(themes.indexOfFirst { it.id == selected }.coerceAtLeast(0))
+    }
+
+    /*
+     * Re-synced to the applied theme only while the cursor is somewhere else.
+     *
+     * This used to be `remember(selected)`, which reset the cursor every time a theme
+     * was applied — so pressing A moved the highlight to wherever the newly applied
+     * theme happened to sit in the row, and the next press of Right carried on from
+     * a place the user had not put it.
+     */
+    LaunchedEffect(selected, focused) {
+        if (!focused) {
+            highlighted = themes.indexOfFirst { it.id == selected }.coerceAtLeast(0)
+        }
     }
 
     // Left and right belong to this row while it holds the cursor; the page gets them
@@ -102,14 +120,34 @@ fun ThemePreviewRow(
      *
      * Follows the highlight while the controller is here and the applied theme when it
      * is not, so the row is scrolled to what the user is looking at either way.
+     *
+     * Centred rather than pinned to the leading edge. `animateScrollToItem(index)`
+     * alone puts the card flush against the start of the viewport, half under the
+     * row's own inset and with nothing visible after it — so the one card the user
+     * needs to see is the one drawn in the worst place on the row, and there is no
+     * sense of which direction there is left to travel.
      */
+    val cardWidthPx = with(LocalDensity.current) { CARD_WIDTH.dp.roundToPx() }
     LaunchedEffect(highlighted, selected, focused) {
         val index = if (focused) {
             highlighted
         } else {
             themes.indexOfFirst { it.id == selected }
         }
-        if (index >= 0) listState.animateScrollToItem(index)
+        if (index < 0) return@LaunchedEffect
+
+        val layout = listState.layoutInfo
+        val viewport = layout.viewportEndOffset - layout.viewportStartOffset
+        val centred = -((viewport - cardWidthPx) / 2).coerceAtLeast(0)
+
+        // Animated while the controller is driving, so movement along the row reads
+        // as movement; snapped when it is not, because a row being restored to the
+        // applied theme has no journey to show.
+        if (focused) {
+            listState.animateScrollToItem(index, centred)
+        } else {
+            listState.scrollToItem(index, centred)
+        }
     }
 
     Column(
@@ -191,12 +229,27 @@ private fun ThemeCard(
                 .clip(RoundedCornerShape(PREVIEW_CORNER.dp))
                 .background(background)
                 .border(
-                    // Three states, and each has to be tellable from the others: the
-                    // theme in use, the card the controller is on, and the rest.
-                    width = if (cursorOn || selected) 2.dp else 1.dp,
+                    /*
+                     * Two *independent* states, not three exclusive ones.
+                     *
+                     * "The controller is here" and "this theme is applied" are
+                     * different facts about a card and are routinely both true — the
+                     * cursor starts on the applied theme every time the page opens.
+                     * Ranking them in one `when` meant the applied card swallowed the
+                     * cursor's own treatment at exactly that moment, so arriving on
+                     * the Themes page showed no cursor at all; and once the cursor did
+                     * move, the two states were a 2dp border apiece in colours a
+                     * glance cannot rank. The ring is now the cursor's alone, and
+                     * applied-ness is said separately by the badge below.
+                     */
+                    width = when {
+                        cursorOn -> CURSOR_BORDER.dp
+                        selected -> 2.dp
+                        else -> 1.dp
+                    },
                     color = when {
-                        selected -> activeColors.cursor
-                        cursorOn -> activeColors.onSurface
+                        cursorOn -> activeColors.cursor
+                        selected -> activeColors.onSurface.copy(alpha = 0.55f)
                         else -> activeColors.outline
                     },
                     shape = RoundedCornerShape(PREVIEW_CORNER.dp),
@@ -295,6 +348,27 @@ private fun ThemeCard(
                         .background(elevated.copy(alpha = spec.surfaceAlpha)),
                 )
             }
+
+            // Applied-ness, given a mark of its own so it never has to compete with
+            // the cursor for the same pixels — the two are drawn together on the card
+            // the cursor starts on, which is every time this page is opened.
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(BADGE_INSET.dp)
+                        .size(BADGE_SIZE.dp)
+                        .background(activeColors.cursor, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Check,
+                        contentDescription = "Applied",
+                        tint = activeColors.background,
+                        modifier = Modifier.size(BADGE_ICON.dp),
+                    )
+                }
+            }
         }
 
         Text(
@@ -324,3 +398,16 @@ private const val ROW_INSET = 14
 
 /** How much a card grows under the cursor. */
 private const val CURSOR_SCALE = 1.06f
+
+/**
+ * The cursor's ring, deliberately heavier than any other border on the card.
+ *
+ * The point of the row is choosing by looking, so where the controller is has to be
+ * readable at a glance across twenty small cards.
+ */
+private const val CURSOR_BORDER = 3
+
+/** The "applied" badge: small enough not to obscure the miniature it sits on. */
+private const val BADGE_SIZE = 12
+private const val BADGE_ICON = 9
+private const val BADGE_INSET = 3

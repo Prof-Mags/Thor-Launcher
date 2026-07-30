@@ -8,6 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -46,6 +47,18 @@ fun GameVideoBackground(
     val context = LocalContext.current
     var surface by remember { mutableStateOf<SurfaceView?>(null) }
 
+    /*
+     * Read at call time rather than captured by the listener below.
+     *
+     * That listener is registered once — its effect is keyed on the player, which
+     * outlives every clip — so a captured `onFailure` went on reporting failures to
+     * the composition that happened to be current when the *first* clip was prepared.
+     * Moving the cursor to another game then had a failed clip mark the wrong entry
+     * as unplayable, and the entry that actually failed kept trying.
+     */
+    val currentUri by rememberUpdatedState(videoUri)
+    val currentOnFailure by rememberUpdatedState(onFailure)
+
     val player = remember(context) {
         ExoPlayer.Builder(context).build().apply {
             repeatMode = Player.REPEAT_MODE_ALL
@@ -60,8 +73,8 @@ fun GameVideoBackground(
         val listener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 // A missing or unsupported clip is routine, not exceptional.
-                ThorLog.w("TopScreen", "Preview clip failed: $videoUri", error)
-                onFailure()
+                ThorLog.w("TopScreen", "Preview clip failed: $currentUri", error)
+                currentOnFailure()
             }
         }
         player.addListener(listener)

@@ -35,7 +35,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +50,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.display.LauncherFocus
+import com.thor.core.display.LauncherPanel
 import com.thor.core.display.SecondaryDisplay
 import com.thor.core.display.ThorDisplayMonitor
 import com.thor.core.input.ControllerInputRouter
@@ -86,15 +87,17 @@ import com.thor.feature.topscreen.TopScreen
 private enum class Overlay { NONE, SETTINGS, SEARCH }
 
 /**
- * One of the launcher's two windows.
+ * The shell's surfaces named as the focus rule names them.
  *
- * The launcher owns a window on each display, and only one window on the device holds
- * key focus at a time. Which of them that is follows from which *surface* is active,
- * and which surface is active follows from what the user last touched or opened — so
- * the controller drives the screen you last put a thumb on, whatever is running on
- * the other one.
+ * [InputSurface] is the launcher's own vocabulary — top and bottom, as the user sees
+ * them — while [LauncherPanel] is the role a surface plays, which is what decides
+ * which window has to hold focus for it. They are the same two things; only one of
+ * them can live in `:core:display`, where the rule is testable.
  */
-private enum class FocusedWindow { ACTIVITY, PRESENTATION }
+private fun InputSurface.toPanel(): LauncherPanel = when (this) {
+    InputSurface.BOTTOM -> LauncherPanel.GRID
+    InputSurface.TOP -> LauncherPanel.INFO
+}
 
 /**
  * The launcher shell.
@@ -205,9 +208,6 @@ fun ThorApp(
     // in decides which window has to hold focus for it.
     val secondary = displays.firstOrNull { !it.isPrimary && it.isPresentationCapable }
     val mode = resolveMode(settings.display.mode, secondary != null)
-    val appOnSecondaryPanel = secondScreenOccupied
-    val gridInActivityWindow = settings.display.swapScreens
-    val infoWindowFree = !gridInActivityWindow || !appOnSecondaryPanel
 
     /*
      * ---- Focus -----------------------------------------------------------------
@@ -216,52 +216,86 @@ fun ThorApp(
      * what made it unreliable: the *active surface* is whatever the user is working
      * on, and the window holding that surface is the one that gets key focus and the
      * controller. Everything else follows from those two lines.
+     *
+     * Every one of them is a **lambda, evaluated on each read**, and that is the
+     * single most important thing in this file. Compose pauses a composition's frame
+     * clock when its window's lifecycle drops below STARTED, and this composition
+     * belongs to the activity — which is stopped for as long as an app covers the
+     * activity's *own* display, while the launcher is still fully on screen on the
+     * other one. A value computed into a `val` here therefore freezes at whatever it
+     * was at the moment of the launch and can never be recomputed, because nothing
+     * will recompose to recompute it. That is precisely what made the visible panel
+     * stop answering the controller: the user touched it, the touch was received, the
+     * state was written — and the derived focus decision on the far side of it never
+     * ran again. Read through the snapshot holders instead and every consumer,
+     * recomposing or not, sees the current answer.
      */
-    val activeSurface = when {
-        // An overlay claims input the moment it appears, and gives it straight back
-        // when it goes — no stored "previous focus" to get out of step, because the
-        // fallback *is* the last touched surface.
-        keyboard.visible -> InputSurface.BOTTOM
-        overlay != Overlay.NONE || state.editingEntry != null -> InputSurface.TOP
-        else -> touchedSurface
+    val gridInActivityWindowNow: () -> Boolean = { settings.display.swapScreens }
+    val appOnSecondaryPanelNow: () -> Boolean = { secondScreenOccupied }
+
+    /**
+     * Whether the window *not* holding the grid is one the user can see.
+     *
+     * When it is not, the info panel is not drawn at all and the surfaces it hosts
+     * move over the grid instead — see `infoOverlays`.
+     */
+    val infoWindowFreeNow: () -> Boolean = {
+        !gridInActivityWindowNow() || !appOnSecondaryPanelNow()
     }
 
-    val gridWindow =
-        if (gridInActivityWindow) FocusedWindow.ACTIVITY else FocusedWindow.PRESENTATION
-    val infoWindow =
-        if (gridInActivityWindow) FocusedWindow.PRESENTATION else FocusedWindow.ACTIVITY
-    val activeWindow = if (activeSurface == InputSurface.BOTTOM) gridWindow else infoWindow
+    /**
+     * Where the launcher's overlays are actually drawn.
+     *
+     * Not a constant, which is what it used to be. Settings, search and the editor
+     * live on the info surface while that surface has a panel of its own; when an app
+     * has taken that panel they are raised over the grid instead. Aiming the
+     * controller at the info surface regardless meant opening settings from a grid
+     * that had been displaced sent every button to a window the user could not see.
+     */
+    val overlaySurfaceNow: () -> InputSurface = {
+        if (infoWindowFreeNow()) InputSurface.TOP else InputSurface.BOTTOM
+    }
+
+    val activeSurfaceNow: () -> InputSurface = {
+        when {
+            // An overlay claims input the moment it appears, and gives it straight
+            // back when it goes — no stored "previous focus" to get out of step,
+            // because the fallback *is* the last touched surface.
+            //
+            // The keyboard is drawn into the grid's surface by construction, so it
+            // claims that one wherever the grid happens to be.
+            keyboard.visible -> InputSurface.BOTTOM
+            overlay != Overlay.NONE || state.editingEntry != null -> overlaySurfaceNow()
+            else -> touchedSurface
+        }
+    }
+
+    val overlayIsOpenNow: () -> Boolean = {
+        keyboard.visible || overlay != Overlay.NONE || state.editingEntry != null
+    }
 
     /*
      * Whether the second window should hold the device's key focus.
      *
-     * The active surface decides it, except while an app has just been launched — the
-     * launcher stands aside then so the app can take focus on the display it is
-     * arriving on. An open overlay overrides that, because an overlay only exists
-     * because the user just asked for it.
+     * The rule itself lives in [LauncherFocus], where it is a pure function with
+     * tests against the specific ways this has failed on the hardware. It is the part
+     * of the dual-screen design that has had to be re-derived most often, and each
+     * time it broke it did so without a crash or a log — so it is worth having
+     * somewhere a test can reach.
      */
-    val overlayIsOpen = keyboard.visible || overlay != Overlay.NONE ||
-        state.editingEntry != null
-    val presentationHoldsFocus = activeWindow == FocusedWindow.PRESENTATION &&
-        (overlayIsOpen || !focusYieldedToApp)
+    val presentationHoldsFocusNow: () -> Boolean = {
+        LauncherFocus.presentationTakesFocus(
+            activePanel = activeSurfaceNow().toPanel(),
+            gridInActivityWindow = gridInActivityWindowNow(),
+            overlayOpen = overlayIsOpenNow(),
+            focusYieldedToApp = focusYieldedToApp,
+        )
+    }
 
-    /*
-     * The same two values, readable from the input collector.
-     *
-     * That collector is started once and keyed on the router alone, so it holds the
-     * lambda it was launched with — and everything that lambda closed over. `overlay`
-     * and `state` survive that because they are property delegates over snapshot
-     * state: the closure captures the *holder*, and each read goes through it. A
-     * derived `val` has no holder. `activeSurface` was therefore frozen at its
-     * first-composition value, `BOTTOM`, from the launcher's first frame onwards —
-     * so the router computed its target from a surface that could never change, and
-     * every button went to the grid no matter which panel had been touched or what
-     * was open on the other one. Touching the info panel moved window focus (which
-     * is derived during composition, where the value is current) and changed nothing
-     * about where input went, which is exactly what that looks like from the front.
-     */
-    val currentActiveSurface by rememberUpdatedState(activeSurface)
-    val currentOverlayIsOpen by rememberUpdatedState(overlayIsOpen)
+    // Snapshots of the same derivations, for the things this composition draws.
+    val activeSurface = activeSurfaceNow()
+    val overlayIsOpen = overlayIsOpenNow()
+    val infoWindowFree = infoWindowFreeNow()
 
     /*
      * Yielding focus to something the launcher cannot see.
@@ -277,9 +311,13 @@ fun ThorApp(
      * this device that means the user put a thumb on it. The guard keeps the
      * launcher's own hand-overs out of it — when this window is unfocusable because
      * the *other* launcher panel is active, the loss is one we asked for.
+     *
+     * Reads the live derivation rather than a captured value: this is called from a
+     * window callback, at a moment when the composition that would have refreshed a
+     * captured one may have been paused for as long as the app has been running.
      */
     fun onPresentationFocusChanged(hasFocus: Boolean) {
-        if (!hasFocus && presentationHoldsFocus) focusYieldedToApp = true
+        if (!hasFocus && presentationHoldsFocusNow()) focusYieldedToApp = true
     }
 
     ThorTheme(
@@ -400,7 +438,7 @@ fun ThorApp(
                  * panel is a view of one entry, so the controller acts on that entry:
                  * its shots, launching it, and handing the pad back.
                  */
-                if (currentActiveSurface == InputSurface.TOP && !currentOverlayIsOpen) {
+                if (activeSurfaceNow() == InputSurface.TOP && !overlayIsOpenNow()) {
                     when (event.command) {
                         ControllerCommand.NAVIGATE_LEFT ->
                             viewModel.onCommand(ControllerCommand.CYCLE_IMAGE_PREVIOUS, false)
@@ -439,7 +477,7 @@ fun ThorApp(
                 // The grid handles everything unless the info surface is the active
                 // one, which it is exactly while it is showing something.
                 val target =
-                    if (currentActiveSurface == InputSurface.BOTTOM) Overlay.NONE else overlay
+                    if (activeSurfaceNow() == InputSurface.BOTTOM) Overlay.NONE else overlay
 
                 when (target) {
                     Overlay.NONE -> {
@@ -714,8 +752,18 @@ fun ThorApp(
                      * request to hold that panel — and a launcher window still holding
                      * focus is exactly what leaves an app running with a controller
                      * that does nothing.
+                     *
+                     * Only for a launch onto the panel the *presentation* projects
+                     * onto, though. Standing down for an app arriving on the other
+                     * display gave away the controller for a window that was not
+                     * competing for it, which left the panel still on screen — the one
+                     * the user was holding — visible, alive and completely deaf, with
+                     * nothing but Home able to get it back.
                      */
-                    LauncherEffect.Launched -> focusYieldedToApp = true
+                    is LauncherEffect.Launched ->
+                        if (LauncherFocus.launchYieldsPresentationFocus(effect.onSecondaryPanel)) {
+                            focusYieldedToApp = true
+                        }
 
                     LauncherEffect.OpenPowerMenu -> Unit
 
@@ -956,20 +1004,14 @@ fun ThorApp(
          *
          * A launch onto the activity's own display needs no flag at all — the app
          * simply covers that window, the way an app covers any activity.
-         */
-        val appOnSecondaryPanel = secondScreenOccupied
-
-        // `swapScreens` exists for hardware that reports its two panels the other way
-        // round, so a wrong guess is correctable from Settings rather than a rebuild.
-        val gridInActivityWindow = settings.display.swapScreens
-
-        /*
-         * Whether the window *not* holding the grid is one the user can see.
          *
-         * When it is not, the info panel is not drawn at all and the surfaces it
-         * hosts move over the grid instead — see [infoOverlays].
+         * `swapScreens` exists for hardware that reports its two panels the other way
+         * round, so a wrong guess is correctable from Settings rather than a rebuild.
+         * All three read through the live derivations declared at the top of this
+         * composable; see the note there for why none of them may be a captured value.
          */
-        val infoWindowFree = !gridInActivityWindow || !appOnSecondaryPanel
+        val appOnSecondaryPanel = appOnSecondaryPanelNow()
+        val gridInActivityWindow = gridInActivityWindowNow()
 
         /*
          * Where an ordinary launch sends an app: the grid's *home* panel, the one
@@ -1114,8 +1156,8 @@ fun ThorApp(
                 (recording as? RecordingState.Active)?.let { active ->
                     SecondaryDisplay(
                         displayId = active.displayId,
-                        enabled = true,
-                        takesFocus = false,
+                        enabled = { true },
+                        takesFocus = { false },
                     ) {
                         secondWindow {
                         ConsoleMockup(
@@ -1144,8 +1186,8 @@ fun ThorApp(
                          * for any other reason tore the window down and uncovered the
                          * system's own launcher on that panel.
                          */
-                        enabled = !appOnSecondaryPanel,
-                        takesFocus = presentationHoldsFocus,
+                        enabled = { !appOnSecondaryPanelNow() },
+                        takesFocus = presentationHoldsFocusNow,
                         keyDispatcher = inputRouter::dispatchKeyEvent,
                         motionDispatcher = inputRouter::onGenericMotionEvent,
                         onFocusChanged = ::onPresentationFocusChanged,
@@ -1155,18 +1197,20 @@ fun ThorApp(
                     infoWindowContent()
                     SecondaryDisplay(
                         displayId = secondary?.displayId,
-                        enabled = !appOnSecondaryPanel,
+                        enabled = { !appOnSecondaryPanelNow() },
                         /*
                          * Focus follows the active surface.
                          *
                          * This is what lets the controller drive this panel while an
                          * app holds the other one: touching it makes its surface the
                          * active one, and the window holding the active surface is the
-                         * window that takes focus. A launch yields the claim, so this
-                         * window never competes for focus with an app starting on its
-                         * display — and the next touch takes it straight back.
+                         * window that takes focus. A launch onto *this* window's panel
+                         * yields the claim, so it never competes for focus with an app
+                         * starting on its own display — and the next touch takes it
+                         * straight back, which now happens whether or not the activity
+                         * behind the other panel is in a state to recompose.
                          */
-                        takesFocus = presentationHoldsFocus,
+                        takesFocus = presentationHoldsFocusNow,
                         keyDispatcher = inputRouter::dispatchKeyEvent,
                         motionDispatcher = inputRouter::onGenericMotionEvent,
                         onFocusChanged = ::onPresentationFocusChanged,

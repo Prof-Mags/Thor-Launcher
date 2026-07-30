@@ -18,7 +18,7 @@ ROM scanner, an emulator launcher, and a metadata scraper.
 ## Status
 
 Builds and runs. `./gradlew assembleDebug assembleRelease test lintVitalRelease`
-is green, with no compiler warnings and 95 unit tests across 13 test classes.
+is green, with no compiler warnings and 103 unit tests across 14 test classes.
 
 It is a working launcher, not a finished product. Read
 [What is not built](#what-is-not-built) before planning around it.
@@ -492,6 +492,28 @@ It is a separate activity on purpose. `LauncherActivity` is `singleTask`, so cla
 the role there would have the system move the launcher's one instance onto the second
 display.
 
+Two things about it are load-bearing, and both were wrong.
+
+**It listens for `CATEGORY_SECONDARY_HOME`, not `CATEGORY_HOME`.** Android does not
+deliver the same intent to the two home roles: a press on the default display resolves
+through `getHomeIntent()` and carries `CATEGORY_HOME`, while a press on a secondary
+display resolves through `getSecondaryHomeIntent()` and carries
+`CATEGORY_SECONDARY_HOME`. This activity is registered for the second and receives
+only the second, so the original check for `CATEGORY_HOME` could never once be true.
+The press was made, the activity was started, and the running launcher was never told
+— which from the front is a Home button that does nothing on one of the two screens.
+
+**It is `singleTop`, not `singleTask`.** `singleTask` means "be the root of the task
+with my affinity", and with no explicit affinity this inherited the package's — the
+one `LauncherActivity` already roots on the *default* display. Two `singleTask`
+activities competing for one affinity is not something the system can satisfy across
+two displays, and a secondary home it cannot place in the right display's home task is
+one it gives up on, falling back to the platform's own: the stock home screen, on the
+panel THOR should own. `singleTop` does no affinity-based task reuse, so the system
+places it wherever it is starting the home task, and a repeated press still arrives at
+`onNewIntent` because a home activity is already at the top of its task. This matches
+AOSP's own `SecondaryDisplayLauncher`.
+
 ### Hard-won invariants
 
 These are the rules that stop the two-window design from failing in ways that each
@@ -501,6 +523,23 @@ froze" or "the Android launcher appeared on my other screen":
 - **The second window's lifetime is its own.** Hanging it off the activity's
   lifecycle or composition freezes it whenever anything opens on the *other* display.
   See [The second window is independent](#the-second-window-is-independent).
+- **Nothing the second window depends on may be a value computed in the activity's
+  composition.** This is the same failure one level up, and it outlived the fix
+  above. Compose pauses a composition's frame clock at `STOPPED`, so while an app
+  covers the activity's display that composition computes nothing further — and the
+  second window's *content* was fine, because it reads snapshot state through its own
+  recomposer, while the second window's **focusability** was a `Boolean` parameter
+  derived up there. It froze at whatever it was when the app launched. The panel
+  stayed lit, kept animating, received touches, wrote its state — and the derivation
+  that would have acted on them never ran again, so the screen in the user's hands
+  answered no button until Home brought the activity back. Presence and focus are now
+  passed as lambdas and applied from a `snapshotFlow` on a coroutine, which keeps
+  running when recomposition does not. Anything else that has to work while an app is
+  on the other display has the same requirement.
+- **A launch stands down only the panel it is arriving on.** Standing the second
+  panel down for an app opening on the activity's display gave away the controller to
+  a window that was not competing for it — which is the freeze above arriving by a
+  second route. `LauncherEffect.Launched` carries the panel; `LauncherFocus` decides.
 - **The panel is handed over before the app is started, not after.** A `Presentation`
   sits above application windows, so starting an app first means it arrives
   *underneath* a window that is still there, with the window manager deciding focus
@@ -528,11 +567,14 @@ froze" or "the Android launcher appeared on my other screen":
 ./gradlew test
 ```
 
-95 tests over the logic where a mistake is silent rather than loud: grid geometry,
+103 tests over the logic where a mistake is silent rather than loud: grid geometry,
 spacing and pinch presets, playback state, artwork sets, theme ramps, ROM title
 normalisation, scraper match confidence, display-mode resolution, settings
-migration, Room migrations, and cursor movement over the shortcut panel and the
-on-screen keyboard.
+migration, Room migrations, cursor movement over the shortcut panel and the
+on-screen keyboard, and **which window holds the controller** — the last of those
+being the rule this design has had to re-derive most often, and the one whose
+failures are hardest to see, because a launcher that is drawn correctly and answers
+no button looks exactly like one that is working.
 
 ---
 

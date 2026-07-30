@@ -1,5 +1,6 @@
 package com.thor.data.sync
 
+import com.thor.core.common.coroutines.launchSafely
 import com.thor.core.common.dispatchers.ApplicationScope
 import com.thor.core.common.dispatchers.Dispatcher
 import com.thor.core.common.dispatchers.ThorDispatcher
@@ -77,12 +78,19 @@ class LibrarySyncManager @Inject constructor(
             ThorLog.d(TAG) { "Scan already running; ignoring request" }
             return
         }
-        runningJob = scope.launch {
-            runCatching { fullScan() }
-                .onFailure { error ->
-                    ThorLog.e(TAG, "Library scan failed", error)
-                    _state.value = SyncState.Failed(error.message ?: "Scan failed")
-                }
+        /*
+         * [launchSafely] rather than `runCatching`, which catches `Throwable` and so
+         * also catches `CancellationException` — reporting a scan the launcher itself
+         * stopped as a scan that failed, and breaking structured concurrency on the
+         * way. Cancellation is rethrown here; only real errors reach [onError].
+         */
+        runningJob = scope.launchSafely(
+            tag = TAG,
+            onError = { error ->
+                _state.value = SyncState.Failed(error.message ?: "Scan failed")
+            },
+        ) {
+            fullScan()
         }
     }
 
@@ -97,10 +105,7 @@ class LibrarySyncManager @Inject constructor(
      */
     fun requestAppRefresh() {
         if (isScanning) return
-        runningJob = scope.launch {
-            runCatching { refreshApps() }
-                .onFailure { error -> ThorLog.e(TAG, "App refresh failed", error) }
-        }
+        runningJob = scope.launchSafely(TAG) { refreshApps() }
     }
 
     private suspend fun refreshApps() = withContext(ioDispatcher) {
