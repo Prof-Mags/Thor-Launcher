@@ -101,7 +101,32 @@ fun AnimatedWallpaperBackground(
         label = "adaptiveTint",
     )
 
-    Box(modifier = modifier.fillMaxSize().background(baseColor)) {
+    /*
+     * The theme's own ground, under everything else.
+     *
+     * A launcher background used to be one flat colour with an effect drawn over
+     * it, which is why the presets with their effects turned off were
+     * indistinguishable from each other: at that point a theme *was* one
+     * rectangle of one colour. The wash graduates the base toward the accent over
+     * the height of the panel, so a theme still reads as itself with every effect
+     * off — and it sits beneath the wallpaper image rather than replacing it.
+     */
+    val depth = ThorTheme.materials.backgroundDepth
+    val ground = remember(baseColor, colors.primary, depth) {
+        if (depth <= 0f) {
+            Brush.verticalGradient(listOf(baseColor, baseColor))
+        } else {
+            Brush.verticalGradient(
+                listOf(
+                    baseColor.blend(Color.Black, depth * 0.35f),
+                    baseColor,
+                    baseColor.blend(colors.primary, depth),
+                ),
+            )
+        }
+    }
+
+    Box(modifier = modifier.fillMaxSize().background(ground)) {
         if (imageUri != null) {
             ArtworkImage(
                 model = imageUri,

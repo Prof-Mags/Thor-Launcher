@@ -106,6 +106,31 @@ data class ThemeSpec(
     val motion: MotionStyle,
     val fontFamily: FontChoice,
     val soundPack: SoundPack,
+    /**
+     * How this theme's panels are actually drawn.
+     *
+     * Colour alone was never what separated these presets. A Switch panel is an
+     * opaque card with a shadow under it, a Vision panel is a lit sheet of glass,
+     * and a Retro panel is a flat rectangle with a hard edge — and with only a
+     * radius and an alpha to describe them, all three came out as the same
+     * rounded box in different colours. This is the part that makes them read as
+     * different systems.
+     */
+    val surface: SurfaceTreatment = SurfaceTreatment.TINTED,
+    /**
+     * How far the background graduates toward the accent, 0..1. Zero is flat.
+     *
+     * A single number rather than a hand-written gradient per theme: the wash is
+     * always the same shape — darker at the top, lifted toward [primaryArgb] at
+     * the bottom — and only its strength differs, so twenty literal gradients
+     * would be twenty chances to get one subtly wrong. Sits *under* the wallpaper
+     * rather than instead of it, so a theme still has ground of its own when
+     * every effect is switched off.
+     *
+     * Zero on the themes whose whole point is a flat field: a wash over true
+     * black is banding, and over the CRT preset it is a gradient nobody's CRT had.
+     */
+    val backgroundDepth: Float = 0.07f,
 ) {
     companion object {
         /** Every bundled theme, in menu order. */
@@ -157,6 +182,9 @@ data class ThemeSpec(
                 grain = 0f, defaultWallpaper = AnimatedWallpaper.STARFIELD,
                 motion = MotionStyle.SNAPPY, fontFamily = FontChoice.SYSTEM,
                 soundPack = SoundPack.MINIMAL,
+                // Flat and unlit, for the same reason it carries no grain: any
+                // wash or sheen over #000 is banding on an OLED panel.
+                surface = SurfaceTreatment.FLAT, backgroundDepth = 0f,
             ),
             ThemeSpec(
                 id = ThemeId.MINIMAL, isDark = true,
@@ -172,6 +200,8 @@ data class ThemeSpec(
                 grain = 0.04f, defaultWallpaper = AnimatedWallpaper.NONE,
                 motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
                 soundPack = SoundPack.NONE,
+                // The point of this one is that nothing is decorated.
+                surface = SurfaceTreatment.FLAT, backgroundDepth = 0f,
             ),
             ThemeSpec(
                 id = ThemeId.STEAM, isDark = true,
@@ -206,6 +236,7 @@ data class ThemeSpec(
                 grain = 0.03f, defaultWallpaper = AnimatedWallpaper.AURORA,
                 motion = MotionStyle.FLUID, fontFamily = FontChoice.SYSTEM,
                 soundPack = SoundPack.SOFT,
+                surface = SurfaceTreatment.GLASS, backgroundDepth = 0.14f,
             ),
             ThemeSpec(
                 id = ThemeId.VISION, isDark = true,
@@ -221,6 +252,13 @@ data class ThemeSpec(
                 grain = 0.025f, defaultWallpaper = AnimatedWallpaper.BOKEH,
                 motion = MotionStyle.FLUID, fontFamily = FontChoice.SYSTEM,
                 soundPack = SoundPack.SOFT,
+                // The most glass of the set: the thinnest sheet and the brightest
+                // lit edge, which is the whole identity of this preset.
+                surface = SurfaceTreatment.GLASS.copy(
+                    specularAlpha = 0.34f,
+                    borderAlpha = 0.38f,
+                ),
+                backgroundDepth = 0.16f,
             ),
             ThemeSpec(
                 id = ThemeId.MATERIAL_YOU, isDark = true,
@@ -236,6 +274,10 @@ data class ThemeSpec(
                 grain = 0.03f, defaultWallpaper = AnimatedWallpaper.MESH,
                 motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
                 soundPack = SoundPack.SOFT,
+                // The strongest elevation tint in the set, which is the whole
+                // idea this preset is named for.
+                surface = SurfaceTreatment.TINTED.copy(elevationTint = 0.11f),
+                backgroundDepth = 0.09f,
             ),
 
             // ---- Saturated darks -----------------------------------------
@@ -283,6 +325,14 @@ data class ThemeSpec(
                 grain = 0.075f, defaultWallpaper = AnimatedWallpaper.WAVES,
                 motion = MotionStyle.SNAPPY, fontFamily = FontChoice.MONO,
                 soundPack = SoundPack.ARCADE,
+                // Hard-edged rather than soft: a 4dp corner with a full-strength
+                // outline and no shadow is what makes this read as a terminal
+                // instead of as a rounded card that happens to be magenta.
+                surface = SurfaceTreatment.FLAT.copy(
+                    borderWidthDp = 1.5f,
+                    specularAlpha = 0.1f,
+                ),
+                backgroundDepth = 0.18f,
             ),
             ThemeSpec(
                 id = ThemeId.NEON, isDark = true,
@@ -298,6 +348,11 @@ data class ThemeSpec(
                 grain = 0.07f, defaultWallpaper = AnimatedWallpaper.PARTICLES,
                 motion = MotionStyle.SNAPPY, fontFamily = FontChoice.MONO,
                 soundPack = SoundPack.ARCADE,
+                surface = SurfaceTreatment.FLAT.copy(
+                    borderWidthDp = 1.5f,
+                    specularAlpha = 0.08f,
+                ),
+                backgroundDepth = 0.15f,
             ),
             ThemeSpec(
                 id = ThemeId.EMBER, isDark = true,
@@ -359,6 +414,9 @@ data class ThemeSpec(
                 grain = 0.11f, defaultWallpaper = AnimatedWallpaper.GRADIENT_DRIFT,
                 motion = MotionStyle.MECHANICAL, fontFamily = FontChoice.PIXEL,
                 soundPack = SoundPack.ARCADE,
+                // A 2dp corner, a hard outline and a flat field. No shadow and no
+                // wash, because nothing this preset is imitating had either.
+                surface = SurfaceTreatment.FLAT, backgroundDepth = 0f,
             ),
 
             // ---- Lights --------------------------------------------------
@@ -378,6 +436,9 @@ data class ThemeSpec(
                 grain = 0.02f, defaultWallpaper = AnimatedWallpaper.MESH,
                 motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
                 soundPack = SoundPack.SOFT,
+                // Light themes elevate by casting a shadow rather than by getting
+                // brighter — there is nowhere brighter to go above white.
+                surface = SurfaceTreatment.RAISED, backgroundDepth = 0.05f,
             ),
             ThemeSpec(
                 id = ThemeId.PAPER, isDark = false,
@@ -394,6 +455,13 @@ data class ThemeSpec(
                 grain = 0.08f, defaultWallpaper = AnimatedWallpaper.NONE,
                 motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SERIF,
                 soundPack = SoundPack.MINIMAL,
+                // A softer, shorter shadow than the other lights: paper stock
+                // sitting on paper stock, not a card floating over a page.
+                surface = SurfaceTreatment.RAISED.copy(
+                    shadowElevationDp = 4,
+                    borderAlpha = 0.5f,
+                ),
+                backgroundDepth = 0.04f,
             ),
             ThemeSpec(
                 id = ThemeId.SWITCH, isDark = false,
@@ -409,6 +477,10 @@ data class ThemeSpec(
                 grain = 0f, defaultWallpaper = AnimatedWallpaper.NONE,
                 motion = MotionStyle.SNAPPY, fontFamily = FontChoice.ROUNDED,
                 soundPack = SoundPack.CONSOLE,
+                // Crisp opaque cards on a flat grey field, which is the console
+                // this is named after almost exactly.
+                surface = SurfaceTreatment.RAISED.copy(shadowElevationDp = 6),
+                backgroundDepth = 0f,
             ),
             ThemeSpec(
                 id = ThemeId.THREE_DS, isDark = false,
@@ -424,6 +496,12 @@ data class ThemeSpec(
                 grain = 0f, defaultWallpaper = AnimatedWallpaper.BOKEH,
                 motion = MotionStyle.MECHANICAL, fontFamily = FontChoice.ROUNDED,
                 soundPack = SoundPack.CONSOLE,
+                // Soft, generous shadows under rounded plastic tiles.
+                surface = SurfaceTreatment.RAISED.copy(
+                    shadowElevationDp = 10,
+                    borderAlpha = 0.25f,
+                ),
+                backgroundDepth = 0.06f,
             ),
         )
 
@@ -437,6 +515,108 @@ data class ThemeSpec(
          * draw anything at all.
          */
         fun of(id: ThemeId): ThemeSpec = BY_ID[id] ?: BY_ID.getValue(ThemeId.DARK)
+    }
+}
+
+/**
+ * How a panel composites over whatever is behind it.
+ *
+ * The style is the *character*; [SurfaceTreatment] carries the numbers. Keeping
+ * them apart means a theme can say "glass, but with a heavier edge" without a new
+ * enum entry for every combination.
+ */
+@Serializable
+enum class SurfaceStyle(val label: String) {
+    /** Opaque, hard-edged, no depth. The flat presets: Retro, Minimal, OLED. */
+    FLAT("Flat"),
+
+    /** Opaque with a real drop shadow — a card lying on a page. Switch, 3DS. */
+    RAISED("Raised"),
+
+    /** Slightly translucent, tinted upward by elevation. Material, Steam. */
+    TINTED("Tinted"),
+
+    /** Translucent, blurred, with a lit top edge. Glass, Vision. */
+    GLASS("Glass"),
+}
+
+/**
+ * The measurements behind a [SurfaceStyle].
+ *
+ * Every value is a fraction or a dp rather than a colour, because all of them are
+ * resolved against the theme's own palette at draw time — a border is the theme's
+ * outline at [borderAlpha], not a colour of its own. That is what stops a
+ * treatment from fighting the palette it is applied to.
+ */
+@Serializable
+data class SurfaceTreatment(
+    val style: SurfaceStyle,
+    /** Border weight in dp; 0 draws none. */
+    val borderWidthDp: Float,
+    /** Border opacity against the theme's outline colour, 0..1. */
+    val borderAlpha: Float,
+    /**
+     * A brighter hairline along the top edge, 0..1.
+     *
+     * The single cheapest thing that makes a translucent panel read as a lit
+     * sheet rather than as reduced opacity, which is what glass looked like
+     * before this: flat, grey and slightly see-through.
+     */
+    val specularAlpha: Float,
+    /** Drop-shadow depth in dp; 0 draws none. */
+    val shadowElevationDp: Int,
+    /**
+     * How strongly the accent tints each elevation step, 0..1.
+     *
+     * Material's idea, and it is the reason a stack of panels stays legible
+     * without every level needing its own hand-picked colour: each step up
+     * carries a little more of the primary.
+     */
+    val elevationTint: Float,
+) {
+    /** True when this treatment wants the backdrop blurred behind it. */
+    val wantsBlur: Boolean get() = style == SurfaceStyle.GLASS
+
+    companion object {
+        /** Opaque, hard-edged, no depth at all. */
+        val FLAT = SurfaceTreatment(
+            style = SurfaceStyle.FLAT,
+            borderWidthDp = 1f,
+            borderAlpha = 0.9f,
+            specularAlpha = 0f,
+            shadowElevationDp = 0,
+            elevationTint = 0f,
+        )
+
+        /** An opaque card with a shadow under it. */
+        val RAISED = SurfaceTreatment(
+            style = SurfaceStyle.RAISED,
+            borderWidthDp = 0.5f,
+            borderAlpha = 0.35f,
+            specularAlpha = 0.05f,
+            shadowElevationDp = 8,
+            elevationTint = 0.02f,
+        )
+
+        /** The default: a faint edge, a little accent tint, almost no shadow. */
+        val TINTED = SurfaceTreatment(
+            style = SurfaceStyle.TINTED,
+            borderWidthDp = 1f,
+            borderAlpha = 0.5f,
+            specularAlpha = 0.07f,
+            shadowElevationDp = 2,
+            elevationTint = 0.06f,
+        )
+
+        /** Translucent and lit, for the themes with a blur budget. */
+        val GLASS = SurfaceTreatment(
+            style = SurfaceStyle.GLASS,
+            borderWidthDp = 1f,
+            borderAlpha = 0.45f,
+            specularAlpha = 0.26f,
+            shadowElevationDp = 0,
+            elevationTint = 0.04f,
+        )
     }
 }
 

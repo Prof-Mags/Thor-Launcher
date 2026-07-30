@@ -39,6 +39,7 @@ import com.thor.feature.settings.component.SliderRow
 import com.thor.feature.settings.component.SwitchRow
 import com.thor.feature.settings.component.SystemRow
 import com.thor.feature.settings.component.TextFieldRow
+import com.thor.core.model.CornerStyle
 import com.thor.feature.settings.component.ThemePreviewRow
 import com.thor.feature.settings.component.WallpaperPickerRow
 
@@ -113,7 +114,7 @@ fun SettingsPageContent(
  * overshoots produces presses that appear to do nothing.
  */
 fun rowCountFor(page: SettingsPage, platformCount: Int): Int = when (page) {
-    SettingsPage.THEME -> 3
+    SettingsPage.THEME -> 4
     SettingsPage.WALLPAPER -> 3
     SettingsPage.GRID -> 5
     SettingsPage.DOCK -> 6
@@ -169,6 +170,21 @@ private fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
         focused = focusedRow == 2,
         onCheckedChange = { on ->
             viewModel.updatePersonalization { it.copy(useDynamicColor = on) }
+        },
+    )
+    RowDivider()
+    // One answer for every corner in the launcher. On the Theme page rather than
+    // Interface because it overrides something the theme itself declares, and the
+    // two are only comprehensible next to each other.
+    ChoiceRow(
+        title = "Corner style",
+        subtitle = "Shape of panels, cards, dialogs and tabs",
+        options = CornerStyle.entries,
+        selected = personalization.cornerStyle,
+        label = CornerStyle::label,
+        focused = focusedRow == 3,
+        onSelected = { style ->
+            viewModel.updatePersonalization { it.copy(cornerStyle = style) }
         },
     )
 }

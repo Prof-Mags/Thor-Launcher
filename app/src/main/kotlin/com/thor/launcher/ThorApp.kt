@@ -194,6 +194,8 @@ fun ThorApp(
     val keyboard by viewModel.keyboard.collectAsState()
     val introVisible by viewModel.introVisible.collectAsState()
     val recording by viewModel.recording.collectAsState()
+    val selectedTab by viewModel.selectedTab.collectAsState()
+    val navCursor by viewModel.navCursor.collectAsState()
 
     /*
      * The launcher's own text focus, provided to both windows.
@@ -947,6 +949,9 @@ fun ThorApp(
                 entryInFolder = state.contextMenuEntry
                     ?.let { viewModel.folderContaining(it.id) != null } == true,
                 onFolderClosed = viewModel::closeFolder,
+                selectedTab = selectedTab,
+                navCursor = navCursor,
+                onTabSelected = viewModel::selectTab,
                 modifier = Modifier.fillMaxSize(),
             )
 
@@ -1275,7 +1280,7 @@ private fun TransientMessage(text: String, modifier: Modifier = Modifier) {
         color = colors.onSurface,
         modifier = modifier
             .padding(bottom = MESSAGE_BOTTOM_INSET.dp)
-            .clip(RoundedCornerShape(percent = 50))
+            .clip(ThorTheme.shapes.pill)
             .background(colors.scrim)
             .padding(horizontal = dimens.spacing, vertical = dimens.spacingSmall),
     )
@@ -1306,7 +1311,7 @@ private fun RecordingBadge(modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .padding(10.dp)
-            .clip(RoundedCornerShape(percent = 50))
+            .clip(ThorTheme.shapes.pill)
             .background(colors.scrim)
             .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,

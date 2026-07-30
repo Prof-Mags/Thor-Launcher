@@ -37,8 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -283,13 +285,16 @@ private fun ThemeCard(
                     .padding(6.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                // The information panel.
+                // The information panel, drawn in *this* theme's surface
+                // treatment rather than the active one's — the card exists to
+                // show what the alternative looks like, and since the treatment
+                // is now most of what separates the presets, a card that ignored
+                // it would show twenty variations on one rounded box.
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(PANEL_HEIGHT.dp)
-                        .clip(RoundedCornerShape(radius / 2))
-                        .background(surface.copy(alpha = spec.surfaceAlpha)),
+                        .miniature(spec, RoundedCornerShape(radius / 2), surface),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     Column(
@@ -320,8 +325,7 @@ private fun ThemeCard(
                         Box(
                             modifier = Modifier
                                 .size(CELL_SIZE.dp)
-                                .clip(RoundedCornerShape(radius / 2))
-                                .background(elevated)
+                                .miniature(spec, RoundedCornerShape(radius / 2), elevated)
                                 .then(
                                     if (index == 0) {
                                         Modifier.border(
@@ -381,6 +385,65 @@ private fun ThemeCard(
         )
     }
 }
+
+/**
+ * Draws a miniature panel in an *arbitrary* theme's surface treatment.
+ *
+ * Deliberately not [com.thor.core.designsystem.modifier.thorSurface], which reads
+ * the treatment from the active theme — exactly the wrong source here, where the
+ * whole point is to render nineteen themes that are not the active one. It reads
+ * from the passed [spec] instead, and takes the treatment's values raw rather than
+ * degraded: a card should show what a theme *is*, not what this device would fall
+ * back to if the user picked it.
+ */
+private fun Modifier.miniature(
+    spec: ThemeSpec,
+    shape: Shape,
+    color: Color,
+): Modifier {
+    val treatment = spec.surface
+    // Scaled down hard: a 10dp shadow under a 13dp cell is a black smudge.
+    val shadow = (treatment.shadowElevationDp * MINIATURE_SHADOW_SCALE).dp
+
+    return this
+        .then(
+            if (shadow > 0.dp) {
+                Modifier.shadow(elevation = shadow, shape = shape, clip = false)
+            } else {
+                Modifier
+            },
+        )
+        .clip(shape)
+        .background(color.copy(alpha = color.alpha * spec.surfaceAlpha))
+        .then(
+            if (treatment.specularAlpha > 0f) {
+                Modifier.background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = treatment.specularAlpha),
+                            Color.Transparent,
+                        ),
+                    ),
+                )
+            } else {
+                Modifier
+            },
+        )
+        .then(
+            if (treatment.borderWidthDp > 0f && treatment.borderAlpha > 0f) {
+                Modifier.border(
+                    width = treatment.borderWidthDp.dp,
+                    color = Color(spec.outlineArgb).copy(alpha = treatment.borderAlpha),
+                    shape = shape,
+                )
+            } else {
+                Modifier
+            },
+        )
+}
+
+/** A card is roughly a sixth of a panel, and its shadows have to scale with it. */
+private const val MINIATURE_SHADOW_SCALE = 0.35f
 
 private const val CARD_WIDTH = 104
 private const val CARD_HEIGHT = 66

@@ -222,7 +222,7 @@ private fun ControllerFocusEdge(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = HINT_INSET)
-                    .clip(RoundedCornerShape(percent = 50))
+                    .clip(ThorTheme.shapes.pill)
                     .background(colors.surface.copy(alpha = HINT_BACKGROUND_ALPHA))
                     .padding(horizontal = 14.dp, vertical = 7.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),

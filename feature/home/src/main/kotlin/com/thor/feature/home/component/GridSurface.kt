@@ -290,7 +290,7 @@ fun PageIndicators(
                         } else {
                             colors.onSurfaceVariant.copy(alpha = 0.5f)
                         },
-                        shape = CircleShape,
+                        shape = ThorTheme.shapes.pill,
                     ),
             )
         }

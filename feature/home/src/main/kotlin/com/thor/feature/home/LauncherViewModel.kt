@@ -19,6 +19,8 @@ import com.thor.core.model.NavDirection
 import com.thor.core.model.Platform
 import com.thor.core.model.ShortcutAction
 import com.thor.core.model.ShortcutGrid
+import com.thor.core.model.ControlSettings
+import com.thor.core.model.LauncherTab
 import com.thor.core.model.SortOrder
 import com.thor.data.capture.RecordingState
 import com.thor.data.capture.ScreenRecorder
@@ -135,6 +137,142 @@ class LauncherViewModel @Inject constructor(
      */
     private val _folderPicker = MutableStateFlow(FolderPickerState())
     val folderPicker: StateFlow<FolderPickerState> = _folderPicker.asStateFlow()
+
+    /**
+     * Navigation preferences, held rather than fetched.
+     *
+     * [move] used to read these straight from DataStore — two suspending reads,
+     * inside a launched coroutine, on *every* press of a direction. At the
+     * auto-repeat rate that is a queue of coroutines each awaiting two flow
+     * emissions before the cursor is allowed to move, and because they are
+     * separate coroutines nothing guarantees they finish in the order the presses
+     * arrived. Held keys therefore moved the cursor late, unevenly, and
+     * occasionally in the wrong order.
+     *
+     * Cursor movement is a synchronous, main-thread operation over snapshot state
+     * and should read like one. `Eagerly` because the first press must not be the
+     * one that pays for the subscription.
+     */
+    private val controlSettings: StateFlow<ControlSettings> = settingsRepository.controls
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ControlSettings())
+
+    // ---- Sections ----------------------------------------------------------
+
+    /** Which top-level section the launcher is showing. */
+    private val _selectedTab = MutableStateFlow(LauncherTab.DEFAULT)
+    val selectedTab: StateFlow<LauncherTab> = _selectedTab.asStateFlow()
+
+    /**
+     * The tab the controller cursor is sitting on, or null when it is in the
+     * content above the bar.
+     *
+     * Separate from [selectedTab] for the reason every cursor-driven list in this
+     * launcher keeps the two apart: you move across the bar to look before you
+     * press, and a bar where moving *is* selecting would tear the whole section
+     * down and rebuild it on every press of Right.
+     *
+     * Null is the grid holding the cursor, which is only possible on Home — the
+     * other sections have no cursor target of their own yet, so the bar keeps it.
+     */
+    private val _navCursor = MutableStateFlow<LauncherTab?>(null)
+    val navCursor: StateFlow<LauncherTab?> = _navCursor.asStateFlow()
+
+    /** True while the controller is on the nav bar rather than in the content. */
+    private val isNavBarFocused: Boolean get() = _navCursor.value != null
+
+    /**
+     * Moves the cursor down out of the grid and onto the bar.
+     *
+     * The bar is reached by walking into it, not by a dedicated button: pressing
+     * Down past the bottom row is what every ten-foot interface does, and it is
+     * the one gesture that needs no discovering. It lands on the *selected* tab
+     * rather than the first, so arriving somewhere and pressing Confirm is a
+     * no-op instead of a section change nobody asked for.
+     */
+    fun enterNavBar() {
+        _navCursor.value = _selectedTab.value
+    }
+
+    /**
+     * Returns the cursor to the content above.
+     *
+     * Refused on a section that has no content to hold a cursor — leaving the bar
+     * there would strand input on a surface with nothing focusable on it, which is
+     * the same dead end the dock used to be.
+     */
+    fun leaveNavBar() {
+        if (_selectedTab.value.isHome) _navCursor.value = null
+    }
+
+    /** Selects a section, from a tap or from Confirm on the bar. */
+    fun selectTab(tab: LauncherTab) {
+        _selectedTab.value = tab
+        // The cursor follows the selection, and stays on the bar: the sections
+        // other than Home have nothing else to focus, and on Home the user is one
+        // press of Up away from the grid.
+        _navCursor.value = tab
+        // A section change closes what was raised over the previous one, so
+        // switching to Movies and back does not restore a menu nobody left open.
+        if (!tab.isHome) {
+            sideMenuOpen.value = false
+            contextMenuEntryId.value = null
+            closeAppDrawer()
+        }
+    }
+
+    /**
+     * Controller input while the bar holds the cursor.
+     *
+     * Confirm is what commits a section, so Left and Right only move the cursor —
+     * see [navCursor].
+     */
+    private fun onNavBarCommand(command: ControllerCommand) {
+        val focused = _navCursor.value ?: return
+        when (command) {
+            ControllerCommand.NAVIGATE_LEFT ->
+                _navCursor.value = LauncherTab.step(focused, -1)
+
+            ControllerCommand.NAVIGATE_RIGHT ->
+                _navCursor.value = LauncherTab.step(focused, 1)
+
+            // Up is the way back into the content, and Back does the same thing:
+            // a bar at the bottom of the screen has nothing below it, so both of
+            // the "leave here" buttons should agree.
+            ControllerCommand.NAVIGATE_UP, ControllerCommand.BACK -> leaveNavBar()
+
+            ControllerCommand.CONFIRM -> selectTab(focused)
+
+            ControllerCommand.GO_HOME -> goHome()
+
+            /*
+             * Down continues the vertical cycle when the user has wrap on.
+             *
+             * The bar is the bottom of the panel, so it is the bottom of the
+             * cycle: Down from here returns to the top row of the grid, exactly as
+             * Down from the last row used to before the bar existed. Without this
+             * the bar either broke wrap or — when entry was gated on wrap being
+             * off, as it first was — became completely unreachable by controller
+             * for anyone who had wrap switched on.
+             *
+             * With wrap off there is nothing below, and the press is swallowed: a
+             * bar that holds the cursor and still scrolls the grid behind it is
+             * worse than one that does nothing.
+             */
+            ControllerCommand.NAVIGATE_DOWN ->
+                if (controlSettings.value.wrapNavigation && _selectedTab.value.isHome) {
+                    _navCursor.value = null
+                    cursor.value = CursorPosition(0, cursor.value.column)
+                }
+
+            ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
+
+            else -> Unit
+        }
+    }
+
+    /** Whether the grid cursor is on the last row, where Down leaves the grid. */
+    private fun isOnBottomRow(): Boolean =
+        _selectedTab.value.isHome && cursor.value.row >= uiState.value.spec.rows - 1
 
     private val effects = Channel<LauncherEffect>(Channel.BUFFERED)
     val effectFlow: Flow<LauncherEffect> = effects.receiveAsFlow()
@@ -817,9 +955,34 @@ class LauncherViewModel @Inject constructor(
             return
         }
 
+        /*
+         * The nav bar, last of the surfaces that can hold the cursor.
+         *
+         * Below every overlay on purpose: an overlay is raised *over* the bar and
+         * has to take input from it, exactly as it does from the grid. Above the
+         * grid's own handling, because while the cursor is on the bar the grid is
+         * not what the buttons are for.
+         */
+        if (isNavBarFocused) {
+            onNavBarCommand(command)
+            return
+        }
+
+        // Sections other than Home have no grid to drive, so everything below
+        // this point would act on a surface the user cannot see.
+        if (!_selectedTab.value.isHome) {
+            when (command) {
+                ControllerCommand.NAVIGATE_DOWN, ControllerCommand.BACK -> enterNavBar()
+                ControllerCommand.GO_HOME -> goHome()
+                ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
+                else -> Unit
+            }
+            return
+        }
+
         when (command) {
             ControllerCommand.NAVIGATE_UP -> move(NavDirection.UP)
-            ControllerCommand.NAVIGATE_DOWN -> move(NavDirection.DOWN)
+            ControllerCommand.NAVIGATE_DOWN -> moveDownOrEnterNavBar()
             ControllerCommand.NAVIGATE_LEFT -> move(NavDirection.LEFT)
             ControllerCommand.NAVIGATE_RIGHT -> move(NavDirection.RIGHT)
             ControllerCommand.CONFIRM -> confirm()
@@ -846,71 +1009,78 @@ class LauncherViewModel @Inject constructor(
         }
     }
 
+    /** Down from the grid: one row, or out of the grid and onto the bar. */
+    private fun moveDownOrEnterNavBar() {
+        if (isOnBottomRow()) enterNavBar() else move(NavDirection.DOWN)
+    }
+
     /**
      * Moves the cursor.
      *
      * Movement past a horizontal edge turns the page when the user has that
      * enabled, which is what makes a long library navigable without ever
      * reaching for the shoulder buttons.
+     *
+     * Synchronous, and that is the point: everything it touches is snapshot state
+     * already in memory, so a press should move the cursor in the same frame it
+     * arrives. See [controlSettings] for what it used to do instead.
      */
     fun move(direction: NavDirection) {
-        viewModelScope.launchSafely(TAG) {
-            val spec = settingsRepository.grid.first()
-            val controls = settingsRepository.controls.first()
-            val position = cursor.value
-            val page = currentPage.value
+        val spec = uiState.value.spec
+        val controls = controlSettings.value
+        val position = cursor.value
+        val page = currentPage.value
 
-            var row = position.row
-            var column = position.column
+        var row = position.row
+        var column = position.column
 
-            when (direction) {
-                NavDirection.UP -> row--
-                NavDirection.DOWN -> row++
-                NavDirection.LEFT -> column--
-                NavDirection.RIGHT -> column++
-            }
-
-            // Vertical wrap is opt-in; vertical edges never change page,
-            // because a page turn triggered by pressing Up reads as a glitch.
-            if (row < 0) row = if (controls.wrapNavigation) spec.rows - 1 else 0
-            if (row >= spec.rows) row = if (controls.wrapNavigation) 0 else spec.rows - 1
-
-            when {
-                column < 0 -> when {
-                    controls.edgeFlipsPage && page > 0 -> {
-                        currentPage.value = page - 1
-                        column = spec.columns - 1
-                    }
-
-                    controls.wrapNavigation -> column = spec.columns - 1
-                    else -> column = 0
-                }
-
-                column >= spec.columns -> {
-                    val lastPage = maxOf(0, uiState.value.visiblePageCount - 1)
-                    when {
-                        controls.edgeFlipsPage && page < lastPage -> {
-                            currentPage.value = page + 1
-                            column = 0
-                        }
-
-                        controls.wrapNavigation -> column = 0
-                        else -> column = spec.columns - 1
-                    }
-                }
-            }
-
-            cursor.value = CursorPosition(row, column)
-
-            /*
-             * A held icon is deliberately *not* committed on every cursor step.
-             * It used to be, which meant dragging across the grid rewrote a
-             * placement per cell travelled — harmless while a move merely swapped
-             * two icons, but now that landing on an occupied cell displaces its
-             * occupant, it would strip the placement of everything the cursor
-             * passed over on the way. The move is applied once, on drop.
-             */
+        when (direction) {
+            NavDirection.UP -> row--
+            NavDirection.DOWN -> row++
+            NavDirection.LEFT -> column--
+            NavDirection.RIGHT -> column++
         }
+
+        // Vertical wrap is opt-in; vertical edges never change page,
+        // because a page turn triggered by pressing Up reads as a glitch.
+        if (row < 0) row = if (controls.wrapNavigation) spec.rows - 1 else 0
+        if (row >= spec.rows) row = if (controls.wrapNavigation) 0 else spec.rows - 1
+
+        when {
+            column < 0 -> when {
+                controls.edgeFlipsPage && page > 0 -> {
+                    currentPage.value = page - 1
+                    column = spec.columns - 1
+                }
+
+                controls.wrapNavigation -> column = spec.columns - 1
+                else -> column = 0
+            }
+
+            column >= spec.columns -> {
+                val lastPage = maxOf(0, uiState.value.visiblePageCount - 1)
+                when {
+                    controls.edgeFlipsPage && page < lastPage -> {
+                        currentPage.value = page + 1
+                        column = 0
+                    }
+
+                    controls.wrapNavigation -> column = 0
+                    else -> column = spec.columns - 1
+                }
+            }
+        }
+
+        cursor.value = CursorPosition(row, column)
+
+        /*
+         * A held icon is deliberately *not* committed on every cursor step.
+         * It used to be, which meant dragging across the grid rewrote a
+         * placement per cell travelled — harmless while a move merely swapped
+         * two icons, but now that landing on an occupied cell displaces its
+         * occupant, it would strip the placement of everything the cursor
+         * passed over on the way. The move is applied once, on drop.
+         */
     }
 
     /** Places the cursor directly, used by touch input. */
@@ -1084,6 +1254,12 @@ class LauncherViewModel @Inject constructor(
 
         // Whatever was launched is being left behind, so its session is over.
         settlePlaytime()
+
+        // Home means the Home section with the cursor back in the grid. Returning
+        // to the launcher still on Movies would be the same surprise as returning
+        // to it on page four of the grid.
+        _selectedTab.value = LauncherTab.DEFAULT
+        _navCursor.value = null
 
         sideMenuOpen.value = false
         closeFolder()

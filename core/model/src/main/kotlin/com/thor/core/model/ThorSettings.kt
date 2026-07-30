@@ -48,6 +48,14 @@ data class PersonalizationSettings(
     /** 0..1 intensity of the glow behind the cursor. */
     val highlightGlow: Float = 0.6f,
     val glassEffects: Boolean = true,
+    /**
+     * Overrides every corner in the launcher, so nothing is rounded on its own.
+     *
+     * Corners were the theme's business alone, which meant a theme with a 2dp
+     * radius still had pill-shaped tabs and circular dock slots hardcoded next to
+     * its hard-edged panels. This is one answer for the whole interface.
+     */
+    val cornerStyle: CornerStyle = CornerStyle.THEME,
     val fontScale: Float = 1.0f,
     val transitionSpeed: Float = 1.0f,
     val clockStyle: ClockStyle = ClockStyle.DIGITAL_24,
@@ -55,6 +63,30 @@ data class PersonalizationSettings(
     val showPageIndicators: Boolean = true,
     val folderStyle: FolderStyle = FolderStyle.STACK,
 )
+
+/**
+ * How every corner in the launcher is drawn.
+ *
+ * A single answer for the whole interface rather than a value each component
+ * chooses. Panels took their radius from the theme, but pills, tabs, dock slots
+ * and dialogs were shaped where they were written — so a hard-edged theme still
+ * had rounded furniture in it, and nothing quite matched anything else.
+ *
+ * [THEME] keeps that per-theme character, which is right for presets built around
+ * it; the other two impose one shape on everything and let the theme carry only
+ * colour and material.
+ */
+@Serializable
+enum class CornerStyle(val label: String) {
+    /** Each theme's own radius, from sharp Retro to very round Vision. */
+    THEME("Theme default"),
+
+    /** Every corner rounded, generously and identically. */
+    ROUNDED("Rounded"),
+
+    /** Every corner square, including the ones that are normally circles. */
+    SQUARE("Square"),
+}
 
 @Serializable
 enum class AnimatedWallpaper(val label: String) {

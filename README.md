@@ -31,7 +31,7 @@ It is a working launcher, not a finished product. Read
 
 | | |
 |---|---|
-| **Grid panel** | Icon grid, dock, Start panel, app drawer, context menus, the shortcut panel and the keyboard |
+| **Grid panel** | Icon grid, bottom nav bar, Start panel, app drawer, context menus, the shortcut panel and the keyboard |
 | **Info panel** | Detail view for the selected entry, clock, status bar, animated or video background; hosts settings, search and the entry editor |
 
 Which physical panel gets which is a setting (**Display → Swap screens**), and the
@@ -99,8 +99,30 @@ a console rather than like an app drawer.
   rename stays that way through every later scan.
 - Icons take one of five shapes (square, rounded, squircle, circle, hexagon), and
   the selection cursor traces the shape the cell actually has.
-- The **dock** holds five user-assignable action slots, in a pill or a square, with
-  its own scale, transparency, blur and auto-hide.
+
+### Sections
+
+The bottom of the grid panel is a **three-tab nav bar** — Stream, Home, Movies —
+with Home in the middle because it is the one you return to constantly and the
+centre of the bottom edge is where a thumb already rests.
+
+It is reachable both ways, which is the point. Touch taps a tab; the controller
+walks into the bar by pressing Down past the bottom row of the grid, moves with
+Left and Right, commits with A, and leaves upward with Up or B. Moving is not
+selecting — you cross the bar to look before you press, the same as in the theme
+gallery — so holding Right does not tear down and rebuild three sections on the way.
+
+**Stream and Movies have no content source yet, and say so.** The sections are real:
+themed, navigable, focus-managed, and treated by the bar exactly as Home is. Only
+what fills them is undecided, and each says that plainly rather than rendering an
+empty grid — a blank page is indistinguishable from one whose content failed to load.
+
+The **dock** it replaces is hidden rather than deleted. Its five assignable action
+slots, their placements, and its settings page all still work behind
+`LauncherFeatures.DOCK_ENABLED`; the nav bar steps aside if it is switched back on.
+Only one of the two can own the bottom edge of a panel this size, and a section
+switcher earns it over five actions that had somewhere else to live — and that,
+unlike the dock, the controller could always reach.
 
 ### Controls
 
@@ -249,10 +271,32 @@ cycle with the bumpers). A provider without credentials is skipped, never fatal.
 ### Themes and appearance
 
 **20 bundled themes** (16 dark, 4 light), including Steam, PlayStation, Xbox,
-Switch and 3DS presets. A theme is more than a colour swap — each carries its own
-accent pair, surface treatment, corner radius, motion character and sound pack,
-which is what makes those presets read as distinct systems rather than as
-recoloured copies.
+Switch and 3DS presets.
+
+A theme is more than a colour swap, and the part that carries most of that is the
+**surface treatment**: how a panel is actually drawn, rather than what colour it
+is. Each theme declares one — a style (flat, raised, tinted or glass) plus the
+measurements behind it: border weight and opacity, the brightness of the lit top
+edge, shadow depth, and how far the accent tints each step up the elevation ramp.
+
+That is what separates the presets. A Switch panel is an opaque card with a real
+shadow under it; a Vision panel is a thin lit sheet; a Retro panel is a flat
+rectangle with a hard outline and no depth at all. With only a radius and an alpha
+to describe them, all three came out as the same rounded box in different colours —
+which is why themes with their effects turned off used to be nearly
+indistinguishable from one another.
+
+Every panel in the launcher goes through one modifier, `Modifier.thorSurface`, so a
+component gets its theme's treatment without knowing any of them exist. Themes also
+carry a **background depth**: a wash graduating the base toward the accent down the
+panel, so a theme still reads as itself with every effect switched off.
+
+Treatments degrade rather than break. Where the backdrop cannot be blurred — pre-API
+31, or performance mode — a glass treatment falls back to a tinted one and dials its
+specular edge back, because a lit edge over an unblurred background reads as a
+rendering fault; and shadows go entirely in performance mode, being the one part
+that costs a render pass per panel. Each theme also carries its own accent pair,
+corner radius, motion character, font and sound pack.
 
 Theme resolution folds user overrides, accessibility settings and performance mode
 together in one place. Notably, when blur is unavailable — pre-API 31, or

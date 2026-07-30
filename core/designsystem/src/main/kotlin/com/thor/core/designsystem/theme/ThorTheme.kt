@@ -2,6 +2,8 @@ package com.thor.core.designsystem.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -12,14 +14,19 @@ import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thor.core.model.AccessibilitySettings
+import com.thor.core.model.CornerStyle
 import com.thor.core.model.CursorAnimation
 import com.thor.core.model.CursorStyle
 import com.thor.core.model.PerformanceSettings
 import com.thor.core.model.PersonalizationSettings
+import com.thor.core.model.SurfaceStyle
+import com.thor.core.model.SurfaceTreatment
 import com.thor.core.model.ThemeSpec
 
 /**
@@ -37,7 +44,74 @@ data class ThorThemeState(
     val dimens: ThorDimens,
     val materials: ThorMaterials,
     val cursor: ThorCursorSpec,
+    val shapes: ThorShapes,
 )
+
+/**
+ * Every corner in the launcher, resolved once.
+ *
+ * Components read these rather than constructing their own, which is the whole
+ * point: panels used to take a radius from the theme while pills, tabs, dock slots
+ * and dialogs were shaped where they happened to be written. A theme with a 2dp
+ * radius therefore still had circular furniture in it and nothing matched anything
+ * else, and there was no single place a user's preference could reach.
+ *
+ * [pill] is separate from [panel] because a fully-rounded element is a distinct
+ * intent — a tab, a badge, a toggle track — and squaring the interface has to
+ * square those too, which a shared radius cannot express.
+ */
+@Immutable
+data class ThorShapes(
+    /** Panels, cards, sheets, grid cells. */
+    val panel: Shape,
+    /** Inner elements on a panel: rows, chips, small controls. */
+    val small: Shape,
+    /** Dialogs and full-height menus. */
+    val large: Shape,
+    /** Anything normally drawn as a capsule or a circle. */
+    val pill: Shape,
+) {
+    companion object {
+        /**
+         * Builds the set from the user's choice and the theme's own radius.
+         *
+         * Square is genuinely square everywhere, including the pill: a "square"
+         * interface with capsule tabs still in it is the inconsistency this
+         * setting exists to remove.
+         */
+        fun build(style: CornerStyle, themeRadius: Dp): ThorShapes = when (style) {
+            CornerStyle.SQUARE -> ThorShapes(
+                panel = RectangleShape,
+                small = RectangleShape,
+                large = RectangleShape,
+                pill = RectangleShape,
+            )
+
+            CornerStyle.ROUNDED -> ThorShapes(
+                panel = RoundedCornerShape(ROUNDED_PANEL.dp),
+                small = RoundedCornerShape(ROUNDED_SMALL.dp),
+                large = RoundedCornerShape(ROUNDED_LARGE.dp),
+                pill = CircleShape,
+            )
+
+            CornerStyle.THEME -> ThorShapes(
+                panel = RoundedCornerShape(themeRadius),
+                small = RoundedCornerShape(themeRadius * 0.5f),
+                large = RoundedCornerShape(themeRadius * 1.6f),
+                // A theme with square corners gets square pills too, so the two
+                // settings do not contradict each other on the same screen.
+                pill = if (themeRadius <= SQUARE_THRESHOLD.dp) RectangleShape else CircleShape,
+            )
+        }
+
+        private const val ROUNDED_PANEL = 22
+        private const val ROUNDED_SMALL = 12
+        private const val ROUNDED_LARGE = 32
+
+        /** At or below this a theme is treating its corners as square. */
+        private const val SQUARE_THRESHOLD = 4
+    }
+}
 
 /**
  * How the selection cursor looks.
@@ -105,6 +179,17 @@ data class ThorMaterials(
     val blurRadius: Dp,
     val glassEnabled: Boolean,
     val animationsEnabled: Boolean,
+    /**
+     * The theme's panel treatment, already degraded to what this device will draw.
+     *
+     * Resolved here rather than read from the spec at each call site, for the same
+     * reason [surfaceAlpha] is: every consumer would otherwise have to remember
+     * the same three fallbacks, and the one that forgets is the one that renders
+     * an unreadable panel.
+     */
+    val surface: SurfaceTreatment,
+    /** How far the background graduates toward the accent; 0 is flat. */
+    val backgroundDepth: Float,
 ) {
     val isBlurActive: Boolean get() = glassEnabled && blurRadius > 0.dp
 }
@@ -114,6 +199,15 @@ val LocalThorTheme: ProvidableCompositionLocal<ThorThemeState> =
 
 /** Selection ring thickness. Fixed rather than user-tunable. */
 private val DEFAULT_CURSOR_THICKNESS = 3.dp
+
+/**
+ * Panel radius when the user asks for rounded corners everywhere.
+ *
+ * Generous on purpose: this setting exists for someone who wants the whole
+ * interface soft, and a timid radius reads as the theme's own rather than as a
+ * choice that was applied.
+ */
+private const val ROUNDED_OVERRIDE_RADIUS = 22
 
 /**
  * Applies THOR's theme.
@@ -173,20 +267,62 @@ fun ThorTheme(
         val alpha = spec.surfaceAlpha
             .let { if (radius <= 0.dp) maxOf(it, 0.92f) else it }
             .coerceIn(0.05f, 1f)
+
+        /*
+         * A glass treatment with nothing blurred behind it is not glass; it is a
+         * flat grey sheet with a bright line on it. Where the backdrop cannot be
+         * blurred the panel falls back to a tinted one — which still has an edge
+         * and still steps with elevation — and the specular highlight is dialled
+         * back, because a lit edge over an unblurred background reads as a
+         * rendering mistake rather than as a material.
+         *
+         * Shadows go entirely in performance mode. They are the one part of a
+         * treatment that costs a render pass per panel.
+         */
+        val treatment = spec.surface
+            .let {
+                if (it.wantsBlur && !blurAllowed) {
+                    it.copy(style = SurfaceStyle.TINTED, specularAlpha = it.specularAlpha * 0.35f)
+                } else {
+                    it
+                }
+            }
+            .let { if (performance.performanceMode) it.copy(shadowElevationDp = 0) else it }
+
         ThorMaterials(
             surfaceAlpha = alpha,
             blurRadius = radius,
             glassEnabled = blurAllowed,
             animationsEnabled = !reduceMotion,
+            surface = treatment,
+            // Flattened in performance mode along with everything else that costs
+            // a gradient the user did not ask for.
+            backgroundDepth = if (performance.performanceMode) 0f else spec.backgroundDepth,
         )
     }
 
-    val dimens = remember(spec, accessibility.touchTargetScale) {
+    val dimens = remember(spec, accessibility.touchTargetScale, personalization.cornerStyle) {
+        /*
+         * The user's corner choice overrides the theme's own radius here, at the
+         * source, rather than at each call site.
+         *
+         * Nearly every shape in the launcher is already built from
+         * `dimens.cornerRadius` or one of its derivatives, so overriding the
+         * radius itself squares or rounds all of them at once — panels, rows,
+         * dialogs, keys, cells. Only the handful of elements hardcoded as capsules
+         * need [ThorShapes.pill] as well, and those are the ones a radius could
+         * never have described anyway.
+         */
+        val radius = when (personalization.cornerStyle) {
+            CornerStyle.SQUARE -> 0.dp
+            CornerStyle.ROUNDED -> ROUNDED_OVERRIDE_RADIUS.dp
+            CornerStyle.THEME -> spec.cornerRadiusDp.dp
+        }
         ThorDimens.build(
             // Density and corner scaling were user settings; they are now taken
             // from the theme alone, which is what made them redundant.
             density = 1f,
-            cornerRadius = spec.cornerRadiusDp.dp,
+            cornerRadius = radius,
             cursorThickness = DEFAULT_CURSOR_THICKNESS,
             touchScale = accessibility.touchTargetScale,
         )
@@ -226,6 +362,10 @@ fun ThorTheme(
         )
     }
 
+    val shapes = remember(personalization.cornerStyle, dimens.cornerRadius) {
+        ThorShapes.build(personalization.cornerStyle, dimens.cornerRadius)
+    }
+
     val state = ThorThemeState(
         spec = spec,
         colors = colors,
@@ -233,6 +373,7 @@ fun ThorTheme(
         dimens = dimens,
         materials = materials,
         cursor = cursorSpec,
+        shapes = shapes,
     )
 
     CompositionLocalProvider(LocalThorTheme provides state) {
@@ -263,4 +404,7 @@ object ThorTheme {
 
     val cursor: ThorCursorSpec
         @Composable get() = LocalThorTheme.current.cursor
+
+    val shapes: ThorShapes
+        @Composable get() = LocalThorTheme.current.shapes
 }

@@ -96,7 +96,7 @@ fun SideMenu(
                     // grid showing through and make it read as a floating card
                     // rather than a drawer.
                     shape = RectangleShape,
-                    borderWidth = 0.dp,
+                    bordered = false,
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(PANEL_WIDTH.dp)

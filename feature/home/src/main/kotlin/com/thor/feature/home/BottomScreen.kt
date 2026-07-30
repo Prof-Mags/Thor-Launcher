@@ -43,7 +43,12 @@ import com.thor.feature.home.component.PageIndicators
 import com.thor.feature.home.component.SideMenu
 import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.SortDialog
+import com.thor.feature.home.component.BottomNavBar
+import com.thor.feature.home.component.EmptySection
+import com.thor.feature.home.component.NAV_BAR_HEIGHT
 import com.thor.feature.home.component.dockHeightFor
+import com.thor.core.model.LauncherFeatures.DOCK_ENABLED
+import com.thor.core.model.LauncherTab
 
 /**
  * The bottom display: wallpaper, grid, page indicators, dock and Start panel.
@@ -86,17 +91,33 @@ fun BottomScreen(
     entryInFolder: Boolean,
     /** Leaves the open folder and returns the grid to the page it came from. */
     onFolderClosed: () -> Unit,
+    /** The section the launcher is showing. */
+    selectedTab: LauncherTab,
+    /** The tab the controller cursor is on, or null when it is in the content. */
+    navCursor: LauncherTab?,
+    onTabSelected: (LauncherTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val dimens = ThorTheme.dimens
 
-    // Clearance comes from the dock itself so the two cannot drift apart and
-    // leave the bottom row of icons half-covered.
-    val dockClearance = if (dockSettings.visible) {
-        dockHeightFor(dockSettings) + dimens.spacingSmall
-    } else {
-        0.dp
+    /*
+     * Clearance for whatever owns the bottom edge.
+     *
+     * Taken from the bar itself rather than written as a number here, so the two
+     * cannot drift apart and leave the bottom row of icons half-covered — the
+     * same reason it was taken from the dock before. Only one of them is ever
+     * shown; see [DOCK_ENABLED].
+     */
+    val bottomClearance = when {
+        DOCK_ENABLED && dockSettings.visible ->
+            dockHeightFor(dockSettings) + dimens.spacingSmall
+
+        DOCK_ENABLED -> 0.dp
+        else -> NAV_BAR_HEIGHT.dp
     }
+    // Named for what the drawer actually wants: room at the bottom, whichever
+    // bar is putting it there.
+    val dockClearance = bottomClearance
 
     // Drives the Adaptive wallpaper: the highlighted game's system colours the
     // background, so it shifts as the cursor crosses platforms. Null for apps,
@@ -122,37 +143,49 @@ fun BottomScreen(
              * it lands on icons. As a row of its own the grid simply gets the height
              * that is left, and nothing overlaps.
              */
-            state.openFolder?.let { folder ->
-                OpenFolderBanner(
-                    title = folder.title,
-                    count = state.openFolderContents.size,
-                    onClose = onFolderClosed,
-                    modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .padding(top = dimens.spacingSmall, bottom = dimens.spacingTiny),
-                )
-            }
+            if (selectedTab.isHome) {
+                state.openFolder?.let { folder ->
+                    OpenFolderBanner(
+                        title = folder.title,
+                        count = state.openFolderContents.size,
+                        onClose = onFolderClosed,
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(top = dimens.spacingSmall, bottom = dimens.spacingTiny),
+                    )
+                }
 
-            LauncherGrid(
-                state = state,
-                onCellTapped = onCellTapped,
-                onCellLongPressed = onCellLongPressed,
-                onPageChanged = onPageChanged,
-                onPinch = onPinch,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            )
-
-            if (showPageIndicators) {
-                PageIndicators(
-                    // The folder's own pages while one is open, so the dots match
-                    // what the grid is actually showing.
-                    pageCount = state.visiblePageCount,
-                    currentPage = state.currentPage,
+                LauncherGrid(
+                    state = state,
+                    onCellTapped = onCellTapped,
+                    onCellLongPressed = onCellLongPressed,
+                    onPageChanged = onPageChanged,
+                    onPinch = onPinch,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = dimens.spacingTiny),
+                        .weight(1f),
+                )
+
+                if (showPageIndicators) {
+                    PageIndicators(
+                        // The folder's own pages while one is open, so the dots
+                        // match what the grid is actually showing.
+                        pageCount = state.visiblePageCount,
+                        currentPage = state.currentPage,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = dimens.spacingTiny),
+                    )
+                }
+            } else {
+                // The sections with no source yet. They take the grid's place
+                // rather than covering it, so the wallpaper, the bar and every
+                // overlay behave exactly as they do on Home.
+                EmptySection(
+                    tab = selectedTab,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                 )
             }
 
@@ -198,18 +231,39 @@ fun BottomScreen(
             )
         }
 
-        // Drawn after the drawer so it stays visible over it — the dock is how
-        // the drawer was opened and how it is closed again, and hiding it there
-        // made the launcher feel like it had switched to a different app.
-        FloatingDock(
-            settings = dockSettings,
-            focusedSlot = focusedDockSlot,
-            iconShape = state.spec.iconShape,
-            onSlotSelected = onDockSlotSelected,
-            onSlotActivated = onDockAction,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = dimens.spacingSmall),
+        /*
+         * The dock, kept but not shown.
+         *
+         * Superseded by the nav bar, which owns the bottom edge now — but left
+         * whole rather than deleted: the five assignable slots, their placements
+         * in the database and their settings page all still work, and the shape of
+         * the launcher is not settled enough to throw that away. One constant
+         * brings it back.
+         *
+         * Drawn after the drawer, as it always was, so it stays visible over it —
+         * the dock is how the drawer is opened and closed again, and hiding it
+         * there made the launcher feel like it had switched to a different app.
+         */
+        if (DOCK_ENABLED) {
+            FloatingDock(
+                settings = dockSettings,
+                focusedSlot = focusedDockSlot,
+                iconShape = state.spec.iconShape,
+                onSlotSelected = onDockSlotSelected,
+                onSlotActivated = onDockAction,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = dimens.spacingSmall),
+            )
+        }
+
+        // Flush to the bottom edge, unlike the dock it replaces: a nav bar that
+        // floats above the edge reads as a dialog, not as the frame of the app.
+        BottomNavBar(
+            selectedTab = selectedTab,
+            focusedTab = navCursor,
+            onTabSelected = onTabSelected,
+            modifier = Modifier.align(Alignment.BottomCenter),
         )
 
         SortDialog(

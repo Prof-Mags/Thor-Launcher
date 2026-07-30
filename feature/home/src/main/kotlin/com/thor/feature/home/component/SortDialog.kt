@@ -91,7 +91,7 @@ fun SortDialog(
                     )
                     Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(percent = 50))
+                            .clip(ThorTheme.shapes.pill)
                             .clickable(onClick = onToggleDirection)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,

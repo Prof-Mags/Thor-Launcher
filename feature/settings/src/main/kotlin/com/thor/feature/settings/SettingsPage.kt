@@ -1,5 +1,7 @@
 package com.thor.feature.settings
 
+import com.thor.core.model.LauncherFeatures
+
 /**
  * A single settings page.
  *
@@ -94,8 +96,23 @@ enum class SettingsPage(
     ;
 
     companion object {
-        /** Pages belonging to [category], in declaration order. */
+        /**
+         * Pages belonging to [category], in declaration order.
+         *
+         * Pages for a hidden feature are left out entirely rather than shown
+         * disabled: a settings page whose controls reach nothing on screen is
+         * worse than a missing one, because the user changes a value, sees no
+         * effect, and has no way to tell a dead page from a broken setting. The
+         * page itself is kept — see [LauncherFeatures] — so restoring the feature
+         * restores its configuration with it.
+         */
         fun forCategory(category: SettingsCategory): List<SettingsPage> =
-            entries.filter { it.category == category }
+            entries.filter { it.category == category && it.isAvailable }
+
+        private val SettingsPage.isAvailable: Boolean
+            get() = when (this) {
+                DOCK -> LauncherFeatures.DOCK_ENABLED
+                else -> true
+            }
     }
 }
