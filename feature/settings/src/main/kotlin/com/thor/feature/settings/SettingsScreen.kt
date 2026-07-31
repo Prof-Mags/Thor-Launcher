@@ -101,7 +101,12 @@ fun SettingsScreen(
     LaunchedEffect(category, openPage, platformOptions.size, iconPacks.size) {
         onRowCountChanged(
             when {
-                openPage != null -> rowCountFor(openPage!!, platformOptions.size, iconPacks.size)
+                openPage != null -> rowCountFor(
+                    page = openPage!!,
+                    platformCount = platformOptions.size,
+                    iconPackCount = iconPacks.size,
+                    indexerCount = settings.media.indexers.size,
+                )
                 category == SettingsCategory.ABOUT -> 0
                 else -> pages.size
             },

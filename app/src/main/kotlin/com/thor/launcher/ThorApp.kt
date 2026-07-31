@@ -80,6 +80,14 @@ import com.thor.feature.home.AppDrawerScreen
 import com.thor.feature.home.InputSurface
 import com.thor.feature.home.LauncherViewModel
 import com.thor.feature.home.component.EditEntryDialog
+import com.thor.feature.home.component.EmptySection
+import com.thor.feature.movies.MoviesBottomPanel
+import com.thor.feature.movies.MoviesTopPanel
+import com.thor.feature.movies.MoviesViewModel
+import com.thor.feature.movies.rememberMoviesSection
+import com.thor.feature.movies.handleCommand
+import com.thor.feature.movies.perform
+import com.thor.core.model.LauncherTab
 import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.ShortcutPanel
 import com.thor.feature.home.component.SortDialog
@@ -204,6 +212,23 @@ fun ThorApp(
     val recording by viewModel.recording.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val navCursor by viewModel.navCursor.collectAsState()
+
+    /*
+     * The Movies section.
+     *
+     * Its view model and state are hoisted here because the section spans both
+     * panels, and neither of them can own it — on this device either window can
+     * be the composition still running while the other is stopped.
+     */
+    val moviesViewModel: MoviesViewModel = hiltViewModel()
+    val moviesSection = rememberMoviesSection(moviesViewModel)
+    val moviesState by moviesViewModel.uiState.collectAsState()
+    val moviesDetail by moviesViewModel.detail.collectAsState()
+    val moviesSources by moviesViewModel.sources.collectAsState()
+    val moviesPlayback by moviesViewModel.playback.collectAsState()
+
+    // Read live rather than captured: the collector below outlives any one value.
+    val selectedTabNow: () -> LauncherTab = { viewModel.selectedTab.value }
     val trailerDismissedFor by viewModel.trailerDismissedFor.collectAsState()
 
     // A bumper temporarily shows stills for the current game. Once the cursor
@@ -440,6 +465,23 @@ fun ThorApp(
                     viewModel.onCommand(event.command, event.accelerated)
                     feedback.play(event.command.toKeyboardCue())
                     return@collect
+                }
+
+                /*
+                 * The Movies section drives itself while it is open.
+                 *
+                 * Offered the press before the grid, because the section occupies
+                 * both panels and its own cursor is the only one on screen — but
+                 * only offered it: whatever the section declines still reaches the
+                 * shell, so Home, the nav bar and every overlay keep working. A
+                 * section that swallowed everything would be a trap with a film
+                 * playing in it.
+                 */
+                if (selectedTabNow() == LauncherTab.MOVIES && !overlayIsOpenNow()) {
+                    if (moviesSection.handleCommand(event.command)) {
+                        feedback.play(event.command.toCue())
+                        return@collect
+                    }
                 }
 
                 /*
@@ -893,6 +935,26 @@ fun ThorApp(
             // Touching this surface claims the controller for it, wherever it is drawn
             // — its own panel in dual mode, half the window in split.
             Box(modifier = Modifier.fillMaxSize().claimsInputFor(InputSurface.TOP)) {
+                /*
+                 * Movies owns this panel outright while its tab is open.
+                 *
+                 * Not drawn over the game panel but instead of it: the section is
+                 * a library and a player, and showing either behind the other
+                 * would put two unrelated pictures on one screen.
+                 */
+                if (selectedTab == LauncherTab.MOVIES) {
+                    MoviesTopPanel(
+                        mode = moviesSection.mode,
+                        state = moviesState,
+                        playback = moviesPlayback,
+                        onStatus = moviesSection::onStatus,
+                        onCommands = moviesSection::onCommands,
+                    )
+                    infoOverlays()
+                    if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay()
+                    return@Box
+                }
+
                 TopScreen(
                     selection = state.selection,
                     platform = selectedPlatform,
@@ -990,6 +1052,31 @@ fun ThorApp(
                 selectedTab = selectedTab,
                 navCursor = navCursor,
                 onTabSelected = viewModel::selectTab,
+                /*
+                 * The other half of the Movies section: describe, choose, or
+                 * control, matching whatever its top panel is showing. Supplied
+                 * from here rather than from the home module, so a feature module
+                 * never has to depend on an unrelated one.
+                 */
+                sectionContent = { tab ->
+                    if (tab == LauncherTab.MOVIES) {
+                        MoviesBottomPanel(
+                            mode = moviesSection.mode,
+                            detail = moviesDetail,
+                            sources = moviesSources,
+                            playback = moviesPlayback,
+                            status = moviesSection.status,
+                            focusedSource = moviesSection.focusedSource,
+                            focusedAction = moviesSection.focusedAction,
+                            hasNextEpisode = moviesViewModel.nextEpisode() != null,
+                            onPlayerAction = moviesSection::perform,
+                            onSeek = moviesSection::seekTo,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        EmptySection(tab = tab, modifier = Modifier.fillMaxSize())
+                    }
+                },
                 modifier = Modifier.fillMaxSize(),
             )
 

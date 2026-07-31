@@ -68,6 +68,16 @@ enum class SettingsPage(
         "Default library order",
     ),
 
+    // ---- Movies ------------------------------------------------------------
+    MOVIES_CATALOGUE(
+        SettingsCategory.LIBRARY, "Films and shows",
+        "Catalogue, debrid account and torrent indexers",
+    ),
+    MOVIES_PLAYBACK(
+        SettingsCategory.LIBRARY, "Streaming",
+        "Which source is chosen, and how it plays",
+    ),
+
     // ---- Controls ----------------------------------------------------------
     NAVIGATION(
         SettingsCategory.CONTROLS, "Navigation",

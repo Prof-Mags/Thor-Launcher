@@ -106,6 +106,12 @@ fun SettingsPageContent(
             )
             SettingsPage.SORTING -> SortingPage(settings, focusedRow, viewModel)
 
+            SettingsPage.MOVIES_CATALOGUE ->
+                MoviesCataloguePage(settings, focusedRow, viewModel)
+
+            SettingsPage.MOVIES_PLAYBACK ->
+                MoviesPlaybackPage(settings, focusedRow, viewModel)
+
             SettingsPage.NAVIGATION -> NavigationPage(settings, focusedRow, viewModel)
             SettingsPage.POINTER -> PointerPage(
                 settings, focusedRow, viewModel, pointerServiceEnabled, pointerRunning,
@@ -130,7 +136,12 @@ fun SettingsPageContent(
  * Kept beside the pages themselves so the two are edited together; a count that
  * overshoots produces presses that appear to do nothing.
  */
-fun rowCountFor(page: SettingsPage, platformCount: Int, iconPackCount: Int = 0): Int = when (page) {
+fun rowCountFor(
+    page: SettingsPage,
+    platformCount: Int,
+    iconPackCount: Int = 0,
+    indexerCount: Int = 0,
+): Int = when (page) {
     SettingsPage.THEME -> 5
     SettingsPage.WALLPAPER -> 3
     SettingsPage.GRID -> 5
@@ -146,6 +157,10 @@ fun rowCountFor(page: SettingsPage, platformCount: Int, iconPackCount: Int = 0):
     // Scrape, only-missing, trailers, check, one per provider, then four credentials.
     SettingsPage.METADATA -> PROVIDER_FIRST_ROW + PROVIDERS.size + 4
     SettingsPage.SORTING -> 2
+    // Two keys and the debrid status line, then one row per indexer, then the
+    // add button and the summary.
+    SettingsPage.MOVIES_CATALOGUE -> INDEXER_FIRST_ROW + indexerCount + 2
+    SettingsPage.MOVIES_PLAYBACK -> MOVIES_PLAYBACK_ROWS
     SettingsPage.NAVIGATION -> 4
     // Enable, permission, speed, span, then one row per bindable button.
     SettingsPage.POINTER -> 4 + MouseButton.entries.size

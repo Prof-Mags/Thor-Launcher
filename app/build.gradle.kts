@@ -33,6 +33,7 @@ dependencies {
     implementation(projects.feature.topscreen)
     implementation(projects.feature.settings)
     implementation(projects.feature.search)
+    implementation(projects.feature.movies)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

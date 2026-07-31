@@ -99,6 +99,13 @@ fun BottomScreen(
     /** The tab the controller cursor is on, or null when it is in the content. */
     navCursor: LauncherTab?,
     onTabSelected: (LauncherTab) -> Unit,
+    /**
+     * Content for a section other than Home.
+     *
+     * Null leaves the section saying that nothing is connected to it, which is
+     * still the right answer for a tab nothing has been built for yet.
+     */
+    sectionContent: (@Composable (LauncherTab) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val dimens = ThorTheme.dimens
@@ -187,15 +194,30 @@ fun BottomScreen(
                     )
                 }
             } else {
-                // The sections with no source yet. They take the grid's place
-                // rather than covering it, so the wallpaper, the bar and every
-                // overlay behave exactly as they do on Home.
-                EmptySection(
-                    tab = selectedTab,
+                /*
+                 * A section other than Home.
+                 *
+                 * Filled by the shell where something is connected, and by
+                 * [EmptySection] where nothing is yet. The slot exists so this
+                 * module never has to know what a section contains: Movies lives
+                 * in its own feature module, and having the home screen depend on
+                 * it would tie two unrelated features together for one call.
+                 *
+                 * Either way it takes the grid's place rather than covering it,
+                 * so the wallpaper, the bar and every overlay behave exactly as
+                 * they do on Home.
+                 */
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                )
+                ) {
+                    if (sectionContent != null) {
+                        sectionContent(selectedTab)
+                    } else {
+                        EmptySection(tab = selectedTab, modifier = Modifier.fillMaxSize())
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(dockClearance))

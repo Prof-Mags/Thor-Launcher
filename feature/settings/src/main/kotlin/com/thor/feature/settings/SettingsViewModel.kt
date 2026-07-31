@@ -27,7 +27,9 @@ import androidx.core.net.toUri
 import com.thor.core.model.IconPack
 import com.thor.data.iconpack.IconPackImport
 import com.thor.data.iconpack.IconPackRepository
+import com.thor.core.model.MediaSettings
 import com.thor.core.model.MouseSettings
+import com.thor.core.model.TorznabIndexer
 import com.thor.data.launcher.DefaultLauncherManager
 import com.thor.data.launcher.PointerServiceManager
 import com.thor.data.launcher.EntryLauncher
@@ -162,6 +164,26 @@ class SettingsViewModel @Inject constructor(
     fun updateMouse(transform: (MouseSettings) -> MouseSettings) {
         viewModelScope.launchSafely(TAG) { settingsRepository.updateMouse(transform) }
     }
+
+    fun updateMedia(transform: (MediaSettings) -> MediaSettings) {
+        viewModelScope.launchSafely(TAG) { settingsRepository.updateMedia(transform) }
+    }
+
+    /** Appends a blank indexer for the user to fill in. */
+    fun addIndexer() = updateMedia { it.copy(indexers = it.indexers + TorznabIndexer()) }
+
+    fun removeIndexer(index: Int) = updateMedia { media ->
+        media.copy(indexers = media.indexers.filterIndexed { i, _ -> i != index })
+    }
+
+    fun updateIndexer(index: Int, transform: (TorznabIndexer) -> TorznabIndexer) =
+        updateMedia { media ->
+            media.copy(
+                indexers = media.indexers.mapIndexed { i, indexer ->
+                    if (i == index) transform(indexer) else indexer
+                },
+            )
+        }
 
     fun removeIconPack(packId: String) {
         viewModelScope.launchSafely(TAG) {

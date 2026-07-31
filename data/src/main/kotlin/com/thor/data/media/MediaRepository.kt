@@ -39,7 +39,16 @@ import javax.inject.Singleton
 class MediaRepository @Inject constructor(
     private val tmdb: TmdbClient,
     private val debrid: RealDebridClient,
-    private val sources: StremioAddonProvider,
+    /**
+     * Every way of finding a file, asked together.
+     *
+     * The built-in torrent search and the addon client answer the same question
+     * through different protocols, and a user may have one, the other or both.
+     * Merging them here means nothing downstream — ranking, the source list, the
+     * player — has to know which one a given source came from.
+     */
+    private val torznab: TorznabProvider,
+    private val addons: StremioAddonProvider,
     private val settings: SettingsRepository,
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
 ) {
@@ -123,16 +132,23 @@ class MediaRepository @Inject constructor(
         val imdbId = item.imdbId?.takeIf(String::isNotBlank)
             ?: return@withContext SourceResult.NoImdbId
 
-        if (!sources.isConfigured()) return@withContext SourceResult.NoProviders
+        val providers = listOf(torznab, addons).filter { it.isConfigured() }
+        if (providers.isEmpty()) return@withContext SourceResult.NoProviders
 
-        val found = sources.find(
-            SourceQuery(
-                imdbId = imdbId,
-                type = item.id.type,
-                season = season,
-                episode = episode,
-            ),
+        val query = SourceQuery(
+            imdbId = imdbId,
+            type = item.id.type,
+            title = item.title,
+            season = season,
+            episode = episode,
         )
+
+        val found = coroutineScope {
+            providers.map { provider -> async { provider.find(query) } }
+                .awaitAll()
+                .flatten()
+                .distinctBy { it.infoHash?.lowercase() ?: it.id }
+        }
 
         if (found.isEmpty()) return@withContext SourceResult.Empty
 

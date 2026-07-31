@@ -30,14 +30,23 @@ data class MediaSettings(
     val realDebridToken: String = "",
 
     /**
+     * Torrent indexers, searched by THOR itself.
+     *
+     * The built-in path: THOR speaks Torznab directly, so searching, parsing,
+     * ranking and resolving all happen in-app with nothing else in the stream
+     * path. THOR ships no indexers and no list of them — the launcher knows the
+     * protocol and the user decides who to ask, which is the same position it
+     * takes on game metadata providers.
+     */
+    val indexers: List<TorznabIndexer> = emptyList(),
+
+    /**
      * Stream-source addons, as base URLs.
      *
-     * The Stremio addon protocol: an addon is an HTTP endpoint that answers
-     * `/manifest.json` and `/stream/{type}/{id}.json`. It is an open, documented
-     * protocol with many independent implementations, which is exactly what a
-     * launcher wants — THOR ships no sources of its own and takes no view on
-     * which the user runs. Ordered: earlier addons are asked first and their
-     * results rank ahead of later ones on a tie.
+     * Kept alongside the built-in search rather than replaced by it. An addon is
+     * an HTTP endpoint answering `/manifest.json` and `/stream/{type}/{id}.json`
+     * — an open protocol with many implementations, and the easier route for
+     * anyone already running one. Both are queried and their results merged.
      */
     val addonUrls: List<String> = emptyList(),
 
@@ -101,10 +110,28 @@ data class MediaSettings(
 ) {
     val isMetadataConfigured: Boolean get() = tmdbApiKey.isNotBlank()
     val isDebridConfigured: Boolean get() = realDebridToken.isNotBlank()
-    val hasSources: Boolean get() = addonUrls.any { it.isNotBlank() }
+    val hasSources: Boolean
+        get() = indexers.any { it.isUsable } || addonUrls.any { it.isNotBlank() }
 
     /** Everything needed to actually play something. */
     val isPlayable: Boolean get() = isMetadataConfigured && hasSources
+}
+
+/**
+ * One torrent indexer THOR searches directly.
+ *
+ * Name is the user's own label, so a list of several is readable at a glance
+ * rather than being a column of near-identical URLs.
+ */
+@Serializable
+data class TorznabIndexer(
+    val name: String = "",
+    /** Base URL of the Torznab endpoint, without the trailing `/api`. */
+    val url: String = "",
+    val apiKey: String = "",
+    val enabled: Boolean = true,
+) {
+    val isUsable: Boolean get() = enabled && url.isNotBlank() && apiKey.isNotBlank()
 }
 
 /**

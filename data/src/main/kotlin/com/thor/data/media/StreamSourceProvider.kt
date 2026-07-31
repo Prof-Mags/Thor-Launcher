@@ -29,6 +29,8 @@ import javax.inject.Singleton
 data class SourceQuery(
     val imdbId: String,
     val type: MediaType,
+    /** The title, for indexers whose free-text search cannot take an id. */
+    val title: String = "",
     val season: Int? = null,
     val episode: Int? = null,
 ) {
