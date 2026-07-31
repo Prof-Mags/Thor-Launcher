@@ -27,6 +27,8 @@ import com.thor.data.capture.ScreenRecorder
 import com.thor.data.clipboard.ThorClipboard
 import com.thor.data.launcher.EntryLauncher
 import com.thor.data.launcher.LaunchTarget
+import com.thor.data.launcher.LauncherForeground
+import kotlinx.coroutines.delay
 import com.thor.data.launcher.SystemPanel
 import com.thor.feature.home.component.ContextAction
 import com.thor.feature.home.component.EmulatorOption
@@ -82,6 +84,8 @@ class LauncherViewModel @Inject constructor(
     private val playtimeTracker: PlaytimeTracker,
     private val screenRecorder: ScreenRecorder,
     private val clipboard: ThorClipboard,
+    /** Answers whether a launch actually brought anything to the front. */
+    private val launcherForeground: LauncherForeground,
 ) : ViewModel() {
 
     private val cursor = MutableStateFlow(CursorPosition(0, 0))
@@ -133,23 +137,42 @@ class LauncherViewModel @Inject constructor(
     val secondScreenOccupied: StateFlow<Boolean> = _secondScreenOccupied.asStateFlow()
 
     /**
-     * Takes the second panel back when a launch turned out to be a no-op.
+     * Takes the second panel back only when a launch really did nothing.
      *
      * `startMainActivity` returning without throwing does not mean the app came
      * to the foreground: a ROM can queue it, refuse it silently, or bring it up
-     * behind whatever is showing. The launcher had already handed the panel over
-     * by then, so nothing was on screen, nothing had focus, and the controller
-     * did nothing — the launcher looked frozen while the app ran in the
-     * background, recoverable only by touching the panel or pressing Home.
+     * behind whatever is showing. The launcher has already handed the panel over
+     * by then, so nothing is on screen, nothing has focus, and the controller
+     * does nothing — the launcher looks frozen while the app runs in the
+     * background.
      *
-     * Called by the shell when it observes that nothing ever took the panel.
+     * The test is whether THOR is *still the activity in front* after the grace
+     * period. If an app arrived, on either display, THOR stopped being top
+     * resumed and this does nothing.
+     *
+     * An earlier version watched for the presentation reporting a lost focus
+     * instead, which cannot happen on a successful launch: taking the panel tears
+     * that window down rather than defocusing it, so the evidence never arrived,
+     * the watchdog fired every time, and the panel was reclaimed out from under
+     * apps that had started perfectly well. That is what closed an app on the
+     * bottom screen a few seconds after opening it.
      */
-    fun releaseSecondScreen() {
-        if (!_secondScreenOccupied.value) return
-        ThorLog.i(TAG, "Nothing took the second panel; taking it back")
-        _secondScreenOccupied.value = false
-        settlePlaytime()
+    private fun watchForSilentLaunch() {
+        launchWatchdog?.cancel()
+        launchWatchdog = viewModelScope.launchSafely(TAG) {
+            delay(LAUNCH_TAKEOVER_GRACE_MS)
+
+            // Something is in front of us: the launch worked. Nothing to undo.
+            if (!launcherForeground.topResumed.value) return@launchSafely
+            if (!_secondScreenOccupied.value) return@launchSafely
+
+            ThorLog.i(TAG, "Nothing took the second panel; taking it back")
+            _secondScreenOccupied.value = false
+            settlePlaytime()
+        }
     }
+
+    private var launchWatchdog: Job? = null
 
     /** Whether the secondary panel's Presentation is still attached to its display. */
     private val secondaryPresentationVisible = MutableStateFlow(false)
@@ -1379,7 +1402,23 @@ class LauncherViewModel @Inject constructor(
             "The configured emulator (${failure.packageName}) is not installed"
 
         is LaunchFailure.NoHandler -> "Nothing on this device can open that"
-        is LaunchFailure.Unknown -> failure.cause.message ?: "Could not launch"
+
+        /*
+         * Never the platform's own words.
+         *
+         * This used to print `cause.message` verbatim, which for a refused
+         * display placement is a line of internal diagnostics — process records,
+         * uids, and the display's own identifier — shown to someone who pressed
+         * A on an icon. It says nothing they can act on and reads as the launcher
+         * having broken. The raw throwable is already logged by `EntryLauncher`,
+         * where it is useful; here it becomes the one sentence that is true.
+         */
+        is LaunchFailure.Unknown -> when (failure.cause) {
+            is SecurityException ->
+                "Android would not let THOR open that app on this screen"
+
+            else -> "That app would not open"
+        }
     }
 
     fun back() {
@@ -1918,8 +1957,21 @@ class LauncherViewModel @Inject constructor(
                 _secondScreenOccupied.value = true
                 if (!awaitSecondaryPresentationDismissal()) {
                     _secondScreenOccupied.value = false
-                    emit(LauncherEffect.LaunchFailed("Could not prepare the second screen"))
-                    closeContextMenu()
+                    ThorLog.w(TAG, "Second panel did not stand down; launching on this one")
+                    /*
+                     * Falls back to the near panel rather than refusing.
+                     *
+                     * Starting the app anyway would put it underneath a window
+                     * that is still there — a grid drawn on top of a running app,
+                     * which is the fault the hand-over ordering exists to prevent.
+                     * But abandoning the launch means pressing A did nothing at
+                     * all, which is worse and is what it used to do. Opening on
+                     * the screen that *is* free does what the user asked, on the
+                     * wrong panel, and says so.
+                     */
+                    emit(LauncherEffect.ShowMessage("Second screen was busy — opened here"))
+                    launchJob = null
+                    launchEntryOn(entry, LaunchTarget.DEFAULT)
                     return@launchSafely
                 }
             }
@@ -1972,6 +2024,7 @@ class LauncherViewModel @Inject constructor(
                 // Reports where the app *landed*, not where it was aimed, so the
                 // shell yields focus for the panel actually being taken.
                 emit(LauncherEffect.Launched(onSecondaryPanel = arrivedOnSecondPanel))
+                if (arrivedOnSecondPanel) watchForSilentLaunch()
             }
             handleResult(result, entry.id)
             closeContextMenu()
@@ -2363,8 +2416,29 @@ class LauncherViewModel @Inject constructor(
         const val STOP_TIMEOUT_MS = 5_000L
         const val DOCK_SLOTS = 5
 
-        /** A guard only; normal handoff proceeds as soon as dismissal is acknowledged. */
-        const val PRESENTATION_HANDOVER_TIMEOUT_MS = 1_000L
+        /**
+         * A guard only; normal handoff proceeds the moment dismissal is
+         * acknowledged, which is usually within a frame or two.
+         *
+         * It was one second, which is not a guard but a race. Tearing down a
+         * window involves the window manager and the display, and on a loaded
+         * handheld — mid-scrape, or with a game still winding down on the other
+         * panel — a second is reachable. Every time it was, the launch was
+         * abandoned outright and the app simply did not open, with no pattern the
+         * user could see. Nothing waits this long in practice; it only has to be
+         * longer than the worst case rather than the common one.
+         */
+        const val PRESENTATION_HANDOVER_TIMEOUT_MS = 4_000L
+
+        /**
+         * How long a launch has to actually put something in front.
+         *
+         * Generous on purpose. A cold app on a handheld can take seconds to draw
+         * its first frame, and taking the panel back from one that was merely
+         * slow is worse than the fault this guards against — that mistake closed
+         * apps on the second screen moments after they opened.
+         */
+        const val LAUNCH_TAKEOVER_GRACE_MS = 8_000L
 
         /** Fallback capture size, used only until the shell reports the panels. */
         const val DEFAULT_CAPTURE_WIDTH = 1080

@@ -17,6 +17,7 @@ import com.thor.core.input.ControllerInputRouter
 import com.thor.core.input.ControllerProfiles
 import com.thor.core.input.MouseController
 import com.thor.data.launcher.HomeRequests
+import com.thor.data.launcher.LauncherForeground
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
@@ -71,6 +72,9 @@ class LauncherActivity : ComponentActivity() {
      */
     @Inject lateinit var homeRequests: HomeRequests
 
+    /** Reports whether THOR is the activity in front, for the launch watchdog. */
+    @Inject lateinit var launcherForeground: LauncherForeground
+
     /**
      * Re-asserts full screen and releases held keys as foreground status changes.
      *
@@ -83,6 +87,11 @@ class LauncherActivity : ComponentActivity() {
      */
     override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
         super.onTopResumedActivityChanged(isTopResumedActivity)
+
+        // The only signal Android gives for "this is the thing in front". The
+        // launcher uses it to tell a launch that arrived from one that silently
+        // did nothing; see [LauncherForeground].
+        launcherForeground.setTopResumed(isTopResumedActivity)
 
         if (isTopResumedActivity) {
             // The system restores the bars whenever something else has been in

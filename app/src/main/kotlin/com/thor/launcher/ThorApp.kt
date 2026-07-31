@@ -179,17 +179,6 @@ fun ThorApp(
      */
     var focusYieldedToApp by remember { mutableStateOf(false) }
 
-    /**
-     * Bumped whenever another window is observed taking the second panel.
-     *
-     * The launch watchdog compares this across a launch: unchanged means nothing
-     * ever came, however cleanly the launch call returned.
-     */
-    var panelTakenTicks by remember { mutableIntStateOf(0) }
-
-    /** Bumped by each launch onto the second panel, to arm the watchdog. */
-    var launchTicks by remember { mutableIntStateOf(0) }
-
     /** The last thing the launcher had to say, shown briefly and then dropped. */
     var transientMessage by remember { mutableStateOf<String?>(null) }
 
@@ -346,34 +335,6 @@ fun ThorApp(
         )
     }
 
-    /*
-     * Takes the panel back when a launch turned out to be a no-op.
-     *
-     * The launcher stands down the moment a launch is *reported*, because waiting
-     * would leave the arriving app deaf for as long as it took to appear. But
-     * `startMainActivity` returning without throwing does not mean the app came
-     * to the foreground — a ROM can queue it, refuse it silently, or bring it up
-     * behind whatever is showing. When that happened the launcher had already
-     * given the panel away: nothing on screen, nothing with focus, and a
-     * controller that did nothing. It read as the launcher freezing while the app
-     * ran in the background.
-     *
-     * So the yield is provisional. If no window is observed taking the panel
-     * within the grace period, nothing came and the launcher takes it back.
-     * Evidence-based rather than timed alone: an app that *did* arrive bumps
-     * [panelTakenTicks] on its way in, and is never disturbed.
-     */
-    LaunchedEffect(launchTicks) {
-        if (launchTicks == 0) return@LaunchedEffect
-        val takenBefore = panelTakenTicks
-        delay(LAUNCH_TAKEOVER_GRACE_MS)
-
-        if (panelTakenTicks == takenBefore && focusYieldedToApp) {
-            focusYieldedToApp = false
-            viewModel.releaseSecondScreen()
-        }
-    }
-
     // Snapshots of the same derivations, for the things this composition draws.
     val activeSurface = activeSurfaceNow()
     val overlayIsOpen = overlayIsOpenNow()
@@ -407,12 +368,7 @@ fun ThorApp(
          */
         if (mouse.isActive) return
 
-        if (!hasFocus && presentationHoldsFocusNow()) {
-            focusYieldedToApp = true
-            // Evidence that some other window really has the panel, which is what
-            // the launch watchdog below waits for.
-            panelTakenTicks++
-        }
+        if (!hasFocus && presentationHoldsFocusNow()) focusYieldedToApp = true
     }
 
     ThorTheme(
@@ -875,9 +831,6 @@ fun ThorApp(
                     is LauncherEffect.Launched ->
                         if (LauncherFocus.launchYieldsPresentationFocus(effect.onSecondaryPanel)) {
                             focusYieldedToApp = true
-                            // Arms the watchdog: the yield is provisional until
-                            // something is seen to take the panel.
-                            launchTicks++
                         }
 
                     /*
@@ -1692,14 +1645,5 @@ private val RECORDING_DOT = Color(0xFFE5484D)
 private const val CAPTURE_BODY_ALLOWANCE = 1.22f
 
 /** How long a transient message stays up, and how far it sits above the dock. */
-/**
- * How long a launch has to actually put something on the panel.
- *
- * Generous on purpose. A cold app on a handheld can take seconds to draw its
- * first frame, and taking the panel back from one that was merely slow would be
- * worse than the fault this guards against.
- */
-private const val LAUNCH_TAKEOVER_GRACE_MS = 6_000L
-
 private const val MESSAGE_DURATION_MS = 3_000L
 private const val MESSAGE_BOTTOM_INSET = 96
