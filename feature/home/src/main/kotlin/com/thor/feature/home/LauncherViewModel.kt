@@ -17,6 +17,7 @@ import com.thor.core.model.AppEntry
 import com.thor.core.model.LauncherAction
 import com.thor.core.model.NavDirection
 import com.thor.core.model.Platform
+import com.thor.core.model.PlatformFolders
 import com.thor.core.model.ShortcutAction
 import com.thor.core.model.ShortcutGrid
 import com.thor.core.model.ControlSettings
@@ -1706,7 +1707,17 @@ class LauncherViewModel @Inject constructor(
             onGrid = state.placements.any { it.entryId == entry.id },
             foldersExist = state.entriesById.values.any { it is FolderEntry && !it.isSmart },
             inFolder = folderContaining(entry.id) != null,
+            hasCustomArtwork = PlatformFolders.platformIdOf(entry.id)
+                ?.let { state.platformsById[it]?.artwork?.isUserChosen }
+                ?: false,
         )
+    }
+
+    /** Stores artwork the user picked for a platform, and dresses its folder. */
+    fun setPlatformArtwork(platformId: String, iconUri: String?, heroUri: String?) {
+        viewModelScope.launchSafely(TAG) {
+            libraryRepository.setPlatformArtwork(platformId, iconUri, heroUri)
+        }
     }
 
     /** Opens the context menu for an entry chosen in the app drawer. */
@@ -1904,6 +1915,30 @@ class LauncherViewModel @Inject constructor(
             ContextAction.DELETE -> deleteEntry(entry)
 
             ContextAction.UNINSTALL -> uninstall(entry)
+
+            ContextAction.SET_PLATFORM_ICON, ContextAction.SET_PLATFORM_HERO -> {
+                val platformId = PlatformFolders.platformIdOf(entry.id)
+                closeContextMenu()
+                if (platformId != null) {
+                    emit(
+                        LauncherEffect.PickPlatformArtwork(
+                            platformId = platformId,
+                            hero = action == ContextAction.SET_PLATFORM_HERO,
+                        ),
+                    )
+                }
+            }
+
+            ContextAction.CLEAR_PLATFORM_ARTWORK -> {
+                val platformId = PlatformFolders.platformIdOf(entry.id)
+                closeContextMenu()
+                if (platformId != null) {
+                    viewModelScope.launchSafely(TAG) {
+                        libraryRepository.clearPlatformArtwork(platformId)
+                        emit(LauncherEffect.ShowMessage("Artwork reset"))
+                    }
+                }
+            }
 
             ContextAction.DELETE_FOLDER -> {
                 closeContextMenu()

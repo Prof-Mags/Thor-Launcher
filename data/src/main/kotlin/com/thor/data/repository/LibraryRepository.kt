@@ -24,6 +24,8 @@ import com.thor.core.model.GameVersion
 import com.thor.core.model.GridEntry
 import com.thor.core.model.LibraryFilter
 import com.thor.core.model.Platform
+import com.thor.core.model.PlatformArtwork
+import com.thor.core.model.PlatformFolders
 import com.thor.core.model.PlayStats
 import com.thor.core.model.SmartQuery
 import com.thor.core.model.SortOrder
@@ -282,6 +284,68 @@ class LibraryRepository @Inject constructor(
             else -> folderDao.getById(entryId)?.let { folder ->
                 folderDao.upsert(folder.copy(artworkUri = uri))
             }
+        }
+    }
+
+    /**
+     * Sets a platform's artwork by hand.
+     *
+     * Written to the *platform* rather than to its folder, because that is where
+     * it belongs: the same icon dresses the grid cell, the information panel and
+     * the open-folder banner, and it has to survive the folder being renamed,
+     * moved, or deleted and rebuilt by a rescan. The folder is dressed to match
+     * so the grid shows it immediately.
+     *
+     * Marked as the user's, which is what makes it stick — see
+     * [PlatformArtwork.isUserChosen]. Every rule that already respects pack
+     * ownership then leaves it alone: the folder scraper skips it, a newly
+     * installed pack does not overwrite it, and removing a pack does not strip
+     * it.
+     *
+     * A null for either field leaves that one as it is, so choosing a backdrop
+     * does not clear an icon.
+     */
+    suspend fun setPlatformArtwork(
+        platformId: String,
+        iconUri: String? = null,
+        heroUri: String? = null,
+    ) = withContext(defaultDispatcher) {
+        val platform = platformDao.getById(platformId) ?: return@withContext
+        val icon = iconUri ?: platform.artworkIconUri
+        platformDao.upsert(
+            platform.copy(
+                artworkIconUri = icon,
+                artworkHeroUri = heroUri ?: platform.artworkHeroUri,
+                artworkPackId = PlatformArtwork.USER_PACK_ID,
+            ),
+        )
+
+        folderDao.getById(PlatformFolders.idFor(platformId))?.let { folder ->
+            folderDao.upsert(folder.copy(artworkUri = icon))
+        }
+    }
+
+    /**
+     * Gives a platform's artwork back to whatever would otherwise supply it.
+     *
+     * Clears the user's choice *and* its ownership marker, so the next scrape or
+     * pack install fills it again. Without clearing the marker the platform would
+     * be left permanently bare — owned by a choice that no longer exists.
+     */
+    suspend fun clearPlatformArtwork(platformId: String) = withContext(defaultDispatcher) {
+        val platform = platformDao.getById(platformId) ?: return@withContext
+        if (!PlatformArtwork(packId = platform.artworkPackId).isUserChosen) return@withContext
+
+        platformDao.upsert(
+            platform.copy(
+                artworkIconUri = null,
+                artworkHeroUri = null,
+                artworkPackId = null,
+            ),
+        )
+
+        folderDao.getById(PlatformFolders.idFor(platformId))?.let { folder ->
+            folderDao.upsert(folder.copy(artworkUri = null))
         }
     }
 

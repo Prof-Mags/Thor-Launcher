@@ -151,4 +151,17 @@ sealed interface LauncherEffect {
      */
     data class Launched(val onSecondaryPanel: Boolean) : LauncherEffect
     data object OpenPowerMenu : LauncherEffect
+
+    /**
+     * Asks the shell to open a picker for a platform's artwork.
+     *
+     * The view model cannot open one itself — a document picker is an activity
+     * result, which belongs to the activity — so the choice is made in the shell
+     * and handed back through [LauncherViewModel.setPlatformArtwork].
+     */
+    data class PickPlatformArtwork(
+        val platformId: String,
+        /** True for the wide backdrop, false for the square icon. */
+        val hero: Boolean,
+    ) : LauncherEffect
 }

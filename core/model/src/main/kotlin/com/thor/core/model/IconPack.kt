@@ -28,8 +28,22 @@ data class PlatformArtwork(
 ) {
     val isEmpty: Boolean get() = iconUri == null && heroUri == null && logoUri == null
 
+    /**
+     * Chosen by hand, and therefore nobody else's to change.
+     *
+     * Recorded in [packId] rather than as a separate flag because it answers the
+     * same question every other owner does — who put this here — and every rule
+     * that already respects pack ownership then respects a hand-picked image for
+     * free: the scraper leaves it alone, a newly installed pack does not
+     * overwrite it, and removing a pack does not take it away.
+     */
+    val isUserChosen: Boolean get() = packId == USER_PACK_ID
+
     companion object {
         val NONE = PlatformArtwork()
+
+        /** Not a real pack; no installed pack can collide with it. */
+        const val USER_PACK_ID = "user:custom"
     }
 }
 

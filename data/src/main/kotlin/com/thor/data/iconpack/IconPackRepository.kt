@@ -69,6 +69,11 @@ class IconPackRepository @Inject constructor(
     private suspend fun applyToPlatforms(pack: IconPack) {
         val platforms = platformDao.getAll()
         platforms.forEach { platform ->
+            // Never over a hand-picked image. Installing a pack is a request to
+            // see it, but not a request to undo a choice already made — and the
+            // one thing a user cannot recover is the file they browsed to.
+            if (PlatformArtwork(packId = platform.artworkPackId).isUserChosen) return@forEach
+
             val artwork = pack.artworkFor(platform.id) ?: return@forEach
             platformDao.upsert(
                 platform.copy(

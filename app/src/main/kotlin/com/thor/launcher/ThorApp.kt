@@ -45,7 +45,13 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.pointer.pointerInput
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.thor.core.common.log.ThorLog
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.delay
@@ -179,6 +185,24 @@ fun ThorApp(
      */
     var focusYieldedToApp by remember { mutableStateOf(false) }
 
+    /*
+     * Ordering between the two things that claim the controller.
+     *
+     * An overlay takes input when it opens and a touch takes it where it lands,
+     * and until now the overlay simply won for as long as it was open. That is
+     * right while the user is using it and wrong the moment they reach past it:
+     * tapping the grid on the other panel set the touched surface, the overlay
+     * branch ignored it, and the controller stayed where it was with nothing on
+     * screen explaining why. It looked random because it depended on whether an
+     * overlay happened to be open at all.
+     *
+     * One counter, stamped by both. The most recent deliberate act wins, which is
+     * the rule a person would state.
+     */
+    var inputTick by remember { mutableIntStateOf(0) }
+    var touchedAtTick by remember { mutableIntStateOf(0) }
+    var overlayClaimedAtTick by remember { mutableIntStateOf(0) }
+
     /** The last thing the launcher had to say, shown briefly and then dropped. */
     var transientMessage by remember { mutableStateOf<String?>(null) }
 
@@ -197,6 +221,10 @@ fun ThorApp(
                     awaitPointerEvent(PointerEventPass.Initial)
                     touchedSurface = surface
                     focusYieldedToApp = false
+                    // Stamped so a touch can be compared against the moment an
+                    // overlay claimed the controller; see [activeSurfaceNow].
+                    inputTick++
+                    touchedAtTick = inputTick
                 }
             }
         }
@@ -212,6 +240,7 @@ fun ThorApp(
     val recording by viewModel.recording.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val navCursor by viewModel.navCursor.collectAsState()
+    val context = LocalContext.current
 
     /*
      * The Movies section.
@@ -308,7 +337,13 @@ fun ThorApp(
             // The keyboard is drawn into the grid's surface by construction, so it
             // claims that one wherever the grid happens to be.
             keyboard.visible -> InputSurface.BOTTOM
-            overlay != Overlay.NONE || state.editingEntry != null -> overlaySurfaceNow()
+
+            // An overlay holds the controller only until the user reaches past it
+            // and touches a panel. After that the touch is the more recent
+            // instruction and the overlay is something they have left behind.
+            (overlay != Overlay.NONE || state.editingEntry != null) &&
+                overlayClaimedAtTick >= touchedAtTick -> overlaySurfaceNow()
+
             else -> touchedSurface
         }
     }
@@ -332,6 +367,46 @@ fun ThorApp(
             gridInActivityWindow = gridInActivityWindowNow(),
             overlayOpen = overlayIsOpenNow(),
             focusYieldedToApp = focusYieldedToApp,
+        )
+    }
+
+    // Stamped when an overlay appears, so a later touch outranks it.
+    val anOverlayIsOpen = overlay != Overlay.NONE || state.editingEntry != null
+    LaunchedEffect(anOverlayIsOpen) {
+        if (anOverlayIsOpen) {
+            inputTick++
+            overlayClaimedAtTick = inputTick
+        }
+    }
+
+    /*
+     * Artwork the user picked for a platform folder.
+     *
+     * Opened here because a document picker is an activity result and belongs to
+     * the activity; the view model asks for one and is handed the answer back.
+     * Read permission is taken persistently — without it the URI works until the
+     * next reboot and then silently resolves to nothing, which looks like the
+     * artwork having been forgotten.
+     */
+    var pendingArtwork by remember { mutableStateOf<LauncherEffect.PickPlatformArtwork?>(null) }
+    val artworkPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        val target = pendingArtwork
+        pendingArtwork = null
+        if (uri == null || target == null) return@rememberLauncherForActivityResult
+
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }.onFailure { ThorLog.w("Launcher", "Artwork URI is not persistable: $uri", it) }
+
+        viewModel.setPlatformArtwork(
+            platformId = target.platformId,
+            iconUri = uri.toString().takeIf { !target.hero },
+            heroUri = uri.toString().takeIf { target.hero },
         )
     }
 
@@ -842,6 +917,11 @@ fun ThorApp(
                      * plainly when that service is not running rather than being
                      * silently dropped a second time.
                      */
+                    is LauncherEffect.PickPlatformArtwork -> {
+                        pendingArtwork = effect
+                        artworkPicker.launch(arrayOf("image/*"))
+                    }
+
                     LauncherEffect.OpenPowerMenu ->
                         if (mouse.serviceConnected.value) {
                             mouse.requestPowerMenu()

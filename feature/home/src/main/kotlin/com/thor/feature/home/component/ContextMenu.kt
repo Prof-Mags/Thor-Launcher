@@ -27,7 +27,10 @@ import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FolderOff
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material.icons.rounded.Monitor
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Star
@@ -54,6 +57,7 @@ import com.thor.core.model.AppEntry
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
+import com.thor.core.model.PlatformFolders
 
 /** An action offered for the highlighted entry. */
 enum class ContextAction(val label: String, val icon: ImageVector) {
@@ -90,6 +94,21 @@ enum class ContextAction(val label: String, val icon: ImageVector) {
      */
     DELETE("Remove from library", Icons.Rounded.DeleteForever),
 
+    /**
+     * Hand-picked artwork for a platform folder.
+     *
+     * Offered because the alternative is a scrape, and a scrape cannot be told
+     * what a system looks like: these providers index games, so asking one about
+     * "Super Nintendo" returns whatever game happens to mention it. The launcher
+     * picks a representative image from the folder's own contents as a default,
+     * which is reasonable and never what someone with a particular image in mind
+     * wanted. Choosing one by hand marks it as the user's, and nothing — not a
+     * rescrape, not a newly installed icon pack — overwrites it afterwards.
+     */
+    SET_PLATFORM_ICON("Choose icon…", Icons.Rounded.Image),
+    SET_PLATFORM_HERO("Choose backdrop…", Icons.Rounded.Wallpaper),
+    CLEAR_PLATFORM_ARTWORK("Reset artwork", Icons.Rounded.Restore),
+
     DELETE_FOLDER("Delete folder", Icons.Rounded.Delete),
 }
 
@@ -111,6 +130,8 @@ fun contextActionsFor(
     foldersExist: Boolean = false,
     /** Whether this entry currently sits inside a folder. */
     inFolder: Boolean = false,
+    /** Whether this platform folder already wears hand-picked artwork. */
+    hasCustomArtwork: Boolean = false,
 ): List<ContextAction> = buildList {
     add(ContextAction.LAUNCH)
     if (entry !is FolderEntry) {
@@ -144,6 +165,21 @@ fun contextActionsFor(
         // back.
         if (entry.isHidden) add(ContextAction.UNHIDE) else add(ContextAction.HIDE)
     }
+    /*
+     * Artwork, but only for a platform folder.
+     *
+     * A folder the user made already takes custom artwork through Edit, which
+     * writes the folder's own image. A platform folder's artwork belongs to the
+     * *platform* — it is the same icon the information panel and the open-folder
+     * banner draw — so it is set here and written there, and offering the folder
+     * route for it would leave the two disagreeing.
+     */
+    if (entry is FolderEntry && PlatformFolders.platformIdOf(entry.id) != null) {
+        add(ContextAction.SET_PLATFORM_ICON)
+        add(ContextAction.SET_PLATFORM_HERO)
+        if (hasCustomArtwork) add(ContextAction.CLEAR_PLATFORM_ARTWORK)
+    }
+
     if (entry is AppEntry && !entry.isSystemApp) add(ContextAction.UNINSTALL)
     if (entry !is FolderEntry) add(ContextAction.DELETE)
     if (entry is FolderEntry) add(ContextAction.DELETE_FOLDER)
