@@ -82,27 +82,35 @@ fun PlatformDetailPanel(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
         ) {
-            // The pack's wordmark stands in for the title when there is one,
-            // exactly as it does on the folder banner — a logo is the name.
+            /*
+             * The wordmark decorates the title; it does not replace it.
+             *
+             * It used to stand in for the name entirely, on the reasoning that a
+             * logo *is* the name — which holds right up until the image does not
+             * arrive. A pack removed, a URI whose permission lapsed, a slow load:
+             * any of those left the panel with no title at all, describing a
+             * system it never named. Drawn above the name instead, so the heading
+             * is always there and the logo is a bonus when it loads.
+             */
             if (logoUri != null) {
                 ArtworkImage(
                     model = logoUri,
-                    contentDescription = platform.name,
+                    contentDescription = null,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(LOGO_HEIGHT.dp)
                         .widthIn(max = LOGO_MAX_WIDTH.dp),
                 )
-            } else {
-                Text(
-                    text = platform.name.ifBlank { folderTitle },
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = colors.onBackground,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
+
+            Text(
+                text = platform.name.ifBlank { folderTitle },
+                style = MaterialTheme.typography.headlineSmall,
+                color = colors.onBackground,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
 
             // "Nintendo · 1990", the line a game's panel gives to its developer.
             if (platform.subtitle.isNotBlank()) {
@@ -125,11 +133,59 @@ fun PlatformDetailPanel(
                 )
             }
 
+            /*
+             * What this collection actually is, rather than only what the system
+             * was.
+             *
+             * The packaged description is the same for everyone; these lines are
+             * the only part of the panel that says anything about *this* library —
+             * how much of it has been touched, how long it has held someone's
+             * attention, and what they keep going back to.
+             */
+            val played = games.count { it.stats.hasBeenPlayed }
+            val totalMillis = games.sumOf { it.stats.totalPlayMillis }
+            val favourites = games.count { it.isFavorite }
+
             Row(horizontalArrangement = Arrangement.spacedBy(dimens.spacingLarge)) {
                 PlatformStat("Games", games.size.toString())
-                val played = games.count { it.stats.hasBeenPlayed }
-                if (played > 0) PlatformStat("Played", played.toString())
+                if (played > 0) PlatformStat("Played", "$played")
+                if (favourites > 0) PlatformStat("Favourites", "$favourites")
+                if (totalMillis > 0L) PlatformStat("Time", totalMillis.asPlaytime())
             }
+
+            val mostPlayed = games
+                .filter { it.stats.totalPlayMillis > 0L }
+                .maxByOrNull { it.stats.totalPlayMillis }
+
+            if (mostPlayed != null) {
+                DetailLine("MOST PLAYED", mostPlayed.title)
+            }
+
+            val newest = games.maxByOrNull { it.stats.lastPlayedEpochMs ?: 0L }
+                ?.takeIf { it.stats.hasBeenPlayed }
+            if (newest != null && newest.id != mostPlayed?.id) {
+                DetailLine("LAST PLAYED", newest.title)
+            }
+
+            /*
+             * The practical half: what the scanner accepts for this system, and
+             * what will actually open a file.
+             *
+             * Both are questions a user asks of a platform folder and nothing
+             * else in the launcher answers — "why has nothing appeared here"
+             * usually turns out to be one of these two.
+             */
+            if (platform.romExtensions.isNotEmpty()) {
+                DetailLine(
+                    "FILE TYPES",
+                    platform.romExtensions.sorted().joinToString(" ") { ".$it" },
+                )
+            }
+
+            DetailLine(
+                "EMULATOR",
+                platform.defaultEmulatorPackage ?: "None set — games here will not launch",
+            )
 
             val recent = games
                 .filter { it.stats.hasBeenPlayed }
@@ -161,6 +217,31 @@ fun PlatformDetailPanel(
         // Deliberately empty: the backdrop shows through here, as on a game.
         Spacer(modifier = Modifier.weight(1f - PANEL_WEIGHT))
     }
+}
+
+/** A labelled fact, in the same shape the game panel uses. */
+@Composable
+private fun DetailLine(label: String, value: String) {
+    val colors = ThorTheme.colors
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = colors.onSurfaceVariant,
+    )
+    Text(
+        text = value,
+        style = MaterialTheme.typography.bodySmall,
+        color = colors.onSurfaceVariant,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/** "12h 40m", or "45m" under an hour. Zero never reaches here. */
+private fun Long.asPlaytime(): String {
+    val minutes = this / 60_000L
+    val hours = minutes / 60
+    return if (hours > 0) "${hours}h ${minutes % 60}m" else "${minutes}m"
 }
 
 @Composable
