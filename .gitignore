@@ -14,3 +14,7 @@ hs_err_pid*.log
 /float-ui-*/
 /*-smart-folders-*/
 /iconpacks/
+
+# HotSpot compiler replay dumps, written on a JVM crash.
+replay_pid*.log
+hs_err_pid*.log

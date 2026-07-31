@@ -33,6 +33,8 @@ import com.thor.core.model.TorznabIndexer
 import com.thor.data.launcher.DefaultLauncherManager
 import com.thor.data.launcher.PointerServiceManager
 import com.thor.data.launcher.EntryLauncher
+import com.thor.data.media.DebridStatus
+import com.thor.data.media.MediaRepository
 import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.ProviderStatus
 import com.thor.data.repository.LibraryRepository
@@ -77,6 +79,7 @@ class SettingsViewModel @Inject constructor(
     private val defaultLauncherManager: DefaultLauncherManager,
     private val iconPackRepository: IconPackRepository,
     private val pointerService: PointerServiceManager,
+    private val mediaRepository: MediaRepository,
     mouse: MouseController,
 ) : ViewModel() {
 
@@ -167,6 +170,37 @@ class SettingsViewModel @Inject constructor(
 
     fun updateMedia(transform: (MediaSettings) -> MediaSettings) {
         viewModelScope.launchSafely(TAG) { settingsRepository.updateMedia(transform) }
+    }
+
+    private val _debridStatus = MutableStateFlow<String?>(null)
+
+    /**
+     * What Real-Debrid said when last asked.
+     *
+     * Null until asked. A token that is present but expired, revoked or mistyped
+     * is indistinguishable from a working one by inspection, and the symptom it
+     * produces — sources listed, nothing ever opening — points nowhere near this
+     * screen.
+     */
+    val debridStatus: StateFlow<String?> = _debridStatus.asStateFlow()
+
+    fun checkDebrid() {
+        _debridStatus.value = "Checking…"
+        viewModelScope.launchSafely(
+            tag = TAG,
+            onError = { error -> _debridStatus.value = error.message ?: "Check failed" },
+        ) {
+            _debridStatus.value = when (val status = mediaRepository.debridStatus()) {
+                is DebridStatus.Connected -> buildString {
+                    append("Connected as ${status.username}")
+                    status.daysRemaining?.let { append(" · $it days left") }
+                }
+
+                is DebridStatus.NotConfigured -> "No token set"
+                is DebridStatus.InvalidToken -> "That token was rejected"
+                is DebridStatus.Error -> "Could not reach Real-Debrid: ${status.reason}"
+            }
+        }
     }
 
     /** Appends a blank indexer for the user to fill in. */

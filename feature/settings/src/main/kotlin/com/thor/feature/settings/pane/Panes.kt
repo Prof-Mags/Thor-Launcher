@@ -82,6 +82,8 @@ fun SettingsPageContent(
     iconPackStatus: IconPackStatus,
     pointerServiceEnabled: Boolean,
     pointerRunning: Boolean,
+    /** What Real-Debrid said when last asked, or null if it has not been. */
+    debridStatus: String?,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         when (page) {
@@ -107,7 +109,7 @@ fun SettingsPageContent(
             SettingsPage.SORTING -> SortingPage(settings, focusedRow, viewModel)
 
             SettingsPage.MOVIES_CATALOGUE ->
-                MoviesCataloguePage(settings, focusedRow, viewModel)
+                MoviesCataloguePage(settings, focusedRow, viewModel, debridStatus)
 
             SettingsPage.MOVIES_PLAYBACK ->
                 MoviesPlaybackPage(settings, focusedRow, viewModel)
@@ -159,7 +161,8 @@ fun rowCountFor(
     SettingsPage.SORTING -> 2
     // Two keys and the debrid status line, then one row per indexer, then the
     // add button and the summary.
-    SettingsPage.MOVIES_CATALOGUE -> INDEXER_FIRST_ROW + indexerCount + 2
+    SettingsPage.MOVIES_CATALOGUE ->
+        INDEXER_FIRST_ROW + indexerCount * ROWS_PER_INDEXER + 2
     SettingsPage.MOVIES_PLAYBACK -> MOVIES_PLAYBACK_ROWS
     SettingsPage.NAVIGATION -> 4
     // Enable, permission, speed, span, then one row per bindable button.

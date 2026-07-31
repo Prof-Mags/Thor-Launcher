@@ -31,6 +31,7 @@ internal fun MoviesCataloguePage(
     settings: ThorSettings,
     focusedRow: Int,
     viewModel: SettingsViewModel,
+    debridStatus: String?,
 ) {
     val media = settings.media
 
@@ -61,7 +62,20 @@ internal fun MoviesCataloguePage(
         )
         RowDivider()
 
-        InfoRow("Real-Debrid", if (media.isDebridConfigured) "Configured" else "Not set")
+        /*
+         * Asked of the service rather than inferred from the field being filled.
+         *
+         * A token that is present but expired, revoked or mistyped looks exactly
+         * like a working one from here, and the symptom it produces — sources
+         * listed but nothing ever opening — points nowhere near this screen.
+         */
+        ActionRow(
+            title = "Check Real-Debrid",
+            subtitle = debridStatus ?: "Confirms the token works and the account is active.",
+            focused = focusedRow == 2,
+            trailingLabel = "Check",
+            onClick = viewModel::checkDebrid,
+        )
         RowDivider()
 
         /*
@@ -74,14 +88,50 @@ internal fun MoviesCataloguePage(
          * same as the game metadata providers.
          */
         media.indexers.forEachIndexed { index, indexer ->
-            ActionRow(
-                title = indexer.name.ifBlank { indexer.url.ifBlank { "Indexer ${index + 1}" } },
-                subtitle = when {
-                    !indexer.enabled -> "Disabled"
-                    indexer.isUsable -> indexer.url
-                    else -> "Needs a URL and an API key"
+            val base = INDEXER_FIRST_ROW + index * ROWS_PER_INDEXER
+
+            TextFieldRow(
+                title = "Indexer ${index + 1} — name",
+                subtitle = indexer.status(),
+                value = indexer.name,
+                placeholder = "Whatever you want to call it",
+                focused = focusedRow == base,
+                onValueChange = { name ->
+                    viewModel.updateIndexer(index) { it.copy(name = name) }
                 },
-                focused = focusedRow == INDEXER_FIRST_ROW + index,
+            )
+            RowDivider()
+
+            TextFieldRow(
+                title = "Torznab URL",
+                subtitle = "The base endpoint, without the trailing /api. Jackett " +
+                    "shows this as “Torznab Feed” on each configured indexer.",
+                value = indexer.url,
+                placeholder = "http://192.168.1.10:9117/api/v2.0/indexers/xxx/results/torznab",
+                focused = focusedRow == base + 1,
+                onValueChange = { url ->
+                    viewModel.updateIndexer(index) { it.copy(url = url.trim()) }
+                },
+            )
+            RowDivider()
+
+            TextFieldRow(
+                title = "API key",
+                subtitle = "From the same page as the URL.",
+                value = indexer.apiKey,
+                placeholder = "Required",
+                isSecret = true,
+                focused = focusedRow == base + 2,
+                onValueChange = { key ->
+                    viewModel.updateIndexer(index) { it.copy(apiKey = key.trim()) }
+                },
+            )
+            RowDivider()
+
+            ActionRow(
+                title = "Remove this indexer",
+                focused = focusedRow == base + 3,
+                destructive = true,
                 trailingLabel = "Remove",
                 onClick = { viewModel.removeIndexer(index) },
             )
@@ -92,15 +142,19 @@ internal fun MoviesCataloguePage(
             title = "Add a torrent indexer",
             subtitle = "A Torznab endpoint — Jackett, Prowlarr or NZBHydra. THOR " +
                 "searches it directly; nothing else is installed.",
-            focused = focusedRow == INDEXER_FIRST_ROW + media.indexers.size,
+            focused = focusedRow == INDEXER_FIRST_ROW + media.indexers.size * ROWS_PER_INDEXER,
             trailingLabel = "Add",
             onClick = { viewModel.addIndexer() },
         )
         RowDivider()
 
         InfoRow(
-            "Sources",
-            if (media.hasSources) "${media.indexers.count { it.isUsable }} indexers" else "None",
+            "Ready to search",
+            if (media.hasSources) {
+                "${media.indexers.count { it.isUsable }} of ${media.indexers.size}"
+            } else {
+                "None"
+            },
         )
     }
 }
@@ -222,14 +276,22 @@ internal fun MoviesPlaybackPage(
     }
 }
 
-/** Rows above the indexer list: the two keys and the debrid status line. */
+/** Rows above the indexer list: the two keys and the debrid check. */
 internal const val INDEXER_FIRST_ROW = 3
 
-/** How many rows each page renders, for the controller's cursor clamp. */
-internal fun moviesCatalogueRowCount(media: MediaSettings): Int =
-    INDEXER_FIRST_ROW + media.indexers.size + 2
+/** Name, URL, key and a remove button, per indexer. */
+internal const val ROWS_PER_INDEXER = 4
 
 internal const val MOVIES_PLAYBACK_ROWS = 9
+
+/** What this indexer is currently missing, if anything. */
+private fun TorznabIndexer.status(): String = when {
+    isUsable -> "Ready"
+    url.isBlank() && apiKey.isBlank() -> "Needs a URL and an API key"
+    url.isBlank() -> "Needs a URL"
+    apiKey.isBlank() -> "Needs an API key"
+    else -> "Disabled"
+}
 
 /**
  * Resolutions worth offering.

@@ -87,6 +87,7 @@ fun SettingsScreen(
     val iconPackStatus by viewModel.iconPackStatus.collectAsStateWithLifecycle()
     val pointerServiceEnabled by viewModel.pointerServiceEnabled.collectAsStateWithLifecycle()
     val pointerRunning by viewModel.pointerRunning.collectAsStateWithLifecycle()
+    val debridStatus by viewModel.debridStatus.collectAsStateWithLifecycle()
 
     val pages = SettingsPage.forCategory(category)
 
@@ -194,6 +195,7 @@ fun SettingsScreen(
                                 iconPackStatus = iconPackStatus,
                                 pointerServiceEnabled = pointerServiceEnabled,
                                 pointerRunning = pointerRunning,
+                                debridStatus = debridStatus,
                             )
                         }
 
