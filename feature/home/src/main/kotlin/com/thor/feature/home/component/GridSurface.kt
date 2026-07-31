@@ -20,9 +20,11 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -80,6 +82,8 @@ fun GridPager(
     jiggling: Boolean,
     folderStyle: FolderStyle,
     prefetchRadius: Int,
+    /** Changes only when a cell's content or placement changes, never on cursor moves. */
+    contentVersion: Any,
     onCellTapped: (row: Int, column: Int) -> Unit,
     onCellLongPressed: (row: Int, column: Int) -> Unit,
     onPageChanged: (Int) -> Unit,
@@ -87,6 +91,19 @@ fun GridPager(
     cellAt: (page: Int, row: Int, column: Int) -> GridCellData,
     modifier: Modifier = Modifier,
 ) {
+    /*
+     * Cursor movement is the grid's hottest state change. Keep its latest value
+     * in a stable State object, so moving between two cells invalidates those two
+     * slots rather than rebuilding every cell on the current and prefetched pages.
+     */
+    val cursorState = rememberUpdatedState(cursor)
+    val latestCellAt = rememberUpdatedState(cellAt)
+    val latestTap = rememberUpdatedState(onCellTapped)
+    val latestLongPress = rememberUpdatedState(onCellLongPressed)
+    val stableTap: (Int, Int) -> Unit = remember { { row, column -> latestTap.value(row, column) } }
+    val stableLongPress: (Int, Int) -> Unit = remember {
+        { row, column -> latestLongPress.value(row, column) }
+    }
     val safePageCount = pageCount.coerceAtLeast(1)
     val pagerState = rememberPagerState(
         initialPage = currentPage.coerceIn(0, safePageCount - 1),
@@ -112,16 +129,22 @@ fun GridPager(
             modifier = Modifier.fillMaxSize(),
             beyondViewportPageCount = prefetchRadius,
         ) { pageIndex ->
+            // This lambda remains referentially stable while the cursor moves;
+            // the latest layout data is read only if this page genuinely needs
+            // recomposition (a library, folder or layout change).
+            val pageCellAt = remember(pageIndex, contentVersion) {
+                { row: Int, column: Int -> latestCellAt.value(pageIndex, row, column) }
+            }
             GridMatrix(
                 spec = spec,
                 isCurrentPage = pageIndex == currentPage,
-                cursor = cursor,
+                cursor = cursorState,
                 touchEnabled = touchEnabled,
                 jiggling = jiggling,
                 folderStyle = folderStyle,
-                onCellTapped = onCellTapped,
-                onCellLongPressed = onCellLongPressed,
-                cellAt = { row, column -> cellAt(pageIndex, row, column) },
+                onCellTapped = stableTap,
+                onCellLongPressed = stableLongPress,
+                cellAt = pageCellAt,
             )
         }
     }
@@ -139,7 +162,7 @@ fun GridPager(
 private fun GridMatrix(
     spec: GridSpec,
     isCurrentPage: Boolean,
-    cursor: CursorPosition,
+    cursor: State<CursorPosition>,
     touchEnabled: Boolean,
     jiggling: Boolean,
     folderStyle: FolderStyle,
@@ -173,10 +196,6 @@ private fun GridMatrix(
                 ) {
                     repeat(spec.columns) { column ->
                         val data = cellAt(row, column)
-                        val isFocused = isCurrentPage &&
-                            cursor.row == row &&
-                            cursor.column == column
-
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -200,16 +219,15 @@ private fun GridMatrix(
                                 ),
                             contentAlignment = Alignment.Center,
                         ) {
-                            GridCell(
-                                entry = data.entry,
+                            GridCellSlot(
+                                data = data,
                                 spec = spec,
-                                focused = isFocused,
-                                isHeld = data.isHeld,
-                                jiggling = jiggling && data.entry != null,
-                                platform = data.platform,
+                                row = row,
+                                column = column,
+                                isCurrentPage = isCurrentPage,
+                                cursor = cursor,
+                                jiggling = jiggling,
                                 folderStyle = folderStyle,
-                                folderPreview = data.folderPreview,
-                                modifier = Modifier.fillMaxSize(),
                             )
                         }
                     }
@@ -217,6 +235,36 @@ private fun GridMatrix(
             }
         }
     }
+}
+
+/**
+ * Keeps the cursor read inside an individual slot's restart group.  A page owns
+ * dozens of slots, but only the old and new focused slots observe different
+ * values after a directional move.
+ */
+@Composable
+private fun GridCellSlot(
+    data: GridCellData,
+    spec: GridSpec,
+    row: Int,
+    column: Int,
+    isCurrentPage: Boolean,
+    cursor: State<CursorPosition>,
+    jiggling: Boolean,
+    folderStyle: FolderStyle,
+) {
+    val currentCursor = cursor.value
+    GridCell(
+        entry = data.entry,
+        spec = spec,
+        focused = isCurrentPage && currentCursor.row == row && currentCursor.column == column,
+        isHeld = data.isHeld,
+        jiggling = jiggling && data.entry != null,
+        platform = data.platform,
+        folderStyle = folderStyle,
+        folderPreview = data.folderPreview,
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 /**

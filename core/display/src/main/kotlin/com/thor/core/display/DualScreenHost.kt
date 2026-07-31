@@ -70,8 +70,10 @@ fun SecondaryDisplay(
      * the other display, the user tapping it produces no event anywhere in the
      * launcher — the app consumes the touch — and the sole trace of it is this
      * window losing focus.
-     */
+    */
     onFocusChanged: ((Boolean) -> Unit)? = null,
+    /** Reports when the Presentation has actually been shown or dismissed. */
+    onVisibilityChanged: ((Boolean) -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -88,6 +90,7 @@ fun SecondaryDisplay(
     val currentMotionDispatcher by rememberUpdatedState(motionDispatcher)
     val currentEnabled by rememberUpdatedState(enabled)
     val currentTakesFocus by rememberUpdatedState(takesFocus)
+    val currentVisibilityListener by rememberUpdatedState(onVisibilityChanged)
 
     if (activity == null || displayId == null) {
         return
@@ -105,7 +108,10 @@ fun SecondaryDisplay(
     val slot = remember(activity, displayId) { PresentationSlot() }
 
     DisposableEffect(slot) {
-        onDispose { slot.hide() }
+        onDispose {
+            slot.hide()
+            currentVisibilityListener?.invoke(false)
+        }
     }
 
     /*
@@ -129,7 +135,10 @@ fun SecondaryDisplay(
         }
 
         fun show() {
-            if (slot.presentation != null) return
+            if (slot.presentation != null) {
+                currentVisibilityListener?.invoke(true)
+                return
+            }
             // Shown from STARTED rather than RESUMED: the panel should be populated
             // as soon as it can be, and waiting for resume left it blank for a frame
             // on every return to the launcher.
@@ -173,12 +182,15 @@ fun SecondaryDisplay(
                 }
                 created.focusListener = { hasFocus -> currentFocusListener?.invoke(hasFocus) }
             }
-            runCatching { slot.presentation?.show() }.onFailure { error ->
-                // The display can disappear between resolution and show();
-                // losing this panel must not take the launcher with it.
-                ThorLog.e("Display", "Failed to show presentation on $displayId", error)
-                slot.presentation = null
-            }
+            runCatching { slot.presentation?.show() }
+                .onSuccess { currentVisibilityListener?.invoke(slot.presentation != null) }
+                .onFailure { error ->
+                    // The display can disappear between resolution and show();
+                    // losing this panel must not take the launcher with it.
+                    ThorLog.e("Display", "Failed to show presentation on $displayId", error)
+                    slot.presentation = null
+                    currentVisibilityListener?.invoke(false)
+                }
         }
 
         /*
@@ -219,6 +231,9 @@ fun SecondaryDisplay(
                         slot.presentation?.setFocusable(shouldTakeFocus)
                     } else {
                         slot.hide()
+                        // `Presentation.dismiss()` has returned, so the panel is
+                        // truly gone before an app is allowed to arrive there.
+                        currentVisibilityListener?.invoke(false)
                     }
                 }
         } finally {

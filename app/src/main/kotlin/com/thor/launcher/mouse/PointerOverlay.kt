@@ -5,7 +5,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.view.Gravity
@@ -25,20 +24,13 @@ import com.thor.core.input.PointerPosition
  * overlay would need "Draw over other apps" on top of it. Nothing else about the
  * window differs.
  *
- * The windows are untouchable and unfocusable by design. A cursor that swallowed
- * the touch underneath it would make the pointer the only thing on the device that
- * could be pointed at.
+ * The windows are untouchable, but focusable while the pointer is up. That keeps
+ * touches with the app beneath the cursor while allowing the focused overlay to
+ * receive controller motion events outside THOR.
  */
 class PointerOverlay(
     private val context: Context,
-    /**
-     * Joystick motion, from whichever panel the cursor is on.
-     *
-     * Reported from here because this is the only window THOR has that is
-     * focused while another app is in front, and a focused window is the only
-     * place Android delivers motion events at all.
-     */
-    private val onMotion: (MotionEvent) -> Boolean = { false },
+    private val onMotion: (MotionEvent) -> Boolean,
 ) {
 
     private val displayManager = context.getSystemService(DisplayManager::class.java)
@@ -55,15 +47,16 @@ class PointerOverlay(
      * @param fillArgb the theme's cursor colour, so the pointer looks like part
      *   of the launcher even while standing over somebody else's app
      */
-    fun show(position: PointerPosition, sizeDp: Int, fillArgb: Long) {
+    fun show(position: PointerPosition, sizeDp: Int, fillArgb: Long): Boolean {
         // Hidden on every other panel, so the pointer is never in two places.
         windows.filterKeys { it != position.displayId }.keys.forEach(::hideOn)
 
-        val window = windows.getOrPut(position.displayId) {
-            create(position.displayId) ?: return
-        }
+        val window = windows[position.displayId]
+            ?: create(position.displayId)?.also { windows[position.displayId] = it }
+            ?: return false
         window.view.setFill(fillArgb.toInt())
         window.view.moveTo(position.x, position.y, sizeDp)
+        return true
     }
 
     /** Takes the pointer down everywhere. */
@@ -104,20 +97,12 @@ class PointerOverlay(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 type,
                 /*
-                 * Focusable on purpose, and this is the crux of the whole feature.
-                 *
-                 * Accessibility services are delivered key events and never motion
-                 * events, and the analogue stick is a motion event. So the cursor
-                 * was being driven by the launcher's own input handling, which
-                 * only works while the launcher holds focus — the moment a click
-                 * gave focus to the app underneath, the stick went somewhere
-                 * nothing could see it and the cursor froze until the launcher was
-                 * brought back. A focused window is the only place motion events
-                 * are delivered, so while the pointer is up this window is it.
-                 *
-                 * NOT_TOUCHABLE stays: the cursor must never eat the taps it is
-                 * aiming. ALT_FOCUSABLE_IM keeps a keyboard from opening merely
-                 * because a focusable window appeared.
+                 * This transparent window takes key focus only while pointer mode
+                 * is up. Accessibility services receive controller keys, but not
+                 * the analogue-stick motion stream; that stream follows the focused
+                 * window. Keeping this view untouchable means it never blocks the
+                 * app beneath it, while focus gives the external pointer the same
+                 * stick control it has inside THOR.
                  */
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                     WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
@@ -137,8 +122,6 @@ class PointerOverlay(
                 .isSuccess
 
             if (added) {
-                // Focus has to be asked for; being in a focusable window is not
-                // enough for a view to be delivered anything.
                 view.requestFocus()
                 return DisplayWindow(windowManager, view)
             }
@@ -156,10 +139,8 @@ class PointerOverlay(
 /**
  * The cursor itself.
  *
- * Drawn rather than an asset so it can carry its own outline: a flat white arrow
- * disappears over white, and a flat black one disappears over a game. An arrow
- * filled light with a dark stroke reads on both, which is the only thing a
- * pointer over arbitrary content has to do.
+ * A compact crosshair rather than a desktop arrow. Its centre is the click point,
+ * and its separated arms remain visible over both bright screenshots and dark apps.
  */
 @SuppressLint("ViewConstructor")
 private class PointerView(
@@ -171,21 +152,6 @@ private class PointerView(
     private var pointerY = 0f
     private var sizePx = 0f
 
-    init {
-        isFocusable = true
-        isFocusableInTouchMode = true
-    }
-
-    /**
-     * The stick, everywhere.
-     *
-     * `onGenericMotionEvent` rather than `onTouchEvent`: a joystick is a generic
-     * motion source, and it is delivered only to the focused window — which is
-     * why this window asks to be one while the pointer is up.
-     */
-    override fun onGenericMotionEvent(event: MotionEvent): Boolean =
-        onMotion(event) || super.onGenericMotionEvent(event)
-
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
         color = Color.WHITE
@@ -195,12 +161,19 @@ private class PointerView(
         style = Paint.Style.STROKE
         color = Color.argb(220, 16, 18, 22)
         strokeJoin = Paint.Join.ROUND
+        strokeCap = Paint.Cap.ROUND
+    }
+
+    private val accent = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.WHITE
+        strokeCap = Paint.Cap.ROUND
     }
 
     /**
      * Takes the theme's cursor colour, and picks its own outline against it.
      *
-     * The same rule the in-launcher cursor uses: this arrow sits over content
+     * The same rule the in-launcher cursor uses: this reticle sits over content
      * nobody chose — a game, a browser, a store page — so the outline is whichever
      * of black or white the fill is furthest from, rather than a fixed colour that
      * would disappear for half the palettes.
@@ -213,22 +186,27 @@ private class PointerView(
         } else {
             Color.argb(220, 255, 255, 255)
         }
+        accent.color = argb
         invalidate()
     }
 
     private val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
+        style = Paint.Style.STROKE
         color = Color.argb(70, 0, 0, 0)
+        strokeCap = Paint.Cap.ROUND
     }
-
-    private val path = Path()
 
     init {
         setWillNotDraw(false)
-        // A hardware layer would be re-uploaded on every move; the cursor is a
-        // dozen path segments and cheaper drawn straight onto the canvas.
+        isFocusable = true
+        isFocusableInTouchMode = true
+        // A hardware layer would be re-uploaded on every move; the crosshair is
+        // four short strokes and cheaper drawn straight onto the canvas.
         setLayerType(LAYER_TYPE_NONE, null)
     }
+
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean =
+        onMotion(event) || super.onGenericMotionEvent(event)
 
     fun moveTo(x: Float, y: Float, sizeDp: Int) {
         val px = sizeDp * resources.displayMetrics.density
@@ -237,41 +215,44 @@ private class PointerView(
         pointerY = y
         sizePx = px
         stroke.strokeWidth = px * STROKE_FRACTION
+        accent.strokeWidth = px * ACCENT_STROKE_FRACTION
         invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         if (sizePx <= 0f) return
 
-        val w = sizePx * 0.62f
-        val h = sizePx
+        val arm = sizePx * ARM_FRACTION
+        val gap = sizePx * GAP_FRACTION
+        val shadowWidth = sizePx * SHADOW_STROKE_FRACTION
+        shadow.strokeWidth = shadowWidth
 
-        // The same arrow the in-launcher cursor draws; see the note there. The two
-        // must agree exactly, because crossing out of THOR hands the drawing from
-        // one to the other and a change of shape mid-travel reads as a glitch.
-        path.reset()
-        path.moveTo(pointerX, pointerY)
-        path.lineTo(pointerX, pointerY + h * 0.80f)
-        path.lineTo(pointerX + w * 0.24f, pointerY + h * 0.62f)
-        path.lineTo(pointerX + w * 0.40f, pointerY + h)
-        path.lineTo(pointerX + w * 0.58f, pointerY + h * 0.92f)
-        path.lineTo(pointerX + w * 0.42f, pointerY + h * 0.56f)
-        path.lineTo(pointerX + w * 0.68f, pointerY + h * 0.54f)
-        path.close()
+        fun line(dx1: Float, dy1: Float, dx2: Float, dy2: Float, paint: Paint) {
+            canvas.drawLine(pointerX + dx1, pointerY + dy1, pointerX + dx2, pointerY + dy2, paint)
+        }
 
-        // A soft drop under the arrow, so it separates from bright content the
-        // outline alone would sit flat against.
-        canvas.save()
-        canvas.translate(sizePx * 0.06f, sizePx * 0.08f)
-        canvas.drawPath(path, shadow)
-        canvas.restore()
+        // Outline first, then the themed inner stroke, then a solid centre so the
+        // exact press point is readable without making the reticle bulky.
+        fun drawArms(paint: Paint) {
+            line(-arm, 0f, -gap, 0f, paint)
+            line(gap, 0f, arm, 0f, paint)
+            line(0f, -arm, 0f, -gap, paint)
+            line(0f, gap, 0f, arm, paint)
+        }
 
-        canvas.drawPath(path, fill)
-        canvas.drawPath(path, stroke)
+        drawArms(shadow)
+        drawArms(stroke)
+        drawArms(accent)
+        canvas.drawCircle(pointerX, pointerY, sizePx * CENTRE_RADIUS_FRACTION, fill)
     }
 
     private companion object {
-        const val STROKE_FRACTION = 0.075f
+        const val STROKE_FRACTION = 0.09f
+        const val SHADOW_STROKE_FRACTION = 0.17f
+        const val ACCENT_STROKE_FRACTION = 0.052f
+        const val ARM_FRACTION = 0.38f
+        const val GAP_FRACTION = 0.12f
+        const val CENTRE_RADIUS_FRACTION = 0.105f
 
         /** Above this, a fill needs a dark outline rather than a pale one. */
         const val MID_LUMINANCE = 0.45f

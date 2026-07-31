@@ -28,10 +28,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -99,8 +99,11 @@ fun GridCell(
      * An empty cell is skipped: it has nothing to act on, and lighting up the
      * gaps as the cursor crossed them would strobe.
      */
-    val hover = rememberPointerHover()
-    val highlighted = focused || (entry != null && hover.isHovered)
+    // Empty cells do not react to a pointer, so giving each of them a hover
+    // collector and a layout-bound listener only burns work while the cursor
+    // moves. Populated cells retain the identical hover and haptic behaviour.
+    val hover = if (entry != null) rememberPointerHover() else null
+    val highlighted = focused || hover?.isHovered == true
 
     // A held icon lifts further than a merely focused one, so the two states
     // are distinguishable at a glance while dragging.
@@ -118,25 +121,54 @@ fun GridCell(
     // An actual oscillation. This used to be a *static* 1.6° tilt, which at that
     // angle is indistinguishable from no change at all — which is why entering
     // edit mode looked like it had done nothing.
-    val wobbleTransition = rememberInfiniteTransition(label = "wobble")
-    val wobble by wobbleTransition.animateFloat(
-        initialValue = -JIGGLE_DEGREES,
-        targetValue = if (jiggling) JIGGLE_DEGREES else -JIGGLE_DEGREES,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = JIGGLE_PERIOD_MS, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "wobbleAngle",
-    )
+    // A grid can have dozens of cells. Keeping an inactive infinite transition
+    // in each one leaves the frame clock busy even when arrange mode is closed.
+    val wobble = if (jiggling) {
+        val wobbleTransition = rememberInfiniteTransition(label = "wobble")
+        val value by wobbleTransition.animateFloat(
+            initialValue = -JIGGLE_DEGREES,
+            targetValue = JIGGLE_DEGREES,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = JIGGLE_PERIOD_MS, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "wobbleAngle",
+        )
+        value
+    } else {
+        0f
+    }
 
-    val shape = spec.iconShape.toComposeShape(
-        radius = dimens.cornerRadius.value,
-        cornerStyle = ThorTheme.shapes.style,
-    )
+    val cornerStyle = ThorTheme.shapes.style
+    val shape = remember(spec.iconShape, dimens.cornerRadius, cornerStyle) {
+        spec.iconShape.toComposeShape(
+            radius = dimens.cornerRadius.value,
+            cornerStyle = cornerStyle,
+        )
+    }
 
     // The user's icon-size preference is expressed as the fraction of the
     // square slot the icon occupies, so growing it can never overflow the cell.
     val iconFraction = (BASE_ICON_FILL * spec.iconScale).coerceIn(0.35f, 1f)
+
+    val contentAlpha = when {
+        // Only reachable at all while "show hidden entries" is on, and it has
+        // to look like what it is: an entry the user hid, showing temporarily so
+        // it can be restored or removed.
+        entry?.isHidden == true -> HIDDEN_ALPHA
+        isHeld -> 0.85f
+        else -> 1f
+    }
+    val transform = if (focusScale != 1f || wobble != 0f || contentAlpha != 1f) {
+        Modifier.graphicsLayer {
+            scaleX = focusScale
+            scaleY = focusScale
+            rotationZ = wobble
+            alpha = contentAlpha
+        }
+    } else {
+        Modifier
+    }
 
     Column(
         // No inset here: the gap between cells is applied by the page's own
@@ -163,23 +195,11 @@ fun GridCell(
                     // box. Measured inside it, the box grows when the highlight
                     // appears and shrinks when it goes, which makes the element's
                     // own state an input to the test that produced it.
-                    .pointerHover(hover)
-                    .scale(focusScale)
-                    .graphicsLayer {
-                        // The arrange-mode wobble is a rotation on the layer
-                        // rather than a re-layout, so it costs nothing per frame.
-                        rotationZ = if (jiggling) wobble else 0f
-                        alpha = when {
-                            // Only reachable at all while "show hidden entries" is
-                            // on, and it has to look like what it is: an entry the
-                            // user hid, showing temporarily so it can be restored
-                            // or removed. Solid, it would read as an ordinary cell
-                            // and the setting as having done nothing.
-                            entry?.isHidden == true -> HIDDEN_ALPHA
-                            isHeld -> 0.85f
-                            else -> 1f
-                        }
-                    }
+                    .then(if (hover != null) Modifier.pointerHover(hover) else Modifier)
+                    // One transient layer carries scale, alpha and arrange-mode
+                    // rotation. Ordinary cells need none, avoiding a render node
+                    // for every icon on every prefetched page.
+                    .then(transform)
                     // The cell's own shape, so a square icon gets a square cursor
                     // and a circular one a ring, rather than a fixed rounded box
                     // that matched only one of the five shapes on offer.

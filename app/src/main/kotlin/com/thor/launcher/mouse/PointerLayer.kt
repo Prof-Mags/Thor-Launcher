@@ -19,9 +19,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
@@ -100,7 +98,7 @@ fun PointerHost(
 
     // Without the lifecycle, like everything else in this shell: this window can
     // be the live one while the activity behind the other panel is stopped.
-    val serviceConnected by mouse.serviceConnected.collectAsState()
+    val serviceCursorDisplayId by mouse.serviceCursorDisplayId.collectAsState()
 
     /*
      * Actions are performed by whichever layer the pointer is currently over.
@@ -130,14 +128,15 @@ fun PointerHost(
         Box(modifier = modifier.fillMaxSize()) {
             content()
             /*
-             * Drawn here only when the service is not running.
+             * Drawn here unless the service has successfully put its overlay on
+             * this exact display.
              *
-             * When it is, it puts a cursor of its own over every panel — including
-             * this one — and both were being drawn at once. Two arrows a pixel
+             * When it has, it puts a cursor of its own over this panel and both
+             * arrows would otherwise be drawn a pixel
              * apart do not read as two cursors; they read as one badly drawn one,
              * which is exactly what "the pointer looks weird shaped" was.
              */
-            if (!serviceConnected) {
+            if (serviceCursorDisplayId != displayId) {
                 // Over everything this window draws, so the cursor is never behind
                 // the thing it is pointing at.
                 Cursor(position = cursor)
@@ -206,18 +205,12 @@ private fun View.dispatchScroll(position: PointerPosition, distancePx: Float) {
 /**
  * The cursor.
  *
- * Drawn rather than an asset so it carries its own outline: a light arrow
- * disappears over light content and a dark one over a game, while one filled light
- * with a dark edge reads on both — which is the only thing a pointer over
- * arbitrary content has to do.
+ * Drawn rather than supplied as an asset so it stays sharp at every panel density.
+ * The reticle's centre is the click point, and the outlined, separated arms remain
+ * legible over both light panels and game artwork.
  */
 @Composable
 private fun Cursor(position: State<PointerPosition?>) {
-    // Reused across frames. The arrow is the same seven segments every time and
-    // allocating them afresh sixty times a second is work the collector then has
-    // to undo.
-    val path = remember { Path() }
-
     /*
      * The arrow wears the theme's cursor colour — the same one the selection ring
      * is drawn in, because they are the same idea pointed at the same thing.
@@ -238,48 +231,39 @@ private fun Cursor(position: State<PointerPosition?>) {
         val current = position.value ?: return@Canvas
 
         val size = CURSOR_SIZE.dp.toPx()
-        val w = size * 0.62f
-        val h = size
-        val x = current.x
-        val y = current.y
+        val center = Offset(current.x, current.y)
+        val arm = size * 0.38f
+        val gap = size * 0.12f
+        val outerWidth = size * 0.17f
+        val glowWidth = size * 0.12f
+        val innerWidth = size * 0.065f
+        val segments = arrayOf(
+            Offset(center.x - arm, center.y) to Offset(center.x - gap, center.y),
+            Offset(center.x + gap, center.y) to Offset(center.x + arm, center.y),
+            Offset(center.x, center.y - arm) to Offset(center.x, center.y - gap),
+            Offset(center.x, center.y + gap) to Offset(center.x, center.y + arm),
+        )
 
-        /*
-         * A plain arrow, in the proportions every desktop uses.
-         *
-         * The tail used to run past the bottom of the nominal height and the
-         * right edge sat at the full width, which made a squat, splayed shape
-         * that did not read as a cursor. Nothing here is decorative: the tip is
-         * the hotspot, the left edge is vertical so the point is unambiguous, and
-         * the tail is narrow enough to leave the point the widest thing on it.
-         */
-        path.reset()
-        path.apply {
-            moveTo(x, y)
-            lineTo(x, y + h * 0.80f)
-            lineTo(x + w * 0.24f, y + h * 0.62f)
-            lineTo(x + w * 0.40f, y + h)
-            lineTo(x + w * 0.58f, y + h * 0.92f)
-            lineTo(x + w * 0.42f, y + h * 0.56f)
-            lineTo(x + w * 0.68f, y + h * 0.54f)
-            close()
+        // Three narrow layers give the reticle a crisp outline and a restrained
+        // themed core instead of the oversized glow that made the old arrow look
+        // shrunken and fuzzy.
+        segments.forEach { (start, end) -> drawLine(outline, start, end, outerWidth) }
+        segments.forEach { (start, end) ->
+            drawLine(glow.copy(alpha = GLOW_ALPHA), start, end, glowWidth)
         }
-
-        // A soft drop first, so the arrow separates from bright content that an
-        // outline alone would sit flat against.
-        translate(left = size * 0.06f, top = size * 0.08f) {
-            drawPath(path, Color.Black.copy(alpha = 0.28f))
-        }
-        // A hairline of the theme's glow, hugging the outline. An earlier version
-        // stroked this at a fifth of the cursor's size, which drew a halo wider
-        // than the arrow and turned it into a blob.
-        drawPath(path, glow.copy(alpha = GLOW_ALPHA), style = Stroke(width = size * 0.14f))
-        drawPath(path, fill)
-        drawPath(path, outline, style = Stroke(width = size * 0.075f))
+        segments.forEach { (start, end) -> drawLine(fill, start, end, innerWidth) }
+        drawCircle(fill, radius = size * 0.095f, center = center)
+        drawCircle(
+            color = outline,
+            radius = size * 0.095f,
+            center = center,
+            style = Stroke(width = size * 0.045f),
+        )
     }
 }
 
-/** The arrow's tip is its hotspot, so the drawn point is the point clicked. */
-private const val CURSOR_SIZE = 26
+/** The reticle centre is its hotspot, so it precisely marks the click point. */
+private const val CURSOR_SIZE = 28
 private const val TAP_MS = 40L
 private const val LONG_PRESS_MS = 600L
 

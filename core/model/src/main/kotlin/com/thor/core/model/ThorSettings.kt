@@ -25,6 +25,7 @@ data class ThorSettings(
     val cloud: CloudSettings = CloudSettings(),
     val developer: DeveloperSettings = DeveloperSettings(),
     val mouse: MouseSettings = MouseSettings(),
+    val media: MediaSettings = MediaSettings(),
     /**
      * Installed platform icon packs, newest last.
      *

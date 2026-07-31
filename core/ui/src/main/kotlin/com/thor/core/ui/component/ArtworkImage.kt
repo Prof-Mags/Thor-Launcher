@@ -16,13 +16,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,6 +33,7 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import coil.size.Scale
+import coil.size.Size
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.designsystem.theme.blend
 
@@ -52,11 +56,27 @@ fun ArtworkImage(
     crossfadeMillis: Int = ThorTheme.motion.detailMillis,
 ) {
     val context = LocalContext.current
-    val request = remember(model, crossfadeMillis) {
+    /*
+     * `rememberAsyncImagePainter` does not infer its target bounds on its own.
+     * Without this resolver a 100px grid cell decoded the original 4K box-art
+     * file, then threw almost all of those pixels away during draw.  The same
+     * component also fills the top panel, where the resolver naturally asks for
+     * the larger size, so image quality stays exactly where it is visible.
+     */
+    /*
+     * The size is observed from layout rather than taken from Coil's own
+     * resolver, which is `internal` and cannot be referenced from here. Same
+     * effect by the public route: the first layout pass reports the bounds, the
+     * request is rebuilt once against them, and every decode afterwards is at
+     * the size actually drawn.
+     */
+    var targetSize by remember(model) { mutableStateOf(Size.ORIGINAL) }
+    val request = remember(model, crossfadeMillis, targetSize) {
         ImageRequest.Builder(context)
             .data(model)
             .crossfade(crossfadeMillis)
             .scale(Scale.FILL)
+            .size(targetSize)
             // Hardware bitmaps are bound to the rendering context that uploaded
             // them. The grid is drawn inside a Presentation on the secondary
             // display, and a hardware bitmap decoded against the primary
@@ -90,7 +110,16 @@ fun ArtworkImage(
             painter = painter,
             contentDescription = contentDescription,
             contentScale = contentScale,
-            modifier = Modifier.fillMaxSize(),
+            // Where the bounds come from. Reported from the target the image is
+            // actually drawn into, so a cell asks for a cell-sized decode and
+            // the top panel asks for a panel-sized one.
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged { size ->
+                    if (size.width > 0 && size.height > 0) {
+                        targetSize = Size(size.width, size.height)
+                    }
+                },
         )
     }
 }

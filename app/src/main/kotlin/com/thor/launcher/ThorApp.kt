@@ -206,6 +206,13 @@ fun ThorApp(
     val navCursor by viewModel.navCursor.collectAsState()
     val trailerDismissedFor by viewModel.trailerDismissedFor.collectAsState()
 
+    // A bumper temporarily shows stills for the current game. Once the cursor
+    // leaves it, returning should start its trailer again rather than preserving
+    // that one-off choice indefinitely.
+    LaunchedEffect(state.selection?.id) {
+        viewModel.restoreTrailerForNewSelection(state.selection?.id)
+    }
+
     /*
      * The launcher's own text focus, provided to both windows.
      *
@@ -895,15 +902,10 @@ fun ThorApp(
                     folderChildren = state.openFolderContents,
                     clockStyle = settings.personalization.clockStyle,
                     showStatusBar = settings.personalization.showStatusBar,
-                    /*
-                     * Performance mode's single switch already covers blur and
-                     * animated wallpapers; trailers are the same trade — a decoder
-                     * per dwell versus a completely static panel. The user's own
-                     * preference sits alongside it, and the bumpers override both
-                     * for whichever game is highlighted.
-                     */
+                    // Trailer playback is an explicit user preference. Performance
+                    // mode reduces interface effects, but must not silently replace
+                    // a successfully fetched trailer with screenshots.
                     videoPreviewsEnabled = settings.personalization.autoplayTrailers &&
-                        !settings.performance.performanceMode &&
                         trailerDismissedFor != state.selection?.id,
                     selectedScreenshot = selectedScreenshot,
                     onScreenshotSelected = viewModel::setScreenshot,
@@ -1309,6 +1311,7 @@ fun ThorApp(
                         keyDispatcher = inputRouter::dispatchKeyEvent,
                         motionDispatcher = inputRouter::onGenericMotionEvent,
                         onFocusChanged = ::onPresentationFocusChanged,
+                        onVisibilityChanged = viewModel::setSecondaryPresentationVisible,
                         content = { secondWindow { infoWindowContent() } },
                     )
                 } else {
@@ -1332,6 +1335,7 @@ fun ThorApp(
                         keyDispatcher = inputRouter::dispatchKeyEvent,
                         motionDispatcher = inputRouter::onGenericMotionEvent,
                         onFocusChanged = ::onPresentationFocusChanged,
+                        onVisibilityChanged = viewModel::setSecondaryPresentationVisible,
                         content = { secondWindow { gridWindowContent() } },
                     )
                 }

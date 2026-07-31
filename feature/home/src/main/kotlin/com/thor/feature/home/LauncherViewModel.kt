@@ -42,8 +42,8 @@ import com.thor.data.sync.LibrarySyncManager
 import com.thor.data.sync.PlaytimeTracker
 import com.thor.data.sync.SyncState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
@@ -59,6 +60,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 /**
@@ -129,6 +131,12 @@ class LauncherViewModel @Inject constructor(
      */
     private val _secondScreenOccupied = MutableStateFlow(false)
     val secondScreenOccupied: StateFlow<Boolean> = _secondScreenOccupied.asStateFlow()
+
+    /** Whether the secondary panel's Presentation is still attached to its display. */
+    private val secondaryPresentationVisible = MutableStateFlow(false)
+
+    /** Exactly one external launch may own a display handoff at a time. */
+    private var launchJob: Job? = null
 
     /**
      * The folder picker raised by "Move to folder…".
@@ -888,6 +896,19 @@ class LauncherViewModel @Inject constructor(
     val trailerDismissedFor: StateFlow<String?> = _trailerDismissedFor.asStateFlow()
 
     /**
+     * Restores autoplay after the cursor leaves a game whose trailer was dismissed.
+     *
+     * The dismissal is deliberately local to one visit. Keeping its id after the
+     * cursor moved away meant returning to that same game showed screenshots forever
+     * even though autoplay was enabled and a trailer had been scraped successfully.
+     */
+    fun restoreTrailerForNewSelection(entryId: String?) {
+        if (_trailerDismissedFor.value != null && _trailerDismissedFor.value != entryId) {
+            _trailerDismissedFor.value = null
+        }
+    }
+
+    /**
      * Steps the highlighted game's screenshot forward or back, wrapping around.
      *
      * The first press while a trailer is playing puts the stills up instead of
@@ -1263,6 +1284,12 @@ class LauncherViewModel @Inject constructor(
      */
     fun setSecondaryDisplayId(displayId: Int?) {
         entryLauncher.secondPanelDisplayId = displayId
+        if (displayId == null) secondaryPresentationVisible.value = false
+    }
+
+    /** Acknowledgement from [SecondaryDisplay] after the panel is shown or dismissed. */
+    fun setSecondaryPresentationVisible(visible: Boolean) {
+        secondaryPresentationVisible.value = visible
     }
 
     /**
@@ -1844,7 +1871,15 @@ class LauncherViewModel @Inject constructor(
 
     /** Launches an entry on a specific panel. */
     fun launchEntryOn(entry: GridEntry, target: LaunchTarget) {
-        viewModelScope.launchSafely(TAG) {
+        /*
+         * A controller Confirm can coincide with a touch callback in one frame.
+         * Two start requests make one task steal focus from the other and look
+         * exactly like the app opened behind a frozen grid.
+         */
+        if (launchJob?.isActive == true) return
+
+        launchJob = viewModelScope.launchSafely(TAG) {
+            try {
             /*
              * The panel is handed over *before* the app is started, not after.
              *
@@ -1854,12 +1889,16 @@ class LauncherViewModel @Inject constructor(
              * the two — and only then did the launcher take its window away. Standing
              * down first gives the app an empty display to arrive on, which is the
              * only ordering that cannot produce a grid sitting on top of a running
-             * app. The delay is the frame the teardown needs; the flag is put back if
-             * the launch turns out to fail.
+             * app. The flag is put back if the launch turns out to fail.
              */
             if (target == LaunchTarget.SECOND_SCREEN) {
                 _secondScreenOccupied.value = true
-                delay(PANEL_HANDOVER_MS)
+                if (!awaitSecondaryPresentationDismissal()) {
+                    _secondScreenOccupied.value = false
+                    emit(LauncherEffect.LaunchFailed("Could not prepare the second screen"))
+                    closeContextMenu()
+                    return@launchSafely
+                }
             }
 
             val result = when (entry) {
@@ -1913,7 +1952,22 @@ class LauncherViewModel @Inject constructor(
             }
             handleResult(result, entry.id)
             closeContextMenu()
+            } finally {
+                launchJob = null
+            }
         }
+    }
+
+    /**
+     * Waits for the actual Presentation teardown before launching onto its display.
+     * The former fixed delay was enough on some ROMs and too short on others,
+     * leaving a valid app window alive underneath the grid.
+     */
+    private suspend fun awaitSecondaryPresentationDismissal(): Boolean {
+        if (!secondaryPresentationVisible.value) return true
+        return withTimeoutOrNull(PRESENTATION_HANDOVER_TIMEOUT_MS) {
+            secondaryPresentationVisible.filter { visible -> !visible }.first()
+        } != null
     }
 
     /** Opens the system application details page. */
@@ -2239,11 +2293,8 @@ class LauncherViewModel @Inject constructor(
         const val STOP_TIMEOUT_MS = 5_000L
         const val DOCK_SLOTS = 5
 
-        /**
-         * Time given to the second panel to stand down before an app is started on
-         * it — one or two frames, enough for the window to be gone.
-         */
-        const val PANEL_HANDOVER_MS = 120L
+        /** A guard only; normal handoff proceeds as soon as dismissal is acknowledged. */
+        const val PRESENTATION_HANDOVER_TIMEOUT_MS = 1_000L
 
         /** Fallback capture size, used only until the shell reports the panels. */
         const val DEFAULT_CAPTURE_WIDTH = 1080

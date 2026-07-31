@@ -58,7 +58,7 @@ fun TopScreen(
     folderChildren: List<GridEntry>,
     clockStyle: ClockStyle,
     showStatusBar: Boolean,
-    /** Whether preview clips may play; off in performance mode. */
+    /** Whether the user has enabled preview clips. */
     videoPreviewsEnabled: Boolean,
     /**
      * Which screenshot fills the backdrop, owned by the view model rather than
@@ -101,21 +101,15 @@ fun TopScreen(
 
     // A clip that fails to play must not leave the panel black; the still
     // artwork is drawn underneath and this flag simply stops covering it.
-    var videoFailed by remember(game?.id) { mutableStateOf(false) }
+    // A scraper can replace a stale trailer URL while this game remains selected.
+    // Retry that new source instead of keeping the earlier failure latched until
+    // the user leaves and re-enters the game.
+    var videoFailed by remember(game?.id, game?.metadata?.artwork?.videoUri) {
+        mutableStateOf(false)
+    }
 
     val videoUri = game?.metadata?.artwork?.videoUri
         ?.takeIf { videoPreviewsEnabled && !videoFailed }
-
-    // Preview clips start after a dwell, so sweeping the cursor across a shelf
-    // does not spin up a decoder for every game it passes over.
-    var videoReady by remember(game?.id, videoUri) { mutableStateOf(false) }
-    LaunchedEffect(game?.id, videoUri) {
-        videoReady = false
-        if (videoUri != null) {
-            delay(PREVIEW_DWELL_MS)
-            videoReady = true
-        }
-    }
 
     Box(modifier = modifier.fillMaxSize().background(colors.background)) {
         AnimatedContent(
@@ -135,7 +129,9 @@ fun TopScreen(
             )
         }
 
-        if (videoUri != null && videoReady) {
+        // A fetched trailer is always placed above its still backdrop. The still
+        // remains beneath the TextureView until its first frame reaches the panel.
+        if (videoUri != null) {
             GameVideoBackground(
                 videoUri = videoUri,
                 playing = true,
@@ -342,9 +338,6 @@ private fun Scrim() {
             ),
     )
 }
-
-/** How long the cursor must rest on a game before its clip starts. */
-private const val PREVIEW_DWELL_MS = 900L
 
 /**
  * How long each screenshot is held before the slideshow advances.

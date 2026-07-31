@@ -18,7 +18,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.toSize
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 
 /**
  * Where the pointer is inside this window, or null when it is not in it.
@@ -94,24 +93,24 @@ fun rememberPointerHover(): PointerHoverState {
     val state = remember { PointerHoverState() }
 
     // Keyed on the element, never on the callback. A caller that rebuilds its
-    // lambda each recomposition would otherwise restart this collector — and each
-    // restart drops the first value again, which is the very value that says the
-    // cursor has just arrived.
+    // lambda each recomposition would otherwise restart this collector.
     val feedback = rememberUpdatedState(LocalPointerHoverFeedback.current)
 
     LaunchedEffect(state, position) {
+        var firstValue = true
         snapshotFlow {
             val point = position.value
             point != null && !state.bounds.isEmpty && state.bounds.contains(point)
         }
             .distinctUntilChanged()
-            // The first value is the state of the world, not a change in it. An
-            // element composed under a resting cursor would otherwise buzz for
-            // having been drawn.
-            .drop(1)
             .collect { hovered ->
+                val changed = state.isHovered != hovered
                 state.isHovered = hovered
-                if (hovered) feedback.value?.invoke()
+                // The initial value still has to update the visible highlight. It
+                // merely is not an arrival, so it should not vibrate just because a
+                // new page or folder happened to compose beneath a resting pointer.
+                if (!firstValue && changed && hovered) feedback.value?.invoke()
+                firstValue = false
             }
     }
 

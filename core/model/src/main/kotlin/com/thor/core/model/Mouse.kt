@@ -54,10 +54,9 @@ enum class MouseButton(val label: String) {
  *
  *  - *Inside THOR* the launcher sees every input, so the stick drives the cursor
  *    and any button can be bound.
- *  - *Over another app* the pointer runs from an accessibility service, and those
- *    are delivered key events only — never motion. So the stick cannot be read
- *    there, and the D-pad moves the cursor instead. No amount of work changes
- *    this; the events are not offered.
+ *  - *Over another app* the accessibility service filters controller keys and a
+ *    transparent, focusable accessibility overlay receives the stick stream. It
+ *    can therefore move and click without covering or touching the app beneath.
  */
 @Serializable
 data class MouseSettings(
@@ -86,7 +85,7 @@ data class MouseSettings(
     val acceleration: Float = 2.2f,
 
     /** Cursor size in dp. */
-    val cursorSizeDp: Int = 26,
+    val cursorSizeDp: Int = 28,
 
     /**
      * Whether the pointer crosses between the two panels.

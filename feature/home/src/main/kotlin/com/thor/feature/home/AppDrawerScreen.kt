@@ -72,6 +72,9 @@ fun AppDrawerScreen(
                 jiggling = false,
                 folderStyle = FolderStyle.GLYPH,
                 prefetchRadius = 1,
+                // The list is already sorted upstream; it is the drawer's sole
+                // content dependency and need not be rebuilt for cursor moves.
+                contentVersion = apps,
                 onCellTapped = onCellTapped,
                 onCellLongPressed = onCellLongPressed,
                 onPageChanged = onPageChanged,

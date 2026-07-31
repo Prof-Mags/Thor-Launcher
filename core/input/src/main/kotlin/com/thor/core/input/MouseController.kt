@@ -154,6 +154,19 @@ class MouseController @Inject constructor() {
 
     fun setServiceConnected(connected: Boolean) {
         _serviceConnected.value = connected
+        if (!connected) _serviceCursorDisplayId.value = null
+    }
+
+    /*
+     * The accessibility service can be alive while the system refuses its cursor
+     * overlay on a particular display.  Keep that fact separate from connection
+     * state: a THOR window must continue drawing its local cursor in that case.
+     */
+    private val _serviceCursorDisplayId = MutableStateFlow<Int?>(null)
+    val serviceCursorDisplayId: StateFlow<Int?> = _serviceCursorDisplayId.asStateFlow()
+
+    fun setServiceCursorDisplayId(displayId: Int?) {
+        _serviceCursorDisplayId.value = displayId
     }
 
     /**

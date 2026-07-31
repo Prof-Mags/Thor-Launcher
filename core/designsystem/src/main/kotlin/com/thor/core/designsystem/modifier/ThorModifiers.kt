@@ -85,29 +85,34 @@ fun Modifier.thorCursor(
     val dimens = ThorTheme.dimens
     val motionEnabled = ThorTheme.materials.animationsEnabled
 
-    // The animation is driven to a static target when idle rather than being
-    // conditionally created, so the composable's slot table shape never changes
-    // as focus moves — and an unfocused cell settles at a constant value.
-    val animate = focused && motionEnabled && animation != CursorAnimation.NONE
-    val transition = rememberInfiniteTransition(label = "cursor")
-    val pulse by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = if (animate) 1f else 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = when (animation) {
-                    CursorAnimation.PULSE -> 900
-                    CursorAnimation.SHIMMER -> 1600
-                    CursorAnimation.ROTATE -> 2400
-                    else -> 1800
-                },
-            ),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "cursorPulse",
-    )
-
     if (!focused) return this
+
+    // A grid can have dozens of cells. Giving every unfocused one an infinite
+    // transition keeps the frame clock busy even though none of them can draw a
+    // cursor. Create it only for the single focused element, and dispose it as
+    // soon as focus moves on.
+    val pulse = if (motionEnabled && animation != CursorAnimation.NONE) {
+        val transition = rememberInfiniteTransition(label = "cursor")
+        val value by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = when (animation) {
+                        CursorAnimation.PULSE -> 900
+                        CursorAnimation.SHIMMER -> 1600
+                        CursorAnimation.ROTATE -> 2400
+                        else -> 1800
+                    },
+                ),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "cursorPulse",
+        )
+        value
+    } else {
+        0f
+    }
 
     val strokeWidth = dimens.cursorThickness
     val glowAlpha = when (animation) {

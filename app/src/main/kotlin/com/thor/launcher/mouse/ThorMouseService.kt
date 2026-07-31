@@ -1,6 +1,7 @@
 package com.thor.launcher.mouse
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.hardware.display.DisplayManager
@@ -14,6 +15,7 @@ import android.view.MotionEvent
 import android.view.accessibility.AccessibilityEvent
 import com.thor.core.common.log.ThorLog
 import com.thor.core.datastore.SettingsRepository
+import com.thor.core.display.DisplayTopology
 import com.thor.core.input.MouseController
 import com.thor.core.input.PointerDisplay
 import com.thor.core.input.PointerPosition
@@ -45,11 +47,10 @@ import kotlin.math.abs
  * root or a lie. `dispatchGesture` is the sanctioned door, and this is what walks
  * through it.
  *
- * **What this service cannot do, and why.** Accessibility services are delivered
- * key events and never motion events. The analogue stick is a motion event. So
- * while another app has focus the pointer moves on the D-pad, and the stick only
- * drives it inside THOR — where the launcher reads its own input and hands the
- * deltas over directly. That is an API boundary, not an omission.
+ * **External stick input.** Accessibility services receive controller keys but not
+ * generic motion. While the cursor is up, its transparent, focusable overlay owns
+ * the stick stream without intercepting touches, so the analogue stick works over
+ * other apps as well as it does inside THOR.
  *
  * **It consumes the buttons it uses.** While the pointer is up, a bound button is
  * a click and the app underneath hears nothing of it — otherwise a press would
@@ -81,13 +82,14 @@ class ThorMouseService : AccessibilityService() {
     /** Directions currently held, for repeat while the pointer is up. */
     private val heldDirections = mutableMapOf<Int, Job>()
 
-    /** The stick's latest deflection, sampled by [startStickLoop]. */
+    /** Latest analogue-stick deflection, sampled by [startStickLoop]. */
     private var stickX = 0f
     private var stickY = 0f
     private var stickLoop: Job? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        requestControllerKeyFiltering()
         overlay = PointerOverlay(this, ::onStickMoved)
         reportDisplays()
         mouse.onPanelsNeeded(::reportDisplays)
@@ -113,9 +115,16 @@ class ThorMouseService : AccessibilityService() {
             .onEach { state ->
                 val position = state.position
                 if (state.active && position != null) {
-                    overlay?.show(position, settings.cursorSizeDp, cursorArgb)
+                    val shown = overlay?.show(
+                        position = position,
+                        sizeDp = settings.cursorSizeDp.coerceAtLeast(MIN_CURSOR_SIZE_DP),
+                        fillArgb = cursorArgb,
+                    ) == true
+                    mouse.setServiceCursorDisplayId(position.displayId.takeIf { shown })
                 } else {
+                    cancelMovement()
                     overlay?.hide()
+                    mouse.setServiceCursorDisplayId(null)
                 }
             }
             .launchIn(scope)
@@ -124,12 +133,23 @@ class ThorMouseService : AccessibilityService() {
         ThorLog.i(TAG, "Pointer service connected")
     }
 
+    /**
+     * Some vendor builds ignore the XML flag until it is also requested from the
+     * live service. Without this, [onKeyEvent] never runs once another app owns
+     * the foreground, so Start + Select cannot raise or dismiss the pointer.
+     */
+    private fun requestControllerKeyFiltering() {
+        val info = serviceInfo ?: return
+        info.flags = info.flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        serviceInfo = info
+        ThorLog.i(TAG, "External controller key filter requested")
+    }
+
     override fun onDestroy() {
-        heldDirections.values.forEach(Job::cancel)
-        heldDirections.clear()
-        stopStickLoop()
+        cancelMovement()
         overlay?.hide()
         overlay = null
+        mouse.setServiceCursorDisplayId(null)
         // Cleared before the scope dies: the controller is a singleton and outlives
         // this service, so a listener left pointing at a destroyed one would keep
         // it reachable and would report panels through a dead window manager.
@@ -152,6 +172,7 @@ class ThorMouseService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
 
     override fun onInterrupt() {
+        cancelMovement()
         mouse.setActive(false)
     }
 
@@ -223,10 +244,13 @@ class ThorMouseService : AccessibilityService() {
     private fun reportDisplays() {
         val manager = getSystemService(DisplayManager::class.java) ?: return
 
-        val panels = manager.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
-            .toList()
-            .let { presentation -> listOfNotNull(manager.getDisplay(Display.DEFAULT_DISPLAY)) + presentation }
-            .filter { it.isValid && it.state != Display.STATE_OFF }
+        val panels = listOfNotNull(
+            manager.getDisplay(Display.DEFAULT_DISPLAY)
+                ?.takeIf { it.isValid && it.state != Display.STATE_OFF },
+            manager.displays.firstOrNull { display ->
+                DisplayTopology.isUsableSecondary(display)
+            },
+        )
 
         var offset = 0
         mouse.setFallbackDisplays(
@@ -284,45 +308,66 @@ class ThorMouseService : AccessibilityService() {
         return mouse.isActive
     }
 
+    private fun startRepeat(keyCode: Int, dx: Float, dy: Float) {
+        stopRepeat(keyCode)
+        heldDirections[keyCode] = scope.launch {
+            // One step immediately, then a smooth glide — the same shape as the
+            // grid's auto-repeat, so held movement feels like the rest of the
+            // launcher rather than like a separate input system.
+            mouse.moveByStep(dx, dy)
+            delay(REPEAT_DELAY_MS)
+            while (isActive && mouse.isActive) {
+                mouse.moveByStep(dx, dy)
+                delay(REPEAT_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun stopRepeat(keyCode: Int) {
+        heldDirections.remove(keyCode)?.cancel()
+    }
+
     /**
-     * The stick, reported by the cursor's own window.
+     * Reads analogue-stick movement from the focusable, untouchable cursor overlay.
      *
-     * Recorded rather than acted on: Android sends a motion event when an axis
-     * *changes* and not while it is held, so moving on arrival gives a burst and
-     * then silence. [startStickLoop] does the moving, on a clock.
+     * Android only emits an axis event when the stick changes, not continuously
+     * while held, so the value is sampled by [startStickLoop]. A generous dead zone
+     * and clearing the loop whenever pointer mode turns off prevent the old "cursor
+     * walks itself to the bottom" failure.
      */
     private fun onStickMoved(event: MotionEvent): Boolean {
         if (!mouse.isActive) return false
         if (event.source and InputDevice.SOURCE_CLASS_JOYSTICK == 0) return false
 
-        // The hat is reported as an axis but behaves like a D-pad; taken in
-        // preference so a pad that sends both does not fight itself.
+        if (event.action == MotionEvent.ACTION_CANCEL) {
+            stopStickLoop()
+            return true
+        }
+
+        // The hat is a D-pad reported as axes. Prefer it only when it is actually
+        // engaged so a controller that reports both does not make two directions
+        // fight each other.
         val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
         val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
-        val x = if (abs(hatX) > HAT_THRESHOLD) hatX else event.getAxisValue(MotionEvent.AXIS_X)
-        val y = if (abs(hatY) > HAT_THRESHOLD) hatY else event.getAxisValue(MotionEvent.AXIS_Y)
+        val x = if (abs(hatX) >= HAT_THRESHOLD) hatX else event.getAxisValue(MotionEvent.AXIS_X)
+        val y = if (abs(hatY) >= HAT_THRESHOLD) hatY else event.getAxisValue(MotionEvent.AXIS_Y)
 
-        stickX = if (abs(x) < STICK_DEAD_ZONE) 0f else x
-        stickY = if (abs(y) < STICK_DEAD_ZONE) 0f else y
-        startStickLoop()
+        stickX = x.takeIf { abs(it) >= STICK_DEAD_ZONE } ?: 0f
+        stickY = y.takeIf { abs(it) >= STICK_DEAD_ZONE } ?: 0f
+        if (stickX == 0f && stickY == 0f) stopStickLoop() else startStickLoop()
         return true
     }
 
-    /** Moves the cursor at a fixed rate while the stick is off centre. */
     private fun startStickLoop() {
         if (stickLoop?.isActive == true) return
         stickLoop = scope.launch {
-            var last = SystemClock.uptimeMillis()
-            while (isActive) {
-                delay(FRAME_MS)
-                val x = stickX
-                val y = stickY
-                if (!mouse.isActive || (x == 0f && y == 0f)) return@launch
-
+            var previousFrame = SystemClock.uptimeMillis()
+            while (isActive && mouse.isActive && (stickX != 0f || stickY != 0f)) {
+                delay(STICK_FRAME_MS)
                 val now = SystemClock.uptimeMillis()
-                val elapsed = ((now - last).coerceIn(1L, MAX_FRAME_MS)) / 1000f
-                last = now
-                mouse.moveByStick(x, y, elapsed)
+                val elapsedSeconds = ((now - previousFrame).coerceIn(1L, MAX_STICK_FRAME_MS)) / 1_000f
+                previousFrame = now
+                mouse.moveByStick(stickX, stickY, elapsedSeconds)
             }
         }
     }
@@ -334,23 +379,11 @@ class ThorMouseService : AccessibilityService() {
         stickY = 0f
     }
 
-    private fun startRepeat(keyCode: Int, dx: Float, dy: Float) {
-        stopRepeat(keyCode)
-        heldDirections[keyCode] = scope.launch {
-            // One step immediately, then a smooth glide — the same shape as the
-            // grid's auto-repeat, so held movement feels like the rest of the
-            // launcher rather than like a separate input system.
-            mouse.moveByStep(dx, dy)
-            delay(REPEAT_DELAY_MS)
-            while (isActive) {
-                mouse.moveByStep(dx, dy)
-                delay(REPEAT_INTERVAL_MS)
-            }
-        }
-    }
-
-    private fun stopRepeat(keyCode: Int) {
-        heldDirections.remove(keyCode)?.cancel()
+    /** Stops stale movement before it can move a newly raised pointer. */
+    private fun cancelMovement() {
+        heldDirections.values.forEach(Job::cancel)
+        heldDirections.clear()
+        stopStickLoop()
     }
 
     private fun perform(action: MouseAction) {
@@ -459,18 +492,12 @@ class ThorMouseService : AccessibilityService() {
         const val REPEAT_DELAY_MS = 260L
         const val REPEAT_INTERVAL_MS = 16L
 
-        /** The cursor's frame interval, and the cap on one frame's worth of travel. */
-        const val FRAME_MS = 8L
-        const val MAX_FRAME_MS = 64L
-
-        /**
-         * Fixed rather than taken from the controller profile.
-         *
-         * The profile lives behind the launcher's settings repository and this
-         * runs while the launcher may not exist. A generous dead zone costs a
-         * little precision and never leaves a resting stick drifting the cursor.
-         */
-        const val STICK_DEAD_ZONE = 0.2f
+        const val STICK_FRAME_MS = 16L
+        const val MAX_STICK_FRAME_MS = 64L
+        const val STICK_DEAD_ZONE = 0.22f
         const val HAT_THRESHOLD = 0.5f
+
+        /** A compact reticle stays legible without covering the target. */
+        const val MIN_CURSOR_SIZE_DP = 28
     }
 }

@@ -7,7 +7,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -16,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -60,7 +60,6 @@ fun GameVideoBackground(
     if (videoUri == null) return
 
     val context = LocalContext.current
-    var surface by remember { mutableStateOf<TextureView?>(null) }
 
     /*
      * Read at call time rather than captured by the listener below.
@@ -143,6 +142,7 @@ fun GameVideoBackground(
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
+            player.setVideoTextureView(null)
             player.release()
         }
     }
@@ -151,7 +151,15 @@ fun GameVideoBackground(
     // within one game does not restart its video.
     LaunchedEffect(videoUri) {
         runCatching {
-            player.setMediaItem(MediaItem.fromUri(videoUri.toUri()))
+            // Both trailer providers return MP4 streams, but their redirect URLs
+            // often have no `.mp4` suffix. Tell Media3 the container explicitly so
+            // it does not fall back to extension guessing and reject a valid clip.
+            player.setMediaItem(
+                MediaItem.Builder()
+                    .setUri(videoUri.toUri())
+                    .setMimeType(MimeTypes.VIDEO_MP4)
+                    .build(),
+            )
             player.prepare()
         }.onFailure {
             ThorLog.w("TopScreen", "Could not prepare $videoUri", it)
@@ -164,15 +172,14 @@ fun GameVideoBackground(
         if (!playing) player.seekTo(0)
     }
 
-    DisposableEffect(surface) {
-        player.setVideoTextureView(surface)
-        onDispose { player.setVideoTextureView(null) }
-    }
-
     AndroidView(
         factory = { viewContext ->
             TextureView(viewContext).also { view ->
-                surface = view
+                // Attach at the point the surface is actually created. Waiting
+                // for a state-driven follow-up composition left some display
+                // implementations with a prepared player but no output target,
+                // so the still backdrop remained visible despite a valid trailer.
+                player.setVideoTextureView(view)
                 // Also on layout: the aspect usually arrives before the view has
                 // been measured, and `update` alone would then compute against a
                 // zero-sized view and never run again.

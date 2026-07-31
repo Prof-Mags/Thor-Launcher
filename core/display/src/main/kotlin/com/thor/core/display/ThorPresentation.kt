@@ -189,7 +189,15 @@ class ThorPresentation(
 
     override fun onStop() {
         super.onStop()
-        host.onDismissed()
+        /*
+         * A Presentation can be stopped when its owning activity is covered on
+         * the other panel while the presentation itself is still visible.  That
+         * is the normal dual-screen case. Destroying its independent lifecycle
+         * here leaves the window on screen but permanently unable to recompose;
+         * the shared state and haptics keep changing, so it looks exactly like a
+         * frozen grid. `dismiss()` is the definitive teardown path and already
+         * destroys the host before the window is removed.
+         */
     }
 
     /**

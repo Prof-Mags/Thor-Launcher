@@ -1,6 +1,7 @@
 package com.thor.feature.home.component
 
 import android.graphics.drawable.Drawable
+import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -38,10 +39,11 @@ fun AppIcon(
 ) {
     val context = LocalContext.current
     var bitmap by remember(packageName) {
-        mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+        mutableStateOf(AppIconMemoryCache.get(packageName))
     }
 
     LaunchedEffect(packageName) {
+        if (bitmap != null) return@LaunchedEffect
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
                 val drawable: Drawable = context.packageManager.getApplicationIcon(packageName)
@@ -49,7 +51,7 @@ fun AppIcon(
                     width = ICON_PX,
                     height = ICON_PX,
                 ).asImageBitmap()
-            }.getOrNull()
+            }.getOrNull()?.also { AppIconMemoryCache.put(packageName, it) }
         }
     }
 
@@ -79,3 +81,30 @@ fun AppIcon(
  * the Thor's panel without wasting memory on a full-resolution adaptive icon.
  */
 private const val ICON_PX = 192
+
+/**
+ * Composition state is discarded as pager pages leave the viewport. Keep a
+ * small process-local cache so returning to an apps page does not rasterise the
+ * same adaptive icons through PackageManager again.
+ */
+private object AppIconMemoryCache {
+    private const val MAX_CACHE_BYTES = 6 * 1024 * 1024
+    private val icons = object : LruCache<String, androidx.compose.ui.graphics.ImageBitmap>(
+        MAX_CACHE_BYTES,
+    ) {
+        override fun sizeOf(
+            key: String,
+            value: androidx.compose.ui.graphics.ImageBitmap,
+        ): Int = (value.width.toLong() * value.height * Int.SIZE_BYTES)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+    }
+
+    fun get(packageName: String): androidx.compose.ui.graphics.ImageBitmap? = synchronized(icons) {
+        icons.get(packageName)
+    }
+
+    fun put(packageName: String, bitmap: androidx.compose.ui.graphics.ImageBitmap) {
+        synchronized(icons) { icons.put(packageName, bitmap) }
+    }
+}
