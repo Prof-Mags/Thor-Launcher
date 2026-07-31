@@ -87,8 +87,66 @@ internal fun MoviesCataloguePage(
          * indexers to ask is the user's decision and their responsibility, the
          * same as the game metadata providers.
          */
+        /*
+         * Addons first, because they are the easy path.
+         *
+         * One URL, no credential, and the same install links people already share
+         * for Stremio — including the `stremio://` form an install button
+         * produces and the configured form that carries its options in the path.
+         * All of them are accepted; see `StremioAddons.normalise`.
+         */
+        media.addons.forEachIndexed { index, addon ->
+            val base = ADDON_FIRST_ROW + index * ROWS_PER_ADDON
+
+            TextFieldRow(
+                title = "Addon ${index + 1}",
+                subtitle = if (addon.name.isNotBlank()) {
+                    "${addon.name} — installed"
+                } else {
+                    "Paste the addon's install or manifest URL, then press Check."
+                },
+                value = addon.url,
+                placeholder = "https://…/manifest.json",
+                focused = focusedRow == base,
+                onValueChange = { url -> viewModel.setAddonUrl(index, url) },
+            )
+            RowDivider()
+
+            ActionRow(
+                title = if (addon.name.isNotBlank()) addon.name else "Check this addon",
+                subtitle = if (addon.name.isNotBlank()) {
+                    "Answering. Remove it if you no longer want it searched."
+                } else {
+                    "Asks the addon what it is called, which is the only way to " +
+                        "tell a working URL from a mistyped one."
+                },
+                focused = focusedRow == base + 1,
+                trailingLabel = if (addon.name.isNotBlank()) "Remove" else "Check",
+                destructive = addon.name.isNotBlank(),
+                onClick = {
+                    if (addon.name.isNotBlank()) {
+                        viewModel.removeAddon(index)
+                    } else {
+                        viewModel.checkAddon(index)
+                    }
+                },
+            )
+            RowDivider()
+        }
+
+        ActionRow(
+            title = "Add a Stremio addon",
+            subtitle = "THOR speaks the Stremio addon protocol, so any addon that " +
+                "serves streams works. It ships none — which one you install is " +
+                "your choice, as it is in Stremio.",
+            focused = focusedRow == ADDON_FIRST_ROW + media.addons.size * ROWS_PER_ADDON,
+            trailingLabel = "Add",
+            onClick = { viewModel.addAddon() },
+        )
+        RowDivider()
+
         media.indexers.forEachIndexed { index, indexer ->
-            val base = INDEXER_FIRST_ROW + index * ROWS_PER_INDEXER
+            val base = indexerFirstRow(media) + index * ROWS_PER_INDEXER
 
             TextFieldRow(
                 title = "Indexer ${index + 1} — name",
@@ -140,9 +198,11 @@ internal fun MoviesCataloguePage(
 
         ActionRow(
             title = "Add a torrent indexer",
-            subtitle = "A Torznab endpoint — Jackett, Prowlarr or NZBHydra. THOR " +
-                "searches it directly; nothing else is installed.",
-            focused = focusedRow == INDEXER_FIRST_ROW + media.indexers.size * ROWS_PER_INDEXER,
+            subtitle = "The other route: a Torznab endpoint — Jackett, Prowlarr or " +
+                "NZBHydra — searched by THOR directly. Needs a URL and a key per " +
+                "site, so an addon is usually less work.",
+            focused = focusedRow ==
+                indexerFirstRow(media) + media.indexers.size * ROWS_PER_INDEXER,
             trailingLabel = "Add",
             onClick = { viewModel.addIndexer() },
         )
@@ -151,9 +211,14 @@ internal fun MoviesCataloguePage(
         InfoRow(
             "Ready to search",
             if (media.hasSources) {
-                "${media.indexers.count { it.isUsable }} of ${media.indexers.size}"
+                listOfNotNull(
+                    media.addons.count { it.isUsable }
+                        .takeIf { it > 0 }?.let { "$it addons" },
+                    media.indexers.count { it.isUsable }
+                        .takeIf { it > 0 }?.let { "$it indexers" },
+                ).joinToString(" · ")
             } else {
-                "None"
+                "Nothing yet"
             },
         )
     }
@@ -276,11 +341,28 @@ internal fun MoviesPlaybackPage(
     }
 }
 
-/** Rows above the indexer list: the two keys and the debrid check. */
-internal const val INDEXER_FIRST_ROW = 3
+/** Rows above the addon list: the two keys and the debrid check. */
+internal const val ADDON_FIRST_ROW = 3
+
+/** A URL and a check/remove button, per addon. */
+internal const val ROWS_PER_ADDON = 2
 
 /** Name, URL, key and a remove button, per indexer. */
 internal const val ROWS_PER_INDEXER = 4
+
+/** Where the indexer list starts, after the addons and their Add button. */
+internal fun indexerFirstRow(media: MediaSettings): Int =
+    ADDON_FIRST_ROW + media.addons.size * ROWS_PER_ADDON + 1
+
+/**
+ * Every focusable row on the catalogue page.
+ *
+ * Derived from the same constants the page lays out with, rather than written as
+ * a number beside them — a count that drifts from the layout produces presses
+ * that appear to do nothing, with nothing to point at.
+ */
+internal fun moviesCatalogueRows(media: MediaSettings): Int =
+    indexerFirstRow(media) + media.indexers.size * ROWS_PER_INDEXER + 2
 
 internal const val MOVIES_PLAYBACK_ROWS = 9
 

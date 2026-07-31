@@ -43,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import com.thor.core.model.CornerStyle
 import com.thor.core.model.IconPack
 import com.thor.core.model.MouseAction
+import com.thor.core.model.MediaSettings
 import com.thor.core.model.MouseButton
 import com.thor.feature.settings.IconPackStatus
 import com.thor.feature.settings.component.DirectoryPickerRow
@@ -142,7 +143,8 @@ fun rowCountFor(
     page: SettingsPage,
     platformCount: Int,
     iconPackCount: Int = 0,
-    indexerCount: Int = 0,
+    /** The whole group, because its page's row count depends on two lists. */
+    mediaSettings: MediaSettings = MediaSettings(),
 ): Int = when (page) {
     SettingsPage.THEME -> 5
     SettingsPage.WALLPAPER -> 3
@@ -161,8 +163,7 @@ fun rowCountFor(
     SettingsPage.SORTING -> 2
     // Two keys and the debrid status line, then one row per indexer, then the
     // add button and the summary.
-    SettingsPage.MOVIES_CATALOGUE ->
-        INDEXER_FIRST_ROW + indexerCount * ROWS_PER_INDEXER + 2
+    SettingsPage.MOVIES_CATALOGUE -> moviesCatalogueRows(mediaSettings)
     SettingsPage.MOVIES_PLAYBACK -> MOVIES_PLAYBACK_ROWS
     SettingsPage.NAVIGATION -> 4
     // Enable, permission, speed, span, then one row per bindable button.

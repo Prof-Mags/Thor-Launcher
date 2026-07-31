@@ -41,14 +41,19 @@ data class MediaSettings(
     val indexers: List<TorznabIndexer> = emptyList(),
 
     /**
-     * Stream-source addons, as base URLs.
+     * Stream-source addons.
      *
-     * Kept alongside the built-in search rather than replaced by it. An addon is
-     * an HTTP endpoint answering `/manifest.json` and `/stream/{type}/{id}.json`
-     * — an open protocol with many implementations, and the easier route for
-     * anyone already running one. Both are queried and their results merged.
+     * The Stremio addon protocol: an HTTP endpoint answering `/manifest.json`
+     * describing itself and `/stream/{type}/{id}.json` with candidates. Open,
+     * documented, and with many independent implementations — which is exactly
+     * what a launcher wants. THOR speaks the protocol and ships no addons; which
+     * one to install is the user's choice, as it is in Stremio itself.
+     *
+     * Simpler to set up than [indexers] and listed first for that reason: an
+     * addon is one URL with no key, where a Torznab indexer needs an endpoint and
+     * a credential per site. Both are queried and their results merged.
      */
-    val addonUrls: List<String> = emptyList(),
+    val addons: List<StremioAddon> = emptyList(),
 
     // ---- Automatic source selection ---------------------------------------
 
@@ -111,10 +116,69 @@ data class MediaSettings(
     val isMetadataConfigured: Boolean get() = tmdbApiKey.isNotBlank()
     val isDebridConfigured: Boolean get() = realDebridToken.isNotBlank()
     val hasSources: Boolean
-        get() = indexers.any { it.isUsable } || addonUrls.any { it.isNotBlank() }
+        get() = addons.any { it.isUsable } || indexers.any { it.isUsable }
 
     /** Everything needed to actually play something. */
     val isPlayable: Boolean get() = isMetadataConfigured && hasSources
+}
+
+/**
+ * One installed Stremio-protocol addon.
+ *
+ * The name is resolved from the addon's own manifest rather than typed, so the
+ * list reads as the addons the user installed rather than as a column of URLs —
+ * and so that a working install is visibly distinguishable from a URL that was
+ * merely pasted.
+ */
+@Serializable
+data class StremioAddon(
+    /** Base URL, already normalised by [StremioAddons.normalise]. */
+    val url: String = "",
+    /** From the manifest; empty until the addon has answered. */
+    val name: String = "",
+    val enabled: Boolean = true,
+) {
+    val isUsable: Boolean get() = enabled && url.isNotBlank()
+
+    /** What to call it in a list: its own name, else its host. */
+    val label: String
+        get() = name.ifBlank {
+            url.substringAfter("://").substringBefore('/').ifBlank { "Addon" }
+        }
+}
+
+/**
+ * Turns whatever the user pasted into a base URL.
+ *
+ * Addon links are shared in several shapes and people paste all of them: the
+ * manifest URL from a browser, the `stremio://` link an install button produces,
+ * a configured URL with options embedded in the path, or a bare host. They all
+ * describe the same endpoint, and the protocol wants its base — so rather than
+ * telling the user which form is acceptable, every form is accepted.
+ */
+object StremioAddons {
+
+    fun normalise(input: String): String {
+        var url = input.trim()
+        if (url.isEmpty()) return ""
+
+        // The scheme an install button uses. It is an ordinary HTTPS endpoint
+        // underneath; only the link is dressed up.
+        url = url.removePrefix("stremio://").let { stripped ->
+            if (stripped != url) "https://$stripped" else url
+        }
+
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            url = "https://$url"
+        }
+
+        // The manifest is how an addon describes itself; the stream endpoint sits
+        // beside it, so the base is what gets stored.
+        return url.removeSuffix("/manifest.json").removeSuffix("/").trim()
+    }
+
+    /** Where the manifest lives for a normalised base URL. */
+    fun manifestUrl(baseUrl: String): String = "${normalise(baseUrl)}/manifest.json"
 }
 
 /**

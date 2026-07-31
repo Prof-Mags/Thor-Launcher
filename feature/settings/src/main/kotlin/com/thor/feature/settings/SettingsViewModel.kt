@@ -29,6 +29,8 @@ import com.thor.data.iconpack.IconPackImport
 import com.thor.data.iconpack.IconPackRepository
 import com.thor.core.model.MediaSettings
 import com.thor.core.model.MouseSettings
+import com.thor.core.model.StremioAddon
+import com.thor.core.model.StremioAddons
 import com.thor.core.model.TorznabIndexer
 import com.thor.data.launcher.DefaultLauncherManager
 import com.thor.data.launcher.PointerServiceManager
@@ -199,6 +201,53 @@ class SettingsViewModel @Inject constructor(
                 is DebridStatus.NotConfigured -> "No token set"
                 is DebridStatus.InvalidToken -> "That token was rejected"
                 is DebridStatus.Error -> "Could not reach Real-Debrid: ${status.reason}"
+            }
+        }
+    }
+
+    /** Appends a blank addon for the user to paste an install URL into. */
+    fun addAddon() = updateMedia { it.copy(addons = it.addons + StremioAddon()) }
+
+    fun removeAddon(index: Int) = updateMedia { media ->
+        media.copy(addons = media.addons.filterIndexed { i, _ -> i != index })
+    }
+
+    /**
+     * Stores a pasted URL, normalised, and asks the addon what it is called.
+     *
+     * The name is what turns a list of URLs into a list of installed addons, and
+     * getting one back is the only confirmation that the endpoint answers at all
+     * — a URL with a typo looks exactly like a working one until the first search
+     * comes back empty.
+     */
+    fun setAddonUrl(index: Int, url: String) {
+        updateMedia { media ->
+            media.copy(
+                addons = media.addons.mapIndexed { i, addon ->
+                    // The name belonged to the previous URL; clearing it stops a
+                    // stale one vouching for an endpoint nobody has checked.
+                    if (i == index) addon.copy(url = url, name = "") else addon
+                },
+            )
+        }
+    }
+
+    fun checkAddon(index: Int) {
+        viewModelScope.launchSafely(TAG) {
+            val addon = settings.value.media.addons.getOrNull(index) ?: return@launchSafely
+            val normalised = StremioAddons.normalise(addon.url)
+            val name = mediaRepository.identifyAddon(normalised)
+
+            updateMedia { media ->
+                media.copy(
+                    addons = media.addons.mapIndexed { i, existing ->
+                        if (i == index) {
+                            existing.copy(url = normalised, name = name.orEmpty())
+                        } else {
+                            existing
+                        }
+                    },
+                )
             }
         }
     }

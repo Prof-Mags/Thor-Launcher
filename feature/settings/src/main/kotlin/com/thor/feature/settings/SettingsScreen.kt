@@ -106,7 +106,7 @@ fun SettingsScreen(
                     page = openPage!!,
                     platformCount = platformOptions.size,
                     iconPackCount = iconPacks.size,
-                    indexerCount = settings.media.indexers.size,
+                    mediaSettings = settings.media,
                 )
                 category == SettingsCategory.ABOUT -> 0
                 else -> pages.size

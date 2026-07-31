@@ -215,6 +215,16 @@ class MediaRepository @Inject constructor(
 
     suspend fun debridStatus(): DebridStatus = withContext(ioDispatcher) { debrid.checkConnection() }
 
+    /**
+     * Asks an addon what it is called.
+     *
+     * The only way to tell a working install from a URL that was merely pasted:
+     * both look identical in a settings list, and the difference only shows up
+     * later as a source list that is always empty.
+     */
+    suspend fun identifyAddon(url: String): String? =
+        withContext(ioDispatcher) { addons.identify(url) }
+
     private companion object {
         const val TAG = "Media"
 

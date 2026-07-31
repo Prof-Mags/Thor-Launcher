@@ -6,6 +6,7 @@ import com.thor.core.model.CacheStatus
 import com.thor.core.model.MediaType
 import com.thor.core.model.ReleaseName
 import com.thor.core.model.StreamSource
+import com.thor.core.model.StremioAddons
 import com.thor.data.network.await
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -76,9 +77,16 @@ class StremioAddonProvider @Inject constructor(
     override suspend fun isConfigured(): Boolean = addonUrls().isNotEmpty()
 
     private suspend fun addonUrls(): List<String> =
-        settings.media.first().addonUrls
-            .map { url -> url.trim().removeSuffix("/") }
+        settings.media.first().addons
+            .filter { addon -> addon.isUsable }
+            // Normalised again on read rather than trusted from storage: settings
+            // can be restored from a backup written by an older build, and one
+            // stray `/manifest.json` makes every request answer nothing at all.
+            .map { addon -> StremioAddons.normalise(addon.url) }
             .filter { url -> url.isNotBlank() }
+
+    /** The addon's own name, for the settings list. Null when it does not answer. */
+    suspend fun identify(url: String): String? = manifestName(StremioAddons.normalise(url))
 
     override suspend fun find(query: SourceQuery): List<StreamSource> = coroutineScope {
         val addons = addonUrls()
@@ -119,9 +127,8 @@ class StremioAddonProvider @Inject constructor(
         }
     }
 
-    /** The addon's own name, for the settings list. */
-    suspend fun manifestName(baseUrl: String): String? {
-        val url = "${baseUrl.trim().removeSuffix("/")}/manifest.json"
+    private suspend fun manifestName(baseUrl: String): String? {
+        val url = StremioAddons.manifestUrl(baseUrl)
         return try {
             client.newCall(Request.Builder().url(url).build()).await().use { response ->
                 if (!response.isSuccessful) return null
