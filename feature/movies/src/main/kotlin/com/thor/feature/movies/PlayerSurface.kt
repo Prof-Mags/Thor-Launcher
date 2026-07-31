@@ -1,5 +1,6 @@
 package com.thor.feature.movies
 
+import android.os.SystemClock
 import android.view.TextureView
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
@@ -28,6 +29,8 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.thor.core.common.log.ThorLog
@@ -104,19 +107,70 @@ fun PlayerSurface(
     var audioUnsupported by remember(url) { mutableStateOf(false) }
     var audioTracks by remember(url) { mutableStateOf(emptyList<String>()) }
 
+    // One retry per stream, reset when the stream changes.
+    var retried by remember(url) { mutableStateOf(false) }
+
+    // The host alone: enough to identify a failing CDN, without writing a debrid
+    // token into the log.
+    val host = remember(url) { runCatching { url.toUri().host }.getOrNull() ?: "?" }
+
     val player = remember(context) {
         /*
          * Debrid links redirect, often across protocols, and the default source
          * refuses that — which surfaces as a clip that will not start rather than
          * as a redirect that was declined.
+         *
+         * The user agent is a browser's on purpose. These are CDN links, and
+         * several of the hosts behind them answer an unrecognised agent with a
+         * 403 or a redirect loop — which arrives here as a stream that connects
+         * and then never delivers a byte, indistinguishable from a slow network.
          */
         val http = DefaultHttpDataSource.Factory()
             .setUserAgent(USER_AGENT)
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(CONNECT_TIMEOUT_MS)
             .setReadTimeoutMs(READ_TIMEOUT_MS)
+            // Some hosts serve the file only when a range is asked for, and
+            // answer a plain GET with an HTML interstitial that never plays.
+            .setDefaultRequestProperties(mapOf("Accept" to "*/*"))
+
+        /*
+         * Start sooner than the defaults allow.
+         *
+         * ExoPlayer's stock load control waits for two and a half seconds of
+         * media before it will begin, and fifty on either side of the position
+         * before it stops filling. On a remux streamed over a debrid link that is
+         * tens of megabytes of buffer to acquire before the first frame appears —
+         * long enough that a working stream is indistinguishable from a broken
+         * one, which is exactly what "it just says buffering" is.
+         */
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                MIN_BUFFER_MS,
+                MAX_BUFFER_MS,
+                BUFFER_FOR_PLAYBACK_MS,
+                BUFFER_FOR_REBUFFER_MS,
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
+        /*
+         * Fall back to another decoder rather than giving up.
+         *
+         * A hardware decoder that refuses a stream — a profile it does not
+         * implement, or one already in use by something else on the device — is
+         * otherwise fatal, and presents as a track that never starts. With
+         * fallback on, the software decoder gets its turn.
+         */
+        val renderers = DefaultRenderersFactory(context)
+            .setEnableDecoderFallback(true)
+            .setExtensionRendererMode(
+                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER,
+            )
 
         ExoPlayer.Builder(context)
+            .setRenderersFactory(renderers)
+            .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(http))
             /*
              * Declared as movie content, but focus is *not* handled here.
@@ -149,6 +203,25 @@ fun PlayerSurface(
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            /**
+             * Logged because a stall has no other evidence.
+             *
+             * "It just says buffering" is the same picture whether the network is
+             * slow, the host is refusing, the link has expired or the file cannot
+             * be parsed — and none of those raise an error. The state transitions
+             * are the only record of which one happened.
+             */
+            override fun onPlaybackStateChanged(state: Int) {
+                val name = when (state) {
+                    Player.STATE_IDLE -> "idle"
+                    Player.STATE_BUFFERING -> "buffering"
+                    Player.STATE_READY -> "ready"
+                    Player.STATE_ENDED -> "ended"
+                    else -> "$state"
+                }
+                ThorLog.i(TAG, "Playback $name from $host")
+            }
+
             override fun onVideoSizeChanged(size: VideoSize) {
                 val height = size.height.toFloat()
                 videoAspect = if (height > 0f) {
@@ -158,8 +231,29 @@ fun PlayerSurface(
                 }
             }
 
+            /**
+             * Logged with the URL's host, which is the part that identifies the
+             * failure without putting a debrid token in the log.
+             */
             override fun onPlayerError(error: PlaybackException) {
-                ThorLog.w(TAG, "Playback failed (${error.errorCodeName})", error)
+                ThorLog.w(TAG, "Playback failed (${error.errorCodeName}) from $host", error)
+
+                /*
+                 * One retry, because the common failures here are transient.
+                 *
+                 * A debrid link is a redirect to a CDN node, and a node that
+                 * refuses or drops the first connection will usually accept the
+                 * second. Retrying at the last known position rather than from
+                 * the start, so a failure ten minutes in does not start the film
+                 * again.
+                 */
+                if (!retried && error.errorCode != PlaybackException.ERROR_CODE_DECODING_FAILED) {
+                    retried = true
+                    val resumeAt = player.currentPosition
+                    ThorLog.i(TAG, "Retrying from ${resumeAt}ms")
+                    player.prepare()
+                    player.seekTo(resumeAt)
+                }
             }
 
             /**
@@ -233,8 +327,28 @@ fun PlayerSurface(
      * other panel has to advance smoothly. Four samples a second is enough for a
      * scrubber to look continuous and cheap enough to run for a whole film.
      */
-    LaunchedEffect(player) {
+    LaunchedEffect(player, url) {
+        /*
+         * A stall is measured against the buffer, not the clock.
+         *
+         * Time passing proves nothing — a slow link legitimately spends a long
+         * while filling. What distinguishes a stream that is working from one
+         * that is not is whether *any* more of it has arrived, so that is what is
+         * watched.
+         */
+        var lastBuffered = -1L
+        var lastProgressAt = SystemClock.uptimeMillis()
+
         while (true) {
+            val buffered = player.bufferedPosition
+            if (buffered != lastBuffered) {
+                lastBuffered = buffered
+                lastProgressAt = SystemClock.uptimeMillis()
+            }
+            val stalledMs = SystemClock.uptimeMillis() - lastProgressAt
+            val stalled = player.playbackState != Player.STATE_READY &&
+                stalledMs > STALL_TIMEOUT_MS
+
             currentOnStatus(
                 PlayerStatus(
                     playing = player.isPlaying,
@@ -252,7 +366,8 @@ fun PlayerSurface(
                     suppressed = player.playbackSuppressionReason !=
                         Player.PLAYBACK_SUPPRESSION_REASON_NONE,
                     ended = player.playbackState == Player.STATE_ENDED,
-                    error = player.playerError?.errorCodeName,
+                    error = player.playerError?.errorCodeName
+                        ?: "Nothing is arriving from this source".takeIf { stalled },
                     videoWidth = player.videoSize.width,
                     videoHeight = player.videoSize.height,
                     audioUnsupported = audioUnsupported,
@@ -307,9 +422,35 @@ private fun TextureView.fitInside(videoAspect: Float) {
 }
 
 private const val TAG = "Movies"
-private const val USER_AGENT = "THOR-Launcher"
+
+/**
+ * A browser's, deliberately.
+ *
+ * These are CDN links, and several hosts behind them answer an unrecognised
+ * agent with a 403 or a redirect loop — which arrives as a stream that connects
+ * and never delivers, looking exactly like a slow network.
+ */
+private const val USER_AGENT =
+    "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Chrome/120.0.0.0 Mobile Safari/537.36"
+
 private const val CONNECT_TIMEOUT_MS = 20_000
 private const val READ_TIMEOUT_MS = 20_000
 private const val STATUS_INTERVAL_MS = 250L
+
+/** Enough media to start on, rather than enough to be comfortable. */
+private const val MIN_BUFFER_MS = 15_000
+private const val MAX_BUFFER_MS = 60_000
+private const val BUFFER_FOR_PLAYBACK_MS = 1_000
+private const val BUFFER_FOR_REBUFFER_MS = 2_500
+
+/**
+ * How long a stall may last before it is called one.
+ *
+ * Buffering that never ends is the single least informative thing a player can
+ * do: it is the same picture whether the network is slow, the host is refusing,
+ * or the link has expired. After this it says so.
+ */
+private const val STALL_TIMEOUT_MS = 25_000L
 const val MIN_SPEED = 0.5f
 const val MAX_SPEED = 2.0f
