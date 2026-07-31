@@ -31,6 +31,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
@@ -127,6 +128,14 @@ class ThorMouseService : AccessibilityService() {
                     mouse.setServiceCursorDisplayId(null)
                 }
             }
+            .launchIn(scope)
+
+        // The launcher's power-menu action. Raised here because
+        // `performGlobalAction` is an accessibility API and no public intent
+        // opens this dialog; `drop(1)` because collecting a counter replays it.
+        mouse.powerMenuRequests
+            .drop(1)
+            .onEach { performGlobalAction(GLOBAL_ACTION_POWER_DIALOG) }
             .launchIn(scope)
 
         mouse.setServiceConnected(true)

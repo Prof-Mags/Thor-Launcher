@@ -53,8 +53,22 @@ class MediaRepository @Inject constructor(
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
 ) {
 
-    private val detailCache = mutableMapOf<String, MediaItem>()
-    private val seasonCache = mutableMapOf<String, Season>()
+    /*
+     * Bounded, and safe to touch from more than one thread.
+     *
+     * Both were plain maps read and written from coroutines on the IO
+     * dispatcher, which is a pool — two shelves loading at once could write
+     * concurrently, and a plain `LinkedHashMap` answers that with a
+     * `ConcurrentModificationException` at some unrelated later read. They also
+     * grew without limit: a `MediaItem` carries its cast, crew, genres and
+     * season list, so browsing for a while accumulated the entire catalogue in
+     * memory with nothing ever releasing it.
+     *
+     * An access-ordered LinkedHashMap with a size cap is the whole fix: oldest
+     * entry out when full, and every access under one lock.
+     */
+    private val detailCache = LruCache<MediaItem>(DETAIL_CACHE_SIZE)
+    private val seasonCache = LruCache<Season>(SEASON_CACHE_SIZE)
 
     /**
      * The browse screen's shelves, fetched concurrently.
@@ -103,13 +117,13 @@ class MediaRepository @Inject constructor(
      */
     suspend fun details(id: MediaId): MediaItem? = withContext(ioDispatcher) {
         detailCache[id.key]?.let { return@withContext it }
-        tmdb.details(id)?.also { detailCache[id.key] = it }
+        tmdb.details(id)?.also { detailCache.put(id.key, it) }
     }
 
     suspend fun season(seriesId: Int, seasonNumber: Int): Season? = withContext(ioDispatcher) {
         val key = "$seriesId:$seasonNumber"
         seasonCache[key]?.let { return@withContext it }
-        tmdb.season(seriesId, seasonNumber)?.also { seasonCache[key] = it }
+        tmdb.season(seriesId, seasonNumber)?.also { seasonCache.put(key, it) }
     }
 
     suspend fun similar(id: MediaId): List<MediaItem> = withContext(ioDispatcher) {
@@ -203,6 +217,38 @@ class MediaRepository @Inject constructor(
 
     private companion object {
         const val TAG = "Media"
+
+        /**
+         * Enough to cover walking a few shelves and coming back.
+         *
+         * The cache exists so that moving the cursor back along a row does not
+         * re-fetch what it just showed; it is not a library. Beyond a few
+         * hundred titles it is holding things the user will not return to.
+         */
+        const val DETAIL_CACHE_SIZE = 200
+        const val SEASON_CACHE_SIZE = 60
+    }
+}
+
+/**
+ * A small, thread-safe, least-recently-used map.
+ *
+ * Android's own `LruCache` would do, but it is in `android.util` and this class
+ * is otherwise plain Kotlin that a unit test can exercise without a device.
+ */
+private class LruCache<V>(private val maxSize: Int) {
+
+    private val entries = object : LinkedHashMap<String, V>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, V>): Boolean =
+            size > maxSize
+    }
+
+    @Synchronized
+    operator fun get(key: String): V? = entries[key]
+
+    @Synchronized
+    fun put(key: String, value: V) {
+        entries[key] = value
     }
 }
 

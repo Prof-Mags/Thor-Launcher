@@ -343,6 +343,23 @@ class MouseController @Inject constructor() {
     }
 
     /** Asks whoever is listening to raise the on-screen keyboard. */
+    private val _powerMenuRequests = MutableStateFlow(0)
+
+    /**
+     * Bumped when the launcher wants the system power dialog.
+     *
+     * Routed through here because the accessibility service is the only part of
+     * THOR that can raise it — `performGlobalAction` is an accessibility API and
+     * there is no public intent for the power menu. The dock has offered this
+     * action since the beginning and it did nothing at all, because the shell had
+     * no way to carry out what the user had picked.
+     */
+    val powerMenuRequests: StateFlow<Int> = _powerMenuRequests.asStateFlow()
+
+    fun requestPowerMenu() {
+        _powerMenuRequests.update { it + 1 }
+    }
+
     fun requestKeyboard() {
         _keyboardRequests.update { it + 1 }
     }

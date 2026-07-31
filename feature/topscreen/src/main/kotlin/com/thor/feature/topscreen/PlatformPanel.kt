@@ -198,22 +198,37 @@ private fun PlatformStat(label: String, value: String) {
  * random screenshot from the library says nothing at all.
  */
 fun representativeImageFor(platformId: String, children: List<GridEntry>): String? {
-    val ranked = children
-        .filterIsInstance<GameEntry>()
-        .mapNotNull { game ->
-            PlatformFlagships.rankOf(platformId, game.title)?.let { rank -> rank to game }
-        }
-        // Title as the tiebreak, so two versions of the same flagship always
-        // resolve the same way rather than by database order.
-        .sortedWith(compareBy({ it.first }, { it.second.sortTitle }))
+    val games = children.filterIsInstance<GameEntry>()
+    if (games.isEmpty()) return null
+
+    /*
+     * Flagships first, then whatever the library actually has.
+     *
+     * The earlier version stopped at the flagship list and returned null when
+     * none matched, which for most libraries is most platforms — so after a
+     * scrape the folders had artwork available and showed none of it. Falling
+     * through is right as long as the fallback is *ordered* rather than
+     * arbitrary: play count, then play time, then title. That is a defensible
+     * "most representative" answer and, crucially, the same answer every time,
+     * which is what the original complaint was really about.
+     */
+    val ranked = games.sortedWith(
+        compareBy<GameEntry> { PlatformFlagships.rankOf(platformId, it.title) ?: FLAGSHIP_MISS }
+            .thenByDescending { it.stats.launchCount }
+            .thenByDescending { it.stats.totalPlayMillis }
+            .thenBy { it.sortTitle },
+    )
 
     // A screenshot or background fills a panel; box art does not, and stretching
     // a 3:4 cover across a widescreen backdrop looks like a mistake.
-    return ranked.firstNotNullOfOrNull { (_, game) ->
+    return ranked.firstNotNullOfOrNull { game ->
         val artwork = game.metadata.artwork
         artwork.backgroundImage ?: artwork.cappedScreenshots.firstOrNull()
     }
 }
+
+/** Sorts every non-flagship below every flagship, without excluding it. */
+private const val FLAGSHIP_MISS = Int.MAX_VALUE
 
 private const val PANEL_WEIGHT = 0.40f
 private const val PANEL_ALPHA = 0.82f

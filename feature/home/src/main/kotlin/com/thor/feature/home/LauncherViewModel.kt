@@ -132,6 +132,25 @@ class LauncherViewModel @Inject constructor(
     private val _secondScreenOccupied = MutableStateFlow(false)
     val secondScreenOccupied: StateFlow<Boolean> = _secondScreenOccupied.asStateFlow()
 
+    /**
+     * Takes the second panel back when a launch turned out to be a no-op.
+     *
+     * `startMainActivity` returning without throwing does not mean the app came
+     * to the foreground: a ROM can queue it, refuse it silently, or bring it up
+     * behind whatever is showing. The launcher had already handed the panel over
+     * by then, so nothing was on screen, nothing had focus, and the controller
+     * did nothing — the launcher looked frozen while the app ran in the
+     * background, recoverable only by touching the panel or pressing Home.
+     *
+     * Called by the shell when it observes that nothing ever took the panel.
+     */
+    fun releaseSecondScreen() {
+        if (!_secondScreenOccupied.value) return
+        ThorLog.i(TAG, "Nothing took the second panel; taking it back")
+        _secondScreenOccupied.value = false
+        settlePlaytime()
+    }
+
     /** Whether the secondary panel's Presentation is still attached to its display. */
     private val secondaryPresentationVisible = MutableStateFlow(false)
 

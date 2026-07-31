@@ -11,6 +11,7 @@ import com.thor.core.database.dao.PlatformDao
 import com.thor.core.database.model.GameEntity
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.model.GameMetadata
+import com.thor.core.model.PlatformFlagships
 import com.thor.core.model.PlatformFolders
 import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.MetadataQuery
@@ -213,7 +214,10 @@ class MetadataSyncManager @Inject constructor(
         // field on games that lack it; re-fetching every folder's artwork on the
         // way past is unrelated work the user did not ask for, and — before this —
         // work that actively undid their icon pack.
-        if (!trailersOnly) updated += scrapeFolderArtwork(onlyMissing)
+        if (!trailersOnly) {
+            updated += scrapeFolderArtwork(onlyMissing)
+            updated += dressPlatformFolders()
+        }
 
         _state.value = ScrapeState.Completed(updated = updated, skipped = skipped)
     }
@@ -292,6 +296,62 @@ class MetadataSyncManager @Inject constructor(
         return updated
     }
 
+    /**
+     * Gives platform folders artwork from the games inside them.
+     *
+     * Platform folders are never *searched* for — see [scrapeFolderArtwork] —
+     * because these providers index games, not hardware, and asking one about
+     * "Super Nintendo" returns a game that merely mentions it. Removing that
+     * left the folders bare, which is the opposite fault: after a scrape the
+     * artwork was sitting right there in the library and none of it was used.
+     *
+     * So the folder wears its own best game's cover. The ordering is fixed —
+     * landmark titles first, then play count, then play time, then title — which
+     * makes it representative rather than arbitrary, and makes it the *same*
+     * every run. That last part is what the original complaint was really about:
+     * not that a game's art appeared, but that a different one appeared each time.
+     *
+     * An installed icon pack always wins; a platform it dressed is skipped
+     * entirely, so this can never undo the user's own artwork.
+     */
+    private suspend fun dressPlatformFolders(): Int {
+        val platforms = platformDao.getAll().associateBy { it.id }
+        val folders = folderDao.getAll()
+            .mapNotNull { folder ->
+                PlatformFolders.platformIdOf(folder.id)?.let { platformId -> folder to platformId }
+            }
+            // Dressed by a pack, and not ours to touch.
+            .filter { (_, platformId) -> platforms[platformId]?.artworkPackId == null }
+
+        if (folders.isEmpty()) return 0
+
+        val gamesByPlatform = gameDao.getVisible().groupBy { it.platformId }
+        var updated = 0
+
+        folders.forEach { (folder, platformId) ->
+            currentCoroutineContext().ensureActive()
+
+            val artwork = gamesByPlatform[platformId]
+                .orEmpty()
+                .sortedWith(
+                    compareBy<GameEntity> {
+                        PlatformFlagships.rankOf(platformId, it.title) ?: FLAGSHIP_MISS
+                    }
+                        .thenByDescending { it.launchCount }
+                        .thenByDescending { it.totalPlayMillis }
+                        .thenBy { it.sortTitle },
+                )
+                .firstNotNullOfOrNull { it.metadata.artwork.cellImage }
+                ?: return@forEach
+
+            if (folder.artworkUri == artwork) return@forEach
+            folderDao.upsert(folder.copy(artworkUri = artwork))
+            updated++
+        }
+
+        return updated
+    }
+
     /** Scrapes one entry, used by the "refresh metadata" context action. */
     fun requestScrapeFor(gameId: String) {
         if (isRunning) return
@@ -327,5 +387,8 @@ class MetadataSyncManager @Inject constructor(
 
     private companion object {
         const val TAG = "MetadataSync"
+
+        /** Sorts every non-flagship below every flagship, without excluding it. */
+        const val FLAGSHIP_MISS = Int.MAX_VALUE
     }
 }
