@@ -816,6 +816,9 @@ class LauncherViewModel @Inject constructor(
      * brief unsubscribe that happens when the activity is recreated, so a
      * rotation or a display change does not re-run the whole library query.
      */
+    /** Confined to the transform below, which the flow runs on one thread. */
+    private val layoutMemo = LayoutMemo()
+
     val uiState: StateFlow<LauncherUiState> = combine(
         combine(
             gridRepository.pages,
@@ -857,20 +860,21 @@ class LauncherViewModel @Inject constructor(
         syncManager.state,
     ) { layout, gridConfig, interaction, overlays, sync ->
         val spec = gridConfig.spec
-        val selection = resolveSelection(layout, spec, interaction)
+        val derived = layoutMemo.of(layout, interaction.openFolderId)
+        val selection = resolveSelection(layout, spec, interaction, derived.openFolderContents)
         LauncherUiState(
             pages = layout.pages,
             placements = layout.placements,
             entriesById = layout.entries,
-            dockEntryIds = resolveDock(layout),
-            platformsById = layout.platforms.associateBy { it.id },
+            dockEntryIds = derived.dockEntryIds,
+            platformsById = derived.platformsById,
             spec = spec,
             currentPage = interaction.page,
             cursor = interaction.cursor,
             selection = selection,
             editMode = interaction.editMode,
             openFolderId = interaction.openFolderId,
-            openFolderContents = resolveFolderContents(layout, interaction.openFolderId),
+            openFolderContents = derived.openFolderContents,
             isLoading = false,
             isScanning = sync is SyncState.Scanning,
             scanLabel = (sync as? SyncState.Scanning)?.label,
@@ -2264,6 +2268,8 @@ class LauncherViewModel @Inject constructor(
         layout: LayoutSnapshot,
         spec: GridSpec,
         interaction: InteractionSnapshot,
+        /** Already resolved by the caller's memo; see [LayoutMemo]. */
+        openFolderContents: List<GridEntry>,
     ): GridEntry? {
         /*
          * Inside an open folder the cursor indexes the folder's contents rather than
@@ -2271,11 +2277,10 @@ class LauncherViewModel @Inject constructor(
          * than a page holds turns pages of its own. Without the page term the cursor
          * selected the first page's entry no matter which page was on screen.
          */
-        interaction.openFolderId?.let { folderId ->
-            val contents = resolveFolderContents(layout, folderId)
+        if (interaction.openFolderId != null) {
             val index = interaction.page * spec.cellsPerPage +
                 interaction.cursor.cellIndex(spec.columns)
-            return contents.getOrNull(index)
+            return openFolderContents.getOrNull(index)
         }
 
         val cell = interaction.cursor.cellIndex(spec.columns)
@@ -2285,22 +2290,68 @@ class LauncherViewModel @Inject constructor(
         return layout.entries[placement.entryId]
     }
 
-    private fun resolveFolderContents(
-        layout: LayoutSnapshot,
-        folderId: String?,
-    ): List<GridEntry> {
-        val folder = folderId?.let { layout.entries[it] } as? FolderEntry ?: return emptyList()
-        return folder.childIds.mapNotNull { layout.entries[it] }
-    }
+    /**
+     * The parts of the state that depend on the library rather than the cursor.
+     *
+     * [uiState] combines the layout with the interaction, so its transform runs
+     * on *every cursor move* — and at auto-repeat rate that is many times a
+     * second. Rebuilding the platform map, the dock slots and the open folder's
+     * contents each time is work whose inputs have not changed: nothing about
+     * moving a cursor alters which platforms exist. On a folder holding a few
+     * hundred games that was a list rebuilt per keypress, on the main thread's
+     * critical path, for a value identical to the one already held.
+     *
+     * Memoised on the identity of the snapshot the values came from, so the work
+     * happens once per library change instead of once per press. Returning the
+     * *same* instances also lets Compose skip: an unchanged `platformsById` no
+     * longer looks like a new map to every reader of it.
+     */
+    private class DerivedLayout(
+        val platformsById: Map<String, com.thor.core.model.Platform>,
+        val dockEntryIds: List<String?>,
+        val openFolderContents: List<GridEntry>,
+    )
 
-    private fun resolveDock(layout: LayoutSnapshot): List<String?> {
-        val slots = arrayOfNulls<String>(DOCK_SLOTS)
-        layout.dock.forEach { placement ->
-            placement.column.takeIf { it in 0 until DOCK_SLOTS }?.let { slot ->
-                slots[slot] = placement.entryId
-            }
+    private class LayoutMemo {
+        private var layout: LayoutSnapshot? = null
+        private var folderId: String? = null
+        private var cached: DerivedLayout? = null
+
+        fun of(layout: LayoutSnapshot, folderId: String?): DerivedLayout {
+            val hit = cached
+            // Reference equality on purpose: a new snapshot means the library
+            // genuinely changed, and comparing these lists by value would cost
+            // more than the work being avoided.
+            if (hit != null && this.layout === layout && this.folderId == folderId) return hit
+
+            val derived = DerivedLayout(
+                platformsById = layout.platforms.associateBy { it.id },
+                dockEntryIds = resolveDock(layout),
+                openFolderContents = resolveFolderContents(layout, folderId),
+            )
+            this.layout = layout
+            this.folderId = folderId
+            cached = derived
+            return derived
         }
-        return slots.toList()
+
+        private fun resolveFolderContents(
+            layout: LayoutSnapshot,
+            folderId: String?,
+        ): List<GridEntry> {
+            val folder = folderId?.let { layout.entries[it] } as? FolderEntry ?: return emptyList()
+            return folder.childIds.mapNotNull { layout.entries[it] }
+        }
+
+        private fun resolveDock(layout: LayoutSnapshot): List<String?> {
+            val slots = arrayOfNulls<String>(DOCK_SLOTS)
+            layout.dock.forEach { placement ->
+                placement.column.takeIf { it in 0 until DOCK_SLOTS }?.let { slot ->
+                    slots[slot] = placement.entryId
+                }
+            }
+            return slots.toList()
+        }
     }
 
     private fun emit(effect: LauncherEffect) {
