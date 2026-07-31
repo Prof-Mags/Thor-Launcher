@@ -77,6 +77,8 @@ fun MoviesBottomPanel(
     hasNextEpisode: Boolean,
     onPlayerAction: (PlayerAction) -> Unit,
     onSeek: (Long) -> Unit,
+    /** A source chosen by touch or pointer, by position in the ranked list. */
+    onSourcePicked: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when {
@@ -90,13 +92,21 @@ fun MoviesBottomPanel(
             modifier = modifier,
         )
 
-        mode == MoviesMode.SOURCES -> SourceList(
+        /*
+         * One panel for browsing and for choosing.
+         *
+         * The sources sit beside the description whether or not the cursor is in
+         * them, so what would play is visible while deciding *whether* to play.
+         * Swapping to a separate list on choosing would take the title away at
+         * the moment its details matter most.
+         */
+        else -> MediaDetailPanel(
+            detail = detail,
             sources = sources,
-            focusedIndex = focusedSource,
+            focusedSource = focusedSource.takeIf { mode == MoviesMode.SOURCES },
+            onSourcePicked = onSourcePicked,
             modifier = modifier,
         )
-
-        else -> MediaDetailPanel(detail = detail, sources = sources, modifier = modifier)
     }
 }
 

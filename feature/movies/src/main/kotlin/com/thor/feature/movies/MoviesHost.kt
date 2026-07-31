@@ -112,25 +112,24 @@ private fun MoviesSectionState.handleBrowse(command: ControllerCommand): Boolean
     ControllerCommand.NAVIGATE_DOWN -> { viewModel.move(1, 0); true }
 
     /*
-     * Confirm searches and, where the user asked for it, plays.
+     * Confirm moves into the source list rather than playing something.
      *
-     * The search is never automatic — it hits every indexer and then the debrid
-     * service, and doing that for each title the cursor passes over would hammer
-     * both for results discarded almost every time.
+     * The list is already on screen beside the description, populated after a
+     * short dwell, so this is a move rather than a fetch. Playing the top-ranked
+     * source outright was the old behaviour and it read as the launcher picking
+     * at random: the ranking is an opinion, and the viewer could neither see it
+     * nor overrule it before it acted.
      */
     ControllerCommand.CONFIRM -> {
-        viewModel.playBest()
         mode = MoviesMode.SOURCES
         focusedSource = 0
         true
     }
 
-    // The long press is the deliberate route to the full list, for when the
-    // automatic choice was wrong.
+    // The long press keeps the one-press route for anyone who wants it: take the
+    // best-ranked source and go.
     ControllerCommand.PICK_UP -> {
-        viewModel.findSources()
-        mode = MoviesMode.SOURCES
-        focusedSource = 0
+        viewModel.playBest()
         true
     }
 
@@ -150,14 +149,25 @@ private fun MoviesSectionState.handleSources(command: ControllerCommand): Boolea
         true
     }
 
+    // Left returns to the shelves, matching where the list sits on screen.
+    ControllerCommand.NAVIGATE_LEFT, ControllerCommand.BACK -> {
+        mode = MoviesMode.BROWSE
+        true
+    }
+
     ControllerCommand.CONFIRM -> {
         chosenSource()?.let(viewModel::play)
         true
     }
 
-    ControllerCommand.BACK -> { mode = MoviesMode.BROWSE; true }
-
     else -> false
+}
+
+/** Plays the source at [index] in the ranked list, from a touch or the pointer. */
+fun MoviesSectionState.pickSource(index: Int) {
+    focusedSource = index
+    mode = MoviesMode.SOURCES
+    sourceAt(index)?.let(viewModel::play)
 }
 
 private fun MoviesSectionState.handlePlaying(command: ControllerCommand): Boolean = when (command) {
@@ -202,8 +212,10 @@ private fun MoviesSectionState.stepAction(delta: Int) {
 private fun MoviesSectionState.rankedCount(): Int =
     (viewModel.sources.value.result as? SourceResult.Found)?.ranked?.size ?: 0
 
-private fun MoviesSectionState.chosenSource() =
-    (viewModel.sources.value.result as? SourceResult.Found)?.ranked?.getOrNull(focusedSource)
+private fun MoviesSectionState.chosenSource() = sourceAt(focusedSource)
+
+private fun MoviesSectionState.sourceAt(index: Int) =
+    (viewModel.sources.value.result as? SourceResult.Found)?.ranked?.getOrNull(index)
 
 private const val SKIP_BACK_MS = 10_000L
 private const val SKIP_FORWARD_MS = 30_000L

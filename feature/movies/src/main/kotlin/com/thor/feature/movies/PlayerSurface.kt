@@ -19,9 +19,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -41,6 +44,18 @@ data class PlayerStatus(
     val error: String? = null,
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
+    /**
+     * Set when the file has audio but none of it can be decoded.
+     *
+     * Distinguished from "no audio at all" because the remedy is completely
+     * different and neither produces an error: torrent releases very often carry
+     * only DTS, DTS-HD or TrueHD, none of which most Android devices can decode.
+     * Playback then succeeds in silence, which reads as the player being broken
+     * rather than as this release being the wrong one to pick.
+     */
+    val audioUnsupported: Boolean = false,
+    /** Human labels for the selectable audio tracks, in the file's own order. */
+    val audioTracks: List<String> = emptyList(),
 )
 
 /**
@@ -83,6 +98,10 @@ fun PlayerSurface(
     var videoAspect by remember { mutableFloatStateOf(0f) }
     val currentOnStatus by rememberUpdatedState(onStatus)
 
+    // Read from the track list rather than guessed at; see [PlayerStatus].
+    var audioUnsupported by remember(url) { mutableStateOf(false) }
+    var audioTracks by remember(url) { mutableStateOf(emptyList<String>()) }
+
     val player = remember(context) {
         /*
          * Debrid links redirect, often across protocols, and the default source
@@ -97,6 +116,26 @@ fun PlayerSurface(
 
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(http))
+            /*
+             * Audio attributes, and audio focus with them.
+             *
+             * Without this the player never asks the system for focus, which on a
+             * launcher is the difference between a film with sound and a film
+             * without: nothing else is playing, nothing errors, and the stream is
+             * simply never routed. Declaring it as movie content also lets the
+             * platform apply the right processing rather than treating it as a
+             * notification blip.
+             */
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                /* handleAudioFocus = */ true,
+            )
+            // Pausing when the headphones are pulled out is what every other
+            // player does, and its absence reads as the launcher ignoring them.
+            .setHandleAudioBecomingNoisy(true)
             .build()
             .apply { playWhenReady = true }
     }
@@ -114,6 +153,29 @@ fun PlayerSurface(
 
             override fun onPlayerError(error: PlaybackException) {
                 ThorLog.w(TAG, "Playback failed (${error.errorCodeName})", error)
+            }
+
+            /**
+             * Notices silence that is nobody's error.
+             *
+             * A group the device cannot decode is reported as unsupported rather
+             * than failing the playback, so the film runs with no sound and no
+             * complaint anywhere. Comparing "has audio" against "has *playable*
+             * audio" is the only way to tell that apart from a film that is
+             * genuinely silent.
+             */
+            override fun onTracksChanged(tracks: Tracks) {
+                val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                audioUnsupported = audio.isNotEmpty() && audio.none { it.isSupported }
+                audioTracks = audio.mapIndexed { index, group ->
+                    val format = group.mediaTrackGroup.getFormat(0)
+                    listOfNotNull(
+                        format.language?.uppercase(),
+                        format.sampleMimeType?.substringAfter('/')?.uppercase(),
+                        format.channelCount.takeIf { it > 0 }?.let { "${it}ch" },
+                        if (group.isSupported) null else "unsupported",
+                    ).joinToString(" ").ifBlank { "Track ${index + 1}" }
+                }
             }
         }
         player.addListener(listener)
@@ -177,6 +239,8 @@ fun PlayerSurface(
                     error = player.playerError?.errorCodeName,
                     videoWidth = player.videoSize.width,
                     videoHeight = player.videoSize.height,
+                    audioUnsupported = audioUnsupported,
+                    audioTracks = audioTracks,
                 ),
             )
             delay(STATUS_INTERVAL_MS)

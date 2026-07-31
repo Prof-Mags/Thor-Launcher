@@ -93,6 +93,7 @@ import com.thor.feature.movies.MoviesViewModel
 import com.thor.feature.movies.rememberMoviesSection
 import com.thor.feature.movies.handleCommand
 import com.thor.feature.movies.perform
+import com.thor.feature.movies.pickSource
 import com.thor.core.model.LauncherTab
 import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.ShortcutPanel
@@ -1168,6 +1169,7 @@ fun ThorApp(
                             hasNextEpisode = moviesViewModel.nextEpisode() != null,
                             onPlayerAction = moviesSection::perform,
                             onSeek = moviesSection::seekTo,
+                            onSourcePicked = moviesSection::pickSource,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {

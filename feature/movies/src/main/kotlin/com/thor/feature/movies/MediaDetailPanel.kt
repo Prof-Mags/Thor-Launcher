@@ -2,6 +2,7 @@ package com.thor.feature.movies
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,12 +13,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,7 +33,11 @@ import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.CacheStatus
 import com.thor.core.model.MediaItem
 import com.thor.core.model.MediaRatings
+import com.thor.core.model.StreamSource
+import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.ui.component.ArtworkImage
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.data.media.SourceResult
 
 /**
@@ -46,6 +55,9 @@ import com.thor.data.media.SourceResult
 fun MediaDetailPanel(
     detail: DetailState,
     sources: SourceState,
+    /** Which source the cursor is on, or null while the cursor is in the shelves. */
+    focusedSource: Int?,
+    onSourcePicked: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -147,11 +159,44 @@ fun MediaDetailPanel(
                     )
                 }
 
-                SourceSummary(sources)
+                if (item.isSeries) {
+                    Label("SEASONS")
+                    Text(
+                        text = item.orderedSeasons
+                            .filterNot { it.isSpecials }
+                            .joinToString(", ") { it.name },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
+
+                if (detail.similar.isNotEmpty()) {
+                    Label("SIMILAR")
+                    Text(
+                        text = detail.similar.take(SIMILAR_SHOWN).joinToString(", ") { it.title },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
             }
 
-            // Deliberately empty: the backdrop shows through here.
-            Spacer(modifier = Modifier.weight(1f - PANEL_WEIGHT))
+            /*
+             * The sources, beside the description rather than behind a press.
+             *
+             * Not being able to see what was available until after committing to
+             * play made choosing feel like a lottery — and the automatic pick,
+             * however well ranked, is an opinion the viewer could not inspect or
+             * overrule. Both columns describe the same title: what it is on the
+             * left, what it would actually play on the right.
+             */
+            SourceColumn(
+                sources = sources,
+                focusedIndex = focusedSource,
+                onPicked = onSourcePicked,
+                modifier = Modifier
+                    .weight(1f - PANEL_WEIGHT)
+                    .fillMaxHeight(),
+            )
         }
     }
 }
@@ -211,40 +256,164 @@ private fun Rating(source: String, value: String) {
 }
 
 /**
- * What the source search found, in one line.
+ * Everything that could play this title, ranked, as a column of its own.
  *
  * States are distinguished rather than collapsed into "no sources", because the
- * remedies are completely different: add an indexer, add a debrid token, or pick
- * a different title.
+ * remedies are completely different: install an addon, add a debrid token, or
+ * pick a different title.
  */
 @Composable
-private fun SourceSummary(sources: SourceState) {
+private fun SourceColumn(
+    sources: SourceState,
+    focusedIndex: Int?,
+    onPicked: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = ThorTheme.colors
-    val text = when {
-        sources.searching -> "Searching for sources…"
-        sources.resolveError != null -> sources.resolveError
-        sources.resolving -> "Opening…"
+    val dimens = ThorTheme.dimens
+    val ranked = (sources.result as? SourceResult.Found)?.ranked.orEmpty()
+    val listState = rememberLazyListState()
 
-        else -> when (val result = sources.result) {
-            null -> null
-            is SourceResult.NoProviders ->
-                "No torrent indexers configured. Add one in Settings → Movies."
+    LaunchedEffect(focusedIndex) {
+        if (focusedIndex != null && ranked.isNotEmpty()) {
+            listState.animateScrollToItem(focusedIndex.coerceIn(0, ranked.lastIndex))
+        }
+    }
 
-            is SourceResult.NoImdbId -> "No IMDb id for this title, so it cannot be searched."
-            is SourceResult.Empty -> "No sources found."
-            is SourceResult.Found -> {
-                val cached = result.ranked.count { it.cached == CacheStatus.CACHED }
-                "${result.ranked.size} sources · $cached ready to stream"
+    Column(
+        modifier = modifier
+            .padding(vertical = dimens.spacing, horizontal = dimens.spacingSmall)
+            .clip(RoundedCornerShape(dimens.cornerRadius))
+            .background(colors.background.copy(alpha = PANEL_ALPHA))
+            .border(
+                width = 1.dp,
+                color = colors.outline.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(dimens.cornerRadius),
+            )
+            .padding(dimens.spacingSmall),
+        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+    ) {
+        val cached = ranked.count { it.cached == CacheStatus.CACHED }
+        Text(
+            text = when {
+                sources.searching -> "SEARCHING…"
+                ranked.isEmpty() -> "SOURCES"
+                else -> "SOURCES · $cached READY"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurfaceVariant,
+        )
+
+        val message = when {
+            sources.resolveError != null -> sources.resolveError
+            sources.resolving -> "Opening…"
+            sources.searching && ranked.isEmpty() -> "Looking for something to play."
+
+            else -> when (sources.result) {
+                null -> "Rest on a title to see what can play it."
+                is SourceResult.NoProviders ->
+                    "No source installed. Settings → Library → Films and shows."
+
+                is SourceResult.NoImdbId ->
+                    "This title has no IMDb id, so it cannot be searched."
+
+                is SourceResult.Empty -> "Nothing found for this one."
+                is SourceResult.Found -> null
             }
         }
-    } ?: return
 
-    Label("SOURCES")
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodySmall,
-        color = if (sources.resolveError != null) colors.error else colors.onSurfaceVariant,
-    )
+        if (message != null) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (sources.resolveError != null) {
+                    colors.error
+                } else {
+                    colors.onSurfaceVariant
+                },
+            )
+        }
+
+        LazyColumn(
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            itemsIndexed(ranked, key = { _, source -> source.id }) { index, source ->
+                SourceRow(
+                    source = source,
+                    focused = index == focusedIndex,
+                    onClick = { onPicked(index) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One candidate.
+ *
+ * Cache status leads because it is the difference between playing now and
+ * waiting, and the release name is kept verbatim underneath because people read
+ * these — a group, a repack tag or an audio track listed there is often exactly
+ * why one source is chosen over a better-ranked one.
+ */
+@Composable
+private fun SourceRow(source: StreamSource, focused: Boolean, onClick: () -> Unit) {
+    val colors = ThorTheme.colors
+    val hover = rememberPointerHover()
+    val lit = focused || hover.isHovered
+    val instant = source.cached == CacheStatus.CACHED
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerHover(hover)
+            .thorCursor(focused = lit, cornerRadius = ThorTheme.dimens.cornerRadiusSmall)
+            .clip(ThorTheme.shapes.small)
+            .background(colors.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = source.quality.summary.ifBlank { "Unknown quality" },
+                style = MaterialTheme.typography.labelMedium,
+                color = if (lit) colors.cursor else colors.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = if (instant) "INSTANT" else "",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.cursor,
+            )
+        }
+
+        Text(
+            text = listOfNotNull(
+                source.sizeLabel,
+                source.seeders?.let { "$it seeders" },
+                source.providerName,
+            ).joinToString(" · "),
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        Text(
+            text = source.title,
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurfaceVariant.copy(alpha = 0.65f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 @Composable
@@ -256,7 +425,8 @@ private fun Label(text: String) {
     )
 }
 
-private const val PANEL_WEIGHT = 0.42f
+private const val PANEL_WEIGHT = 0.52f
 private const val PANEL_ALPHA = 0.82f
 private const val LOGO_HEIGHT = 56
 private const val CAST_SHOWN = 6
+private const val SIMILAR_SHOWN = 5

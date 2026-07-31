@@ -18,6 +18,7 @@ import com.thor.data.media.ResolvedStream
 import com.thor.data.media.SourceResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -219,6 +220,22 @@ class MoviesViewModel @Inject constructor(
 
             if (full.isSeries) selectSeason(firstSeason)
             _detail.update { it.copy(similar = repository.similar(full.id)) }
+
+            /*
+             * Sources are fetched after a dwell, not on arrival.
+             *
+             * They belong on screen — being unable to see what is available until
+             * after committing to play is what made the choice feel like a lottery
+             * — but a search hits every configured addon and indexer and then the
+             * debrid service. Doing that for every title the cursor passes over
+             * would hammer all three for results discarded almost every time. A
+             * short pause is the difference between browsing and asking.
+             */
+            delay(SOURCE_DWELL_MS)
+            findSources(
+                seasonNumber = firstSeason.takeIf { full.isSeries },
+                episodeNumber = 1.takeIf { full.isSeries },
+            )
         }
     }
 
@@ -377,6 +394,9 @@ class MoviesViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "Movies"
+
+        /** How long the cursor rests on a title before its sources are fetched. */
+        const val SOURCE_DWELL_MS = 700L
 
         fun progressKey(id: MediaId, season: Int?, episode: Int?): String =
             if (season != null && episode != null) "${id.key}:$season:$episode" else id.key

@@ -20,11 +20,19 @@ import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
@@ -167,6 +175,40 @@ private fun Timeline(status: PlayerStatus, onSeek: (Long) -> Unit) {
     val bufferedFraction = (status.bufferedMs.toFloat() / duration).coerceIn(0f, 1f)
     val shape = RoundedCornerShape(TRACK_HEIGHT.dp / 2)
 
+    /*
+     * Tapped and dragged directly.
+     *
+     * The whole point of putting the controls on their own screen is that this
+     * bar is a real, permanently visible object rather than something summoned
+     * over the picture — so it should behave like one. Seeking by holding a skip
+     * button when the target is visible on screen is the sort of thing that makes
+     * a remote feel like a remote.
+     *
+     * Width is captured from layout because the gesture reports a position in
+     * pixels and the seek needs a fraction; there is nothing else that knows how
+     * wide the track ended up.
+     */
+    var trackWidth by remember { mutableFloatStateOf(0f) }
+    fun seekTo(x: Float) {
+        if (trackWidth <= 0f) return
+        onSeek(((x / trackWidth).coerceIn(0f, 1f) * duration).toLong())
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            // A larger target than the bar is tall: an eight-pixel line is
+            // accurate to look at and impossible to hit.
+            .height(TRACK_TOUCH_HEIGHT.dp)
+            .onSizeChanged { trackWidth = it.width.toFloat() }
+            .pointerInput(duration) {
+                detectTapGestures { offset -> seekTo(offset.x) }
+            }
+            .pointerInput(duration) {
+                detectHorizontalDragGestures { change, _ -> seekTo(change.position.x) }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -186,6 +228,7 @@ private fun Timeline(status: PlayerStatus, onSeek: (Long) -> Unit) {
                 .fillMaxSize()
                 .background(colors.cursor),
         )
+    }
     }
 }
 
@@ -238,6 +281,16 @@ private fun StreamFacts(playback: Playback, status: PlayerStatus) {
     val colors = ThorTheme.colors
     val source = playback.source
 
+    /*
+     * How far ahead the buffer is, in seconds rather than as a percentage.
+     *
+     * A percentage of a two-hour film says nothing useful when playback stalls;
+     * "12s ahead" answers the only question that matters at that moment, which is
+     * whether it is about to recover on its own.
+     */
+    val bufferAheadSeconds = ((status.bufferedMs - status.positionMs) / 1000L)
+        .coerceAtLeast(0L)
+
     val facts = listOfNotNull(
         source.quality.summary.takeIf(String::isNotBlank),
         source.sizeLabel,
@@ -248,15 +301,34 @@ private fun StreamFacts(playback: Playback, status: PlayerStatus) {
             CacheStatus.UNKNOWN -> null
         },
         source.providerName,
-        if (status.buffering) "Buffering…" else null,
+        source.seeders?.let { "$it seeders" },
     )
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = "STREAM",
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.onSurfaceVariant,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = "STREAM",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant,
+            )
+            Text(
+                text = when {
+                    status.error != null -> status.error
+                    status.audioUnsupported -> "No playable audio"
+                    status.buffering -> "Buffering…"
+                    else -> "${bufferAheadSeconds}s buffered"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = if (status.error != null || status.audioUnsupported) {
+                    colors.error
+                } else {
+                    colors.onSurfaceVariant
+                },
+            )
+        }
         Text(
             text = facts.joinToString(" · "),
             style = MaterialTheme.typography.bodySmall,
@@ -266,8 +338,34 @@ private fun StreamFacts(playback: Playback, status: PlayerStatus) {
             text = source.title,
             style = MaterialTheme.typography.labelSmall,
             color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-            maxLines = 1,
+            maxLines = 2,
         )
+
+        /*
+         * Said out loud when it happens, because nothing else will say it.
+         *
+         * Silence has no error code and no visible symptom beyond itself, so a
+         * viewer's first assumption is that the player is broken. The remedy is
+         * not in any setting — it is to go back and choose a different release —
+         * and that is only obvious if someone says so.
+         */
+        if (status.audioUnsupported) {
+            Text(
+                text = "This release's audio (often DTS or TrueHD) cannot be decoded " +
+                    "on this device. Go back and pick another source — one listing " +
+                    "AAC, AC3 or EAC3 will have sound.",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.error,
+            )
+        }
+
+        if (status.audioTracks.size > 1) {
+            Text(
+                text = "Audio tracks: " + status.audioTracks.joinToString(", "),
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+            )
+        }
     }
 }
 
@@ -285,3 +383,6 @@ private fun Long.asClock(): String {
 }
 
 private const val TRACK_HEIGHT = 8
+
+/** The bar is thin to read accurately and would be impossible to hit at that size. */
+private const val TRACK_TOUCH_HEIGHT = 36

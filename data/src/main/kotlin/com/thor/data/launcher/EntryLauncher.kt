@@ -177,6 +177,41 @@ class EntryLauncher @Inject constructor(
             }
         }
 
+        /*
+         * Last resort: an ordinary intent, not `LauncherApps` at all.
+         *
+         * Every attempt above goes through `startMainActivity`, and some ROMs
+         * refuse that outright — it is the *launcher* API, and vendors guard it
+         * against apps they have not blessed as a home screen. When they do, all
+         * four attempts fail identically and the user is told Android would not
+         * open their app, which is true and useless: the app opens perfectly well
+         * through the route every other app on the device uses.
+         *
+         * Only for the user's own profile. A work-profile app genuinely cannot be
+         * started this way, and pretending otherwise would replace a clear refusal
+         * with a confusing one.
+         */
+        if (user == Process.myUserHandle()) {
+            val component = current ?: stored
+            val intent = Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER)
+                .setComponent(component)
+
+            val direct = startIntent(intent, target)
+            if (direct is LaunchResult.Success) {
+                ThorLog.i("Launcher", "${app.packageName} started by intent")
+                return direct
+            }
+
+            // Once more with no display preference, in case that was the refusal.
+            if (options != null) {
+                val anywhere = startIntent(intent, LaunchTarget.DEFAULT)
+                if (anywhere is LaunchResult.Success) {
+                    return LaunchResult.Success(onRequestedTarget = false)
+                }
+            }
+        }
+
         return LaunchResult.Failed(failure ?: LaunchFailure.NoHandler(app.packageName))
     }
 
