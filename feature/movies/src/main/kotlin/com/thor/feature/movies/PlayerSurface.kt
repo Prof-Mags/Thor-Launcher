@@ -40,6 +40,8 @@ data class PlayerStatus(
     val durationMs: Long = 0L,
     val bufferedMs: Long = 0L,
     val buffering: Boolean = true,
+    /** Ready, but held: audio focus or a system policy is stopping it. */
+    val suppressed: Boolean = false,
     val ended: Boolean = false,
     val error: String? = null,
     val videoWidth: Int = 0,
@@ -117,21 +119,26 @@ fun PlayerSurface(
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(http))
             /*
-             * Audio attributes, and audio focus with them.
+             * Declared as movie content, but focus is *not* handled here.
              *
-             * Without this the player never asks the system for focus, which on a
-             * launcher is the difference between a film with sound and a film
-             * without: nothing else is playing, nothing errors, and the stream is
-             * simply never routed. Declaring it as movie content also lets the
-             * platform apply the right processing rather than treating it as a
-             * notification blip.
+             * Asking ExoPlayer to manage audio focus reads as the correct thing
+             * to do and is why nothing played: when the request is not granted it
+             * does not start, does not error, and does not say why — the panel
+             * simply sat on "buffering" forever. On a launcher, which is itself a
+             * long-lived foreground app on a device where something else may hold
+             * focus indefinitely, a player that refuses to start without it is
+             * worse than one that is impolite.
+             *
+             * The attributes still matter: they route the stream as media rather
+             * than as a notification blip, which is the part that affects volume
+             * and output selection.
              */
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                     .build(),
-                /* handleAudioFocus = */ true,
+                /* handleAudioFocus = */ false,
             )
             // Pausing when the headphones are pulled out is what every other
             // player does, and its absence reads as the launcher ignoring them.
@@ -235,6 +242,15 @@ fun PlayerSurface(
                     durationMs = player.duration.takeIf { it > 0L } ?: 0L,
                     bufferedMs = player.bufferedPosition.coerceAtLeast(0L),
                     buffering = player.playbackState == Player.STATE_BUFFERING,
+                    /*
+                     * Distinguished from buffering, because they look identical
+                     * and are nothing alike: one is the network catching up, the
+                     * other is the player being told to hold. Reporting the
+                     * second as the first is what made a stalled stream and a
+                     * suppressed one indistinguishable.
+                     */
+                    suppressed = player.playbackSuppressionReason !=
+                        Player.PLAYBACK_SUPPRESSION_REASON_NONE,
                     ended = player.playbackState == Player.STATE_ENDED,
                     error = player.playerError?.errorCodeName,
                     videoWidth = player.videoSize.width,

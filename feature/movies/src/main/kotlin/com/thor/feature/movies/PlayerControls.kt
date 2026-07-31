@@ -317,6 +317,7 @@ private fun StreamFacts(playback: Playback, status: PlayerStatus) {
             Text(
                 text = when {
                     status.error != null -> status.error
+                    status.suppressed -> "Held by the system"
                     status.audioUnsupported -> "No playable audio"
                     status.buffering -> "Buffering…"
                     else -> "${bufferAheadSeconds}s buffered"

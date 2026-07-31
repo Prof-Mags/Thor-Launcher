@@ -1,5 +1,6 @@
 ﻿package com.thor.data.launcher
 
+import android.app.ActivityManager
 import android.app.ActivityOptions
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
@@ -319,6 +320,38 @@ class EntryLauncher @Inject constructor(
         return ActivityOptions.makeBasic()
             .setLaunchDisplayId(displayId)
             .toBundle()
+    }
+
+    /**
+     * Whether Android will accept a launch onto [target]'s display at all.
+     *
+     * Asked rather than discovered by exception. An app may place an activity on
+     * a secondary display only when that display is public, or when it already
+     * has a window there — so the answer depends on what THOR happens to have on
+     * the panel at that moment, and it changes as the launcher hands the panel
+     * over. Asking first turns a refusal into a decision the launcher can act on,
+     * instead of a `SecurityException` surfaced to someone who pressed A.
+     *
+     * A false answer is not a failure; it means "open it on the near panel".
+     */
+    fun canLaunchOn(target: LaunchTarget): Boolean {
+        val displayId = when (target) {
+            LaunchTarget.DEFAULT -> return true
+            LaunchTarget.MAIN_SCREEN -> Display.DEFAULT_DISPLAY
+            LaunchTarget.SECOND_SCREEN -> secondaryDisplayId() ?: return false
+        }
+        if (displayId == Display.DEFAULT_DISPLAY) return true
+
+        val activityManager = context.getSystemService(ActivityManager::class.java)
+            ?: return true
+
+        return runCatching {
+            activityManager.isActivityStartAllowedOnDisplay(
+                context,
+                displayId,
+                Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),
+            )
+        }.getOrDefault(true)
     }
 
     /**

@@ -1978,48 +1978,53 @@ class LauncherViewModel @Inject constructor(
         launchJob = viewModelScope.launchSafely(TAG) {
             try {
             /*
-             * The panel is handed over *before* the app is started, not after.
+             * The app is started *before* the panel is handed over, and this
+             * ordering is a permission requirement rather than a preference.
              *
-             * A `Presentation` sits above application windows on its display. Starting
-             * the app first meant it arrived underneath a window that was still there
-             * — drawn behind the grid, with the window manager deciding focus between
-             * the two — and only then did the launcher take its window away. Standing
-             * down first gives the app an empty display to arrive on, which is the
-             * only ordering that cannot produce a grid sitting on top of a running
-             * app. The flag is put back if the launch turns out to fail.
+             * Android only lets an app place an activity on a secondary display
+             * when that display is public, or when the app already has a window
+             * on it. THOR's presentation is that window. Standing it down first —
+             * which is what this did, to give the app an empty display to arrive
+             * on — removed the only claim THOR had to the panel, and the launch
+             * that followed was refused outright: "Android would not let THOR
+             * open that app on this screen", every time, on a panel the launcher
+             * had been drawing on a moment earlier.
+             *
+             * So the window stays up until the start call has been accepted, and
+             * comes down immediately after. The app does arrive underneath it for
+             * the moment in between, which is the fault the old ordering existed
+             * to avoid — but a frame of the grid over an app that is starting is
+             * a far smaller thing than an app that cannot start at all.
+             *
+             * See https://source.android.com/docs/core/display/multi_display/activity-launch
              */
-            if (target == LaunchTarget.SECOND_SCREEN) {
-                _secondScreenOccupied.value = true
-                if (!awaitSecondaryPresentationDismissal()) {
-                    _secondScreenOccupied.value = false
-                    ThorLog.w(TAG, "Second panel did not stand down; launching on this one")
-                    /*
-                     * Falls back to the near panel rather than refusing.
-                     *
-                     * Starting the app anyway would put it underneath a window
-                     * that is still there — a grid drawn on top of a running app,
-                     * which is the fault the hand-over ordering exists to prevent.
-                     * But abandoning the launch means pressing A did nothing at
-                     * all, which is worse and is what it used to do. Opening on
-                     * the screen that *is* free does what the user asked, on the
-                     * wrong panel, and says so.
-                     */
-                    emit(LauncherEffect.ShowMessage("Second screen was busy — opened here"))
-                    launchJob = null
-                    launchEntryOn(entry, LaunchTarget.DEFAULT)
-                    return@launchSafely
-                }
+            /*
+             * Asked rather than discovered by exception.
+             *
+             * A refusal is a normal answer here — some ROMs will not place a
+             * third-party app on the built-in second panel however the launch is
+             * phrased — and it should read as "opened on the other screen", not
+             * as an error about permissions.
+             */
+            val effectiveTarget = if (
+                target == LaunchTarget.SECOND_SCREEN && !entryLauncher.canLaunchOn(target)
+            ) {
+                ThorLog.i(TAG, "Second panel refuses launches; using the near one")
+                emit(LauncherEffect.ShowMessage("This screen will not take that app — opened here"))
+                LaunchTarget.DEFAULT
+            } else {
+                target
             }
 
             val result = when (entry) {
-                is AppEntry -> entryLauncher.launchApp(entry, target)
+                is AppEntry -> entryLauncher.launchApp(entry, effectiveTarget)
 
                 is GameEntry -> {
                     val platform = uiState.value.platformsById[entry.platformId]
                     entryLauncher.launchGame(
                         game = entry,
                         platformDefaultEmulator = platform?.defaultEmulatorPackage,
-                        target = target,
+                        target = effectiveTarget,
                     )
                 }
 
@@ -2050,11 +2055,12 @@ class LauncherViewModel @Inject constructor(
              * blank, showing the secondary home behind a presentation that had
              * stood down for an app that never came.
              */
-            val arrivedOnSecondPanel = target == LaunchTarget.SECOND_SCREEN &&
+            val arrivedOnSecondPanel = effectiveTarget == LaunchTarget.SECOND_SCREEN &&
                 (result as? LaunchResult.Success)?.onRequestedTarget == true
-            if (target == LaunchTarget.SECOND_SCREEN && !arrivedOnSecondPanel) {
-                _secondScreenOccupied.value = false
-            }
+
+            // Stood down only now, and only for a launch that was actually
+            // accepted onto that panel — see the note above the start call.
+            _secondScreenOccupied.value = arrivedOnSecondPanel
             if (result is LaunchResult.Success) {
                 // Reports where the app *landed*, not where it was aimed, so the
                 // shell yields focus for the panel actually being taken.

@@ -426,7 +426,15 @@ private fun Label(text: String) {
 }
 
 private const val PANEL_WEIGHT = 0.52f
-private const val PANEL_ALPHA = 0.82f
+
+/**
+ * How solid the two columns are over the backdrop.
+ *
+ * Low enough that the artwork is still the subject of the panel rather than a
+ * texture behind two cards. The hairline border is what keeps each column
+ * defined at this alpha; without it they dissolve into a bright still.
+ */
+private const val PANEL_ALPHA = 0.58f
 private const val LOGO_HEIGHT = 56
 private const val CAST_SHOWN = 6
 private const val SIMILAR_SHOWN = 5
