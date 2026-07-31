@@ -22,9 +22,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.theme.ThorTheme
@@ -33,6 +36,7 @@ import com.thor.core.model.GridEntry
 import com.thor.core.model.Platform
 import com.thor.core.model.PlatformFlagships
 import com.thor.core.ui.component.ArtworkImage
+import com.thor.data.scanner.EmulatorRegistry
 
 /**
  * The information panel for a platform's folder.
@@ -104,20 +108,25 @@ fun PlatformDetailPanel(
                 )
             }
 
+            // Centred and large: it is the heading of the panel rather than one
+            // more field in it, and a system's name is short enough to carry it.
             Text(
                 text = platform.name.ifBlank { folderTitle },
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.displaySmall,
                 color = colors.onBackground,
-                maxLines = 3,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
             )
 
-            // "Nintendo · 1990", the line a game's panel gives to its developer.
             if (platform.subtitle.isNotBlank()) {
                 Text(
                     text = platform.subtitle,
                     style = MaterialTheme.typography.titleSmall,
                     color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
 
@@ -184,7 +193,8 @@ fun PlatformDetailPanel(
 
             DetailLine(
                 "EMULATOR",
-                platform.defaultEmulatorPackage ?: "None set — games here will not launch",
+                platform.defaultEmulatorPackage?.let { rememberEmulatorName(it) }
+                    ?: "None set — games here will not launch",
             )
 
             val recent = games
@@ -216,6 +226,28 @@ fun PlatformDetailPanel(
 
         // Deliberately empty: the backdrop shows through here, as on a game.
         Spacer(modifier = Modifier.weight(1f - PANEL_WEIGHT))
+    }
+}
+
+/**
+ * What to call an emulator, rather than what it is installed as.
+ *
+ * "com.miHoYo.Yuzu.something" is an implementation detail of an app the user
+ * knows by a name — the same name it shows in their launcher and its own title
+ * bar. THOR's registry knows the ones it ships support for; anything else is
+ * asked of the system, which is where the answer for a sideloaded build lives.
+ * The package is the last resort, not the first answer.
+ */
+@Composable
+private fun rememberEmulatorName(packageName: String): String {
+    val context = LocalContext.current
+    return remember(packageName) {
+        EmulatorRegistry.specFor(packageName)?.displayName
+            ?: runCatching {
+                val info = context.packageManager.getApplicationInfo(packageName, 0)
+                context.packageManager.getApplicationLabel(info).toString()
+            }.getOrNull()?.takeIf(String::isNotBlank)
+            ?: packageName
     }
 }
 

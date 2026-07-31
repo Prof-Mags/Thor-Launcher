@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import com.thor.core.common.log.ThorLog
 import com.thor.core.display.hideSystemBars
 import com.thor.data.launcher.HomeRequests
+import com.thor.data.launcher.SecondaryHomeHost
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -35,9 +36,20 @@ class SecondaryHomeActivity : ComponentActivity() {
 
     @Inject lateinit var homeRequests: HomeRequests
 
+    /**
+     * Offers this activity as the thing second-panel launches start from.
+     *
+     * It is the only activity THOR has on that display — the grid there is a
+     * `Presentation`, a window rather than an activity — and starting from an
+     * activity is what puts a launched app on that activity's display without
+     * needing a display option or the permission that comes with one.
+     */
+    @Inject lateinit var secondaryHomeHost: SecondaryHomeHost
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hideSystemBars(window)
+        secondaryHomeHost.attach(this)
 
         /*
          * The *first* creation in a process is the system placing a home activity on
@@ -54,6 +66,11 @@ class SecondaryHomeActivity : ComponentActivity() {
         } else {
             createdOnce = true
         }
+    }
+
+    override fun onDestroy() {
+        secondaryHomeHost.detach(this)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

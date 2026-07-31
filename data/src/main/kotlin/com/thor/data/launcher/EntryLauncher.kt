@@ -100,6 +100,8 @@ enum class SystemPanel(
 @Singleton
 class EntryLauncher @Inject constructor(
     @ApplicationContext private val context: Context,
+    /** THOR's activity on the second panel, when one is alive. */
+    private val secondaryHomeHost: SecondaryHomeHost,
 ) {
 
     private val launcherApps: LauncherApps =
@@ -155,6 +157,26 @@ class EntryLauncher @Inject constructor(
             ThorLog.w("Launcher", "Refused to start $component", e)
             failure = LaunchFailure.Unknown(e)
             false
+        }
+
+        /*
+         * The second panel, started from THOR's own activity on it.
+         *
+         * Tried before anything else for that target, because it is the route
+         * that does not depend on a permission THOR cannot hold. Android places
+         * an activity on a secondary display when the app already has an
+         * *activity* there; the grid on that panel is a `Presentation`, which is
+         * a window and not an activity, so every `setLaunchDisplayId` attempt was
+         * refused however it was phrased. A new task inherits the display of the
+         * activity that started it, and `SecondaryHomeActivity` is on that one.
+         */
+        if (target == LaunchTarget.SECOND_SCREEN) {
+            val onPanel = secondaryHomeHost.start(
+                Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setComponent(stored),
+            )
+            if (onPanel) return LaunchResult.Success()
         }
 
         val options = optionsFor(target)
@@ -269,6 +291,12 @@ class EntryLauncher @Inject constructor(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
+        }
+
+        // The second panel goes through THOR's activity there for the same reason
+        // an app does; see the note in [launchApp].
+        if (target == LaunchTarget.SECOND_SCREEN && secondaryHomeHost.start(intent)) {
+            return LaunchResult.Success()
         }
 
         return try {
