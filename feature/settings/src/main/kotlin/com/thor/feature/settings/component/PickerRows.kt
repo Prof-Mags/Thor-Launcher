@@ -22,6 +22,7 @@ fun WallpaperPickerRow(
     subtitle: String?,
     currentUri: String?,
     focused: Boolean = false,
+    clearFocused: Boolean = false,
     onPicked: (String?) -> Unit,
 ) {
     val context = LocalContext.current
@@ -49,13 +50,18 @@ fun WallpaperPickerRow(
         title = title,
         subtitle = if (currentUri != null) "Custom image selected" else subtitle,
         focused = focused,
+        trailingLabel = if (currentUri != null) "CHANGE" else "CHOOSE",
         onClick = { picker.launch(arrayOf("image/*")) },
     )
 
     if (currentUri != null) {
+        RowDivider()
         ActionRow(
             title = "Clear $title",
             subtitle = null,
+            focused = clearFocused,
+            destructive = true,
+            trailingLabel = "CLEAR",
             onClick = { onPicked(null) },
         )
     }
@@ -99,6 +105,7 @@ fun FilePickerRow(
         title = title,
         subtitle = subtitle,
         focused = focused,
+        trailingLabel = "IMPORT",
         onClick = { picker.launch(mimeTypes) },
     )
 }
@@ -137,6 +144,7 @@ fun DirectoryPickerRow(
         title = title,
         subtitle = subtitle,
         focused = focused,
+        trailingLabel = "CHOOSE",
         onClick = { picker.launch(null) },
     )
 }

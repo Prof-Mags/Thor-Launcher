@@ -146,6 +146,9 @@ object IconPackSlugs {
         // Different name for the same machine.
         "gc" to "gamecube",
         "n3ds" to "3ds",
+        // The mono Neo Geo Pocket runs on the same emulators as the colour
+        // model and shares its artwork; THOR models the one machine.
+        "ngp" to "ngpc",
         "ngc" to "gamecube",
         "megadrive" to "genesis",
         "md" to "genesis",

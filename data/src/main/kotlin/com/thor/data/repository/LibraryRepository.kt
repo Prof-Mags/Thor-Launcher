@@ -7,6 +7,7 @@ import com.thor.core.database.dao.AchievementDao
 import com.thor.core.database.dao.AppDao
 import com.thor.core.database.dao.FolderDao
 import com.thor.core.database.dao.GameDao
+import com.thor.core.database.dao.GridDao
 import com.thor.core.database.dao.PlatformDao
 import com.thor.core.database.dao.PlayHistoryDao
 import com.thor.core.database.model.AppEntity
@@ -53,6 +54,8 @@ class LibraryRepository @Inject constructor(
     private val appDao: AppDao,
     private val gameDao: GameDao,
     private val folderDao: FolderDao,
+    /** Placements, so removing a system takes its folder off the grid at once. */
+    private val gridDao: GridDao,
     private val platformDao: PlatformDao,
     private val playHistoryDao: PlayHistoryDao,
     private val achievementDao: AchievementDao,
@@ -219,13 +222,70 @@ class LibraryRepository @Inject constructor(
     }
 
     /**
-     * Removes a system from the user's setup.
+     * Removes a system from the user's setup, and everything it brought with it.
      *
-     * The platform row survives — games already scanned still reference it, and
-     * removing the row would cascade-delete them.
+     * The platform *row* survives — it is a built-in definition, not the user's
+     * data, and it has to exist for the system to be added again later.
+     * Everything derived from it goes: its games, and the folder they were filed
+     * into on the grid.
+     *
+     * Deleting the games is the part that was missing, and its absence is why
+     * removing a system did not take. The row was marked not-added and the
+     * Platforms page stopped listing it — while several hundred of its games sat
+     * in the library, on the grid, inside a folder named after a system the
+     * settings said was not installed. The next scan then imported any that had
+     * been pruned, so it came back on its own.
+     *
+     * Recoverable in the only sense that matters: the ROMs are untouched on
+     * disk, and adding the system back and rescanning restores all of it.
      */
     suspend fun removePlatform(platformId: String) = withContext(defaultDispatcher) {
         platformDao.setAdded(platformId, false)
+        purgePlatformContent(platformId)
+    }
+
+    /**
+     * Clears out any system that is no longer added, and reports what it removed.
+     *
+     * Run before every scan files its games, because the invariant it enforces —
+     * a game belongs to a platform the user has added — can be broken by any
+     * build that predates [removePlatform] doing this. A library that had systems
+     * removed under an older version still holds their games, and the filing step
+     * rebuilds their folder from those games on every scan: a deleted system
+     * reappearing on the grid on its own, indefinitely, with nothing the user can
+     * press to stop it.
+     *
+     * Healing it here rather than in a migration because it is not a schema
+     * problem and can be reached again — by a restored backup, or by anything
+     * that writes a game without checking. The scan is where the library is made
+     * to agree with the settings, so this is where it belongs.
+     */
+    suspend fun pruneRemovedPlatforms(): List<String> = withContext(defaultDispatcher) {
+        val added = platformDao.getAll().filter { it.isAdded }.mapTo(mutableSetOf()) { it.id }
+        val orphaned = gameDao.allPlatformIds().filterNot { it in added }
+
+        orphaned.forEach { platformId -> purgePlatformContent(platformId) }
+        orphaned
+    }
+
+    /**
+     * Everything a platform put on the grid, minus the platform row itself.
+     *
+     * The row is a built-in definition rather than the user's data, and it has to
+     * survive for the system to be added again later. Its games, its folder and
+     * that folder's cell are all derived from it and go with it — a platform
+     * folder with no platform cannot be opened, renamed or removed by any means
+     * the interface offers.
+     *
+     * The ROMs on disk are untouched: adding the system back and rescanning
+     * restores all of this.
+     */
+    private suspend fun purgePlatformContent(platformId: String) {
+        gameDao.deleteByPlatform(platformId)
+
+        val folderId = PlatformFolders.idFor(platformId)
+        gridDao.deleteByEntryId(folderId)
+        folderDao.deleteById(folderId)
     }
 
     /**

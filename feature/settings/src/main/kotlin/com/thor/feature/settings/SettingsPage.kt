@@ -10,6 +10,12 @@ import com.thor.core.model.LauncherFeatures
  * the Appearance pane alone ran to thirty-odd rows, which is unscannable and —
  * more practically — a very long way to travel with a D-pad. A page is small
  * enough to fit a screen, so opening one shows all of it at once.
+ *
+ * **Declaration order is display order** within a category, so the order here is
+ * the order of the list the user reads. Pages are grouped by the question they
+ * answer rather than by which part of the code owns them: `METADATA` sits with
+ * icon packs because both are places artwork comes from, not with scanning
+ * because both happen to be run by a sync manager.
  */
 enum class SettingsPage(
     val category: SettingsCategory,
@@ -25,8 +31,14 @@ enum class SettingsPage(
         SettingsCategory.APPEARANCE, "Wallpaper",
         "Background image and animated effect",
     ),
+    INTERFACE(
+        SettingsCategory.APPEARANCE, "Interface",
+        "Text size, motion, clock and folders",
+    ),
+
+    // ---- Home screen -------------------------------------------------------
     GRID(
-        SettingsCategory.APPEARANCE, "Grid",
+        SettingsCategory.APPEARANCE, "Home grid",
         "Size, spacing, icon shape and labels",
     ),
     DOCK(
@@ -34,12 +46,8 @@ enum class SettingsPage(
         "Size, transparency and behaviour",
     ),
     CURSOR(
-        SettingsCategory.APPEARANCE, "Cursor",
+        SettingsCategory.APPEARANCE, "Selection cursor",
         "Selection highlight style and glow",
-    ),
-    INTERFACE(
-        SettingsCategory.APPEARANCE, "Interface",
-        "Text size, motion, clock and folders",
     ),
 
     // ---- Library -----------------------------------------------------------
@@ -55,27 +63,43 @@ enum class SettingsPage(
         SettingsCategory.LIBRARY, "Scanning",
         "How games and apps are found",
     ),
-    ICON_PACKS(
-        SettingsCategory.LIBRARY, "Icon packs",
-        "Platform artwork imported from a pack",
-    ),
-    METADATA(
-        SettingsCategory.LIBRARY, "Metadata & accounts",
-        "Artwork providers and their credentials",
-    ),
     SORTING(
         SettingsCategory.LIBRARY, "Sorting",
         "Default library order",
     ),
 
-    // ---- Movies ------------------------------------------------------------
+    // ---- Artwork -----------------------------------------------------------
+    METADATA(
+        SettingsCategory.LIBRARY, "Metadata & scraping",
+        "Artwork providers and their credentials",
+    ),
+    ICON_PACKS(
+        SettingsCategory.LIBRARY, "Platform artwork",
+        "Platform artwork imported from a pack",
+    ),
+
+    // ---- Films & shows -----------------------------------------------------
     MOVIES_CATALOGUE(
-        SettingsCategory.LIBRARY, "Films and shows",
-        "Catalogue, debrid account and torrent indexers",
+        SettingsCategory.MOVIES, "Sources & accounts",
+        "Debrid account, addons and torrent indexers",
     ),
     MOVIES_PLAYBACK(
-        SettingsCategory.LIBRARY, "Streaming",
+        SettingsCategory.MOVIES, "Playback",
         "Which source is chosen, and how it plays",
+    ),
+
+    // ---- PC streaming ------------------------------------------------------
+    STREAM_QUALITY(
+        SettingsCategory.STREAMING, "Picture",
+        "Resolution, frame rate and bandwidth",
+    ),
+    STREAM_CONTROLS(
+        SettingsCategory.STREAMING, "Controls",
+        "Trackpad, keyboard, touch and the pad",
+    ),
+    STREAM_HOSTS(
+        SettingsCategory.STREAMING, "PCs",
+        "How PCs are found, and what THOR calls itself",
     ),
 
     // ---- Controls ----------------------------------------------------------
@@ -106,6 +130,10 @@ enum class SettingsPage(
     ACCESSIBILITY(
         SettingsCategory.SYSTEM, "Accessibility",
         "Contrast, motion, text and colour vision",
+    ),
+    NOTIFICATIONS(
+        SettingsCategory.SYSTEM, "Notifications",
+        "Show device notifications on the top screen",
     ),
     DIAGNOSTICS(
         SettingsCategory.SYSTEM, "Diagnostics",

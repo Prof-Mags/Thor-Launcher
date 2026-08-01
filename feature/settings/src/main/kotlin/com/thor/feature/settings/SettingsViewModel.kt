@@ -28,17 +28,22 @@ import com.thor.core.model.IconPack
 import com.thor.data.iconpack.IconPackImport
 import com.thor.data.iconpack.IconPackRepository
 import com.thor.core.model.MediaSettings
+import com.thor.core.model.StreamSettings
 import com.thor.core.model.MouseSettings
 import com.thor.core.model.StremioAddon
 import com.thor.core.model.StremioAddons
 import com.thor.core.model.TorznabIndexer
 import com.thor.data.launcher.DefaultLauncherManager
 import com.thor.data.launcher.PointerServiceManager
+import com.thor.data.notification.NotificationAccessManager
+import com.thor.data.notification.NotificationHub
 import com.thor.data.launcher.EntryLauncher
 import com.thor.data.media.DebridStatus
+import com.thor.data.media.AddonCheck
 import com.thor.data.media.MediaRepository
 import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.ProviderStatus
+import com.thor.data.repository.GridLayoutRepository
 import com.thor.data.repository.LibraryRepository
 import com.thor.data.scanner.EmulatorRegistry
 import com.thor.data.sync.LibrarySyncManager
@@ -74,6 +79,8 @@ data class PlatformEmulatorOption(
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val libraryRepository: LibraryRepository,
+    /** Placements, for the action that clears the grid without touching the library. */
+    private val gridRepository: GridLayoutRepository,
     private val syncManager: LibrarySyncManager,
     private val metadataSyncManager: MetadataSyncManager,
     private val entryLauncher: EntryLauncher,
@@ -81,6 +88,8 @@ class SettingsViewModel @Inject constructor(
     private val defaultLauncherManager: DefaultLauncherManager,
     private val iconPackRepository: IconPackRepository,
     private val pointerService: PointerServiceManager,
+    private val notificationAccess: NotificationAccessManager,
+    notificationHub: NotificationHub,
     private val mediaRepository: MediaRepository,
     mouse: MouseController,
 ) : ViewModel() {
@@ -166,12 +175,54 @@ class SettingsViewModel @Inject constructor(
         pointerService.openSettings()
     }
 
+    // ---- Notifications -----------------------------------------------------
+
+    private val _notificationAccessGranted = MutableStateFlow(notificationAccess.isGranted())
+
+    /** Whether the system permits reading notifications; see [refreshNotificationAccess]. */
+    val notificationAccessGranted: StateFlow<Boolean> =
+        _notificationAccessGranted.asStateFlow()
+
+    /**
+     * Whether the listener is bound, as distinct from permitted.
+     *
+     * Reported straight from the hub, which the service itself sets. The two
+     * disagree more often than one would expect — a grant survives an update and
+     * the binding does not — and the page says which is which.
+     */
+    val notificationServiceConnected: StateFlow<Boolean> = notificationHub.connected
+
+    /**
+     * Re-reads the grant.
+     *
+     * Nothing observes this setting: it changes only by the user leaving for
+     * system settings and coming back, so the page asks again when it opens.
+     */
+    fun refreshNotificationAccess() {
+        _notificationAccessGranted.value = notificationAccess.isGranted()
+    }
+
+    fun openNotificationAccessSettings() {
+        notificationAccess.openSettings()
+    }
+
     fun updateMouse(transform: (MouseSettings) -> MouseSettings) {
         viewModelScope.launchSafely(TAG) { settingsRepository.updateMouse(transform) }
     }
 
     fun updateMedia(transform: (MediaSettings) -> MediaSettings) {
         viewModelScope.launchSafely(TAG) { settingsRepository.updateMedia(transform) }
+    }
+
+    /**
+     * Streaming settings, including the hosts themselves.
+     *
+     * The host list lives in the same group, so this deliberately takes the whole
+     * value rather than exposing quality alone — a caller that replaced the
+     * group wholesale would drop every paired PC.
+     */
+    fun updateStream(transform: (StreamSettings) -> StreamSettings) {
+        viewModelScope.launchSafely(TAG) { settingsRepository.updateStream(transform) }
     }
 
     private val _debridStatus = MutableStateFlow<String?>(null)
@@ -232,23 +283,85 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** What each addon said when last checked, keyed by position. */
+    private val _addonStatus = MutableStateFlow<Map<Int, String>>(emptyMap())
+    val addonStatus: StateFlow<Map<Int, String>> = _addonStatus.asStateFlow()
+
+    /**
+     * Asks an addon whether it will actually serve streams.
+     *
+     * The verdict comes from the *stream* endpoint rather than the manifest, and
+     * the two disagree more often than they ought to: an addon behind a CDN can
+     * serve streams perfectly while its manifest returns a gateway error, and the
+     * old check read only the manifest — so a working addon reported nothing at
+     * all and the row kept saying "Check this addon", which is exactly what it
+     * says before it has ever been pressed.
+     */
     fun checkAddon(index: Int) {
-        viewModelScope.launchSafely(TAG) {
-            val addon = settings.value.media.addons.getOrNull(index) ?: return@launchSafely
+        val addon = settings.value.media.addons.getOrNull(index) ?: return
+        _addonStatus.update { it + (index to "Checking…") }
+
+        viewModelScope.launchSafely(
+            tag = TAG,
+            onError = { error ->
+                _addonStatus.update { it + (index to (error.message ?: "Check failed")) }
+            },
+        ) {
             val normalised = StremioAddons.normalise(addon.url)
-            val name = mediaRepository.identifyAddon(normalised)
+            val result = mediaRepository.checkAddon(normalised)
+
+            _addonStatus.update { it + (index to (result.note ?: "Serving streams")) }
 
             updateMedia { media ->
                 media.copy(
                     addons = media.addons.mapIndexed { i, existing ->
                         if (i == index) {
-                            existing.copy(url = normalised, name = name.orEmpty())
+                            // The stored name is only ever replaced by a better
+                            // one: a manifest that failed this time must not
+                            // erase a name a previous check established.
+                            existing.copy(
+                                url = normalised,
+                                name = result.name ?: existing.name,
+                            )
                         } else {
                             existing
                         }
                     },
                 )
             }
+        }
+    }
+
+    /**
+     * What each indexer said when last tested, keyed by its position.
+     *
+     * Held here rather than written into the settings document: it is the result
+     * of a question asked just now, not a preference, and persisting it would
+     * leave yesterday's "Answering" on screen beside an indexer that has since
+     * gone down.
+     */
+    private val _indexerStatus = MutableStateFlow<Map<Int, String>>(emptyMap())
+    val indexerStatus: StateFlow<Map<Int, String>> = _indexerStatus.asStateFlow()
+
+    /**
+     * Asks one indexer whether it actually answers.
+     *
+     * The row could otherwise only report whether its fields were filled in, and
+     * said "Ready" for a mistyped host, a revoked key, or a Jackett that is not
+     * running. All three surface much later as a film with no sources, on a
+     * screen with nothing to point at.
+     */
+    fun checkIndexer(index: Int) {
+        val indexer = settings.value.media.indexers.getOrNull(index) ?: return
+        _indexerStatus.update { it + (index to "Checking…") }
+
+        viewModelScope.launchSafely(
+            tag = TAG,
+            onError = { error ->
+                _indexerStatus.update { it + (index to (error.message ?: "Check failed")) }
+            },
+        ) {
+            _indexerStatus.update { it + (index to mediaRepository.testIndexer(indexer)) }
         }
     }
 
@@ -275,11 +388,26 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    val settings: StateFlow<ThorSettings> = settingsRepository.settings.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = ThorSettings.DEFAULT,
-    )
+    /**
+     * Null is the only pre-load state. Keeping the loaded flag and its settings in
+     * one value means startup audio can never observe "loaded" alongside defaults.
+     */
+    val loadedSettings: StateFlow<ThorSettings?> = settingsRepository.settings
+        .map<ThorSettings, ThorSettings?> { it }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = null,
+        )
+
+    /** Existing settings consumers still receive a non-null default immediately. */
+    val settings: StateFlow<ThorSettings> = loadedSettings
+        .map { it ?: ThorSettings.DEFAULT }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = ThorSettings.DEFAULT,
+        )
 
     val scanState: StateFlow<SyncState> = syncManager.state
     val scrapeState: StateFlow<ScrapeState> = metadataSyncManager.state
@@ -319,10 +447,23 @@ class SettingsViewModel @Inject constructor(
      * the scanner. The database still carries every platform so a mixed ROM
      * folder is scanned correctly; this is only what the picker offers.
      */
+    /**
+     * Every platform the user has not added yet.
+     *
+     * This used to be filtered against a hardcoded list of four ids — N64, DS,
+     * 3DS and Switch. Once those four were added the list was empty, and an
+     * empty list makes the "Add platform" row a deliberate no-op: it is not
+     * disabled, it simply does nothing when pressed, which reads as a broken
+     * button rather than as "there is nothing left to add".
+     *
+     * There is no reason for a whitelist. Every built-in platform already exists
+     * in the database so the scanner can recognise its file types, and adding one
+     * is exactly the act of saying "I own this system" — so all of them are
+     * offered, in catalogue order.
+     */
     val availablePlatforms: StateFlow<List<Platform>> = libraryRepository.platforms
         .map { all ->
-            all.filterNot(Platform::isAdded).filter { it.id in OFFERED_PLATFORM_IDS }
-                .sortedBy { OFFERED_PLATFORM_IDS.indexOf(it.id) }
+            all.filterNot(Platform::isAdded).sortedBy(Platform::sortIndex)
         }
         .stateIn(
             scope = viewModelScope,
@@ -333,6 +474,7 @@ class SettingsViewModel @Inject constructor(
     /** The platform whose setup dialog is open, if any. */
     private val _pendingPlatform = MutableStateFlow<Platform?>(null)
     val pendingPlatform: StateFlow<Platform?> = _pendingPlatform.asStateFlow()
+    val isAddingPlatform: Boolean get() = _pendingPlatform.value != null
 
     /** Emulators installed for the platform currently being added. */
     fun installedEmulatorsFor(platform: Platform): List<Pair<String, String>> =
@@ -342,10 +484,15 @@ class SettingsViewModel @Inject constructor(
 
     fun beginAddPlatform(platform: Platform) {
         _pendingPlatform.value = platform
+        _horizontalRows.value = emptySet()
+        _focusOnRail.value = false
+        _focusedRow.value = 0
     }
 
     fun cancelAddPlatform() {
         _pendingPlatform.value = null
+        _horizontalRows.value = emptySet()
+        _focusedRow.value = 0
     }
 
     /**
@@ -415,12 +562,14 @@ class SettingsViewModel @Inject constructor(
         // a page from another category open would show unrelated controls under
         // the new heading.
         _openPage.value = null
+        _horizontalRows.value = emptySet()
         _focusedRow.value = 0
     }
 
     fun openPage(page: SettingsPage) {
         _selectedCategory.value = page.category
         _openPage.value = page
+        _horizontalRows.value = emptySet()
         _focusOnRail.value = false
         _focusedRow.value = 0
     }
@@ -428,6 +577,7 @@ class SettingsViewModel @Inject constructor(
     /** Returns from a page to its category's list. */
     fun closePage() {
         _openPage.value = null
+        _horizontalRows.value = emptySet()
         _focusedRow.value = 0
     }
 
@@ -436,6 +586,10 @@ class SettingsViewModel @Inject constructor(
 
     fun focusRow(index: Int) {
         _focusedRow.value = index.coerceAtLeast(0)
+    }
+
+    fun clampFocusedRow(rowCount: Int) {
+        _focusedRow.value = _focusedRow.value.coerceIn(0, (rowCount - 1).coerceAtLeast(0))
     }
 
     /**
@@ -458,7 +612,7 @@ class SettingsViewModel @Inject constructor(
     fun onControllerCommand(command: ControllerCommand, rowCount: Int): Boolean = when (command) {
         ControllerCommand.NAVIGATE_UP -> {
             if (_focusOnRail.value) {
-                val entries = SettingsCategory.entries
+                val entries = SettingsCategory.navigationEntries
                 val index = entries.indexOf(_selectedCategory.value)
                 selectCategory(entries[(index - 1 + entries.size) % entries.size])
             } else {
@@ -469,7 +623,7 @@ class SettingsViewModel @Inject constructor(
 
         ControllerCommand.NAVIGATE_DOWN -> {
             if (_focusOnRail.value) {
-                val entries = SettingsCategory.entries
+                val entries = SettingsCategory.navigationEntries
                 val index = entries.indexOf(_selectedCategory.value)
                 selectCategory(entries[(index + 1) % entries.size])
             } else if (rowCount > 0) {
@@ -486,6 +640,7 @@ class SettingsViewModel @Inject constructor(
                 // left means "the previous one of these" — a gallery is browsed, not
                 // stepped out of.
                 focusedRowTakesHorizontal() -> _horizontalStep.value -= 1
+                isAddingPlatform -> Unit
                 _openPage.value != null -> closePage()
                 !_focusOnRail.value -> {
                     _focusOnRail.value = true
@@ -498,6 +653,7 @@ class SettingsViewModel @Inject constructor(
         ControllerCommand.NAVIGATE_RIGHT -> {
             when {
                 focusedRowTakesHorizontal() -> _horizontalStep.value += 1
+                isAddingPlatform -> Unit
                 _focusOnRail.value && rowCount > 0 -> {
                     _focusOnRail.value = false
                     _focusedRow.value = 0
@@ -568,6 +724,7 @@ class SettingsViewModel @Inject constructor(
     fun resetFocus() {
         _focusOnRail.value = true
         _openPage.value = null
+        _horizontalRows.value = emptySet()
         _focusedRow.value = 0
     }
 
@@ -643,6 +800,37 @@ class SettingsViewModel @Inject constructor(
         syncManager.requestFullScan()
     }
 
+    /**
+     * What the last "clear the grid" did, so the row can say so.
+     *
+     * Null until it has been used. An action whose entire visible effect is on
+     * another screen needs to report on itself, or pressing it looks identical
+     * to pressing nothing.
+     */
+    private val _gridClearResult = MutableStateFlow<String?>(null)
+    val gridClearResult: StateFlow<String?> = _gridClearResult.asStateFlow()
+
+    /**
+     * Takes every game off the grid, leaving the library alone.
+     *
+     * The games stay scanned, stay searchable and stay inside their platform
+     * folders — only their cells go. That is what makes this recoverable: a
+     * rescan files them back, and nothing has been deleted in the meantime.
+     */
+    fun clearGamesFromGrid() {
+        viewModelScope.launchSafely(
+            tag = TAG,
+            onError = { _gridClearResult.value = "Could not clear the grid" },
+        ) {
+            val cleared = gridRepository.clearGamePlacements()
+            _gridClearResult.value = when (cleared) {
+                0 -> "No games were on the grid"
+                1 -> "Removed 1 game from the grid"
+                else -> "Removed $cleared games from the grid"
+            }
+        }
+    }
+
     /** Stores or clears a provider's API key. */
     fun setApiKey(providerId: String, key: String) {
         viewModelScope.launchSafely(TAG) {
@@ -710,6 +898,21 @@ class SettingsViewModel @Inject constructor(
 
     fun scrapeMetadata(onlyMissing: Boolean) {
         metadataSyncManager.requestScrape(onlyMissing)
+    }
+
+    /**
+     * Scrapes one system's games, leaving the rest of the library alone.
+     *
+     * The useful unit of a scrape. A full pass is hundreds of rate-limited calls
+     * across every console you own, so fixing the artwork on one of them meant
+     * paying for all of them — and after adding a system, everything else has
+     * already been scraped and only the new one needs anything.
+     *
+     * Not "only missing": asking for a specific system is asking for it to be
+     * done again, which is the whole reason to single one out.
+     */
+    fun scrapePlatform(platformId: String) {
+        metadataSyncManager.requestScrape(onlyMissing = false, platformId = platformId)
     }
 
     /** Fetches trailers for games that have none, without re-scraping the rest. */
@@ -824,6 +1027,5 @@ class SettingsViewModel @Inject constructor(
          * that actually scans and launches. The rest of the catalogue is still
          * in the database and still recognised by the scanner.
          */
-        val OFFERED_PLATFORM_IDS = listOf("n64", "nds", "3ds", "switch")
     }
 }

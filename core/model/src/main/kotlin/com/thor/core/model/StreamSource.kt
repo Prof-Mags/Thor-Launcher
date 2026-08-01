@@ -125,8 +125,16 @@ data class StreamSource(
     val magnetUri: String? = null,
     /** Set when a provider hands over a ready HTTP stream and no debrid is needed. */
     val directUrl: String? = null,
+    /** Headers an addon requires when opening [directUrl]. */
+    val requestHeaders: Map<String, String> = emptyMap(),
     /** Which file inside a multi-file torrent, when the provider names one. */
     val fileIndex: Int? = null,
+    /**
+     * Real-Debrid file IDs which must be selected together for this cached
+     * availability variant to remain instant. Empty when availability was not
+     * checked, the source is direct, or no compatible variant was returned.
+     */
+    val instantFileIds: List<Int> = emptyList(),
     val sizeBytes: Long? = null,
     val seeders: Int? = null,
     val cached: CacheStatus = CacheStatus.UNKNOWN,

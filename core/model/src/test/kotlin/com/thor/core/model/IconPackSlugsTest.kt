@@ -57,20 +57,24 @@ class IconPackSlugsTest {
     }
 
     /**
-     * The three the reference pack ships that THOR has no platform for. They are
-     * unmatched *now*; the importer keeps their artwork regardless.
+     * The three that used to be unmatched, and are not any more.
+     *
+     * This test previously asserted the opposite — that THOR modelled no Game
+     * Gear and no Neo Geo Pocket, so a pack shipping artwork for them had
+     * nowhere to put it. Both are built-in platforms now, and the mono Pocket
+     * aliases onto the colour model because they share emulators and artwork.
      */
     @Test
-    fun `platforms THOR does not model are unmatched`() {
-        listOf("gamegear", "ngp", "ngpc").forEach { slug ->
-            assertThat(IconPackSlugs.platformIdFor(slug)).isNull()
-        }
+    fun `handhelds the reference pack ships now resolve`() {
+        assertThat(IconPackSlugs.platformIdFor("gamegear")).isEqualTo("gamegear")
+        assertThat(IconPackSlugs.platformIdFor("ngpc")).isEqualTo("ngpc")
+        assertThat(IconPackSlugs.platformIdFor("ngp")).isEqualTo("ngpc")
     }
 
     @Test
-    fun `most of the reference pack resolves`() {
+    fun `the whole reference pack resolves`() {
         val resolved = referencePackSlugs.count { IconPackSlugs.platformIdFor(it) != null }
-        assertThat(resolved).isEqualTo(referencePackSlugs.size - 3)
+        assertThat(resolved).isEqualTo(referencePackSlugs.size)
     }
 
     /** Whatever resolves must resolve to a platform that actually exists. */

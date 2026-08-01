@@ -37,36 +37,44 @@ class MoviesSectionState internal constructor(
     var focusedAction by mutableStateOf(PlayerAction.PLAY_PAUSE)
         internal set
 
-    var status by mutableStateOf(PlayerStatus())
-        private set
+    /**
+     * Set when the controller has asked for the search box.
+     *
+     * A request rather than a call, because claiming THOR's text focus needs the
+     * composition local the field is drawn under — and this object is deliberately
+     * outside any composition so both panels can hold it. The panel that draws the
+     * box acts on this and clears it.
+     */
+    var searchRequested by mutableStateOf(false)
+        internal set
 
-    internal var commands: PlayerCommands? = null
-        private set
+    fun requestSearch() {
+        searchRequested = true
+    }
+
+    fun onSearchFocused() {
+        searchRequested = false
+    }
 
     /**
-     * Takes a status sample from the player.
+     * The player, reached through the view model that owns it.
      *
-     * A method rather than a settable field because the player lives in the
-     * *other* window: the shell is relaying across a boundary, and a public
-     * setter invites anything to invent a state the player is not actually in.
+     * There used to be a relay here: the panel drawing the video sampled the
+     * player into this object and handed up a `PlayerCommands` for the other
+     * panel to drive it through. Both halves of that were a value produced by
+     * one window's composition and consumed by the other's, which is precisely
+     * the arrangement that freezes when the producing window is covered — the
+     * controls would go on showing the last sample taken before an app opened on
+     * the other screen, and the buttons would drive a player through an object
+     * captured when the panel was last composed.
+     *
+     * Now there is no relay. One object owns the player, both panels read the
+     * same flow, and neither can be stale.
      */
-    fun onStatus(status: PlayerStatus) {
-        this.status = status
-
-        // Recorded continuously rather than only on stop, so a film abandoned by
-        // pulling the battery is still resumable.
-        if (status.durationMs > 0L) {
-            viewModel.onProgress(status.positionMs, status.durationMs)
-        }
-    }
-
-    /** Receives the player's control surface when the top panel builds one. */
-    fun onCommands(commands: PlayerCommands?) {
-        this.commands = commands
-    }
+    internal val player: ThorPlayer get() = viewModel.player
 
     fun seekTo(positionMs: Long) {
-        commands?.seekTo(positionMs)
+        player.seekTo(positionMs)
     }
 }
 
@@ -81,12 +89,23 @@ class MoviesSectionState internal constructor(
 fun rememberMoviesSection(viewModel: MoviesViewModel): MoviesSectionState {
     val section = remember(viewModel) { MoviesSectionState(viewModel) }
     val playback by viewModel.playback.collectAsState()
+    val browseState by viewModel.uiState.collectAsState()
 
     // Playback starting or stopping is what moves the section in and out of its
     // player state; nothing else may set it, so the two cannot disagree.
     LaunchedEffect(playback) {
         section.mode = if (playback != null) MoviesMode.PLAYING else MoviesMode.BROWSE
         if (playback != null) section.focusedAction = PlayerAction.PLAY_PAUSE
+    }
+
+    // The top-panel tabs are touchable even while the controller is in the
+    // episode selector. Switching to films must not leave that invisible mode
+    // consuming directions against a screen with no selector.
+    LaunchedEffect(browseState.type) {
+        if (playback == null) {
+            section.mode = MoviesMode.BROWSE
+            section.focusedSource = 0
+        }
     }
 
     return section
@@ -99,10 +118,31 @@ fun rememberMoviesSection(viewModel: MoviesViewModel): MoviesSectionState {
  *   not — Home, the nav bar and the overlays still work while Movies is open,
  *   because a section that swallowed everything would be a trap.
  */
-fun MoviesSectionState.handleCommand(command: ControllerCommand): Boolean = when (mode) {
-    MoviesMode.BROWSE -> handleBrowse(command)
-    MoviesMode.SOURCES -> handleSources(command)
-    MoviesMode.PLAYING -> handlePlaying(command)
+fun MoviesSectionState.handleCommand(command: ControllerCommand): Boolean {
+    // Bumpers always mean Films/Shows while browsing this section. Keeping this
+    // above the individual modes prevents the same buttons changing seasons in
+    // one panel and doing nothing in another.
+    if (mode != MoviesMode.PLAYING) {
+        when (command) {
+            ControllerCommand.PAGE_PREVIOUS -> return switchMediaType(MediaType.MOVIE)
+            ControllerCommand.PAGE_NEXT -> return switchMediaType(MediaType.SERIES)
+            else -> Unit
+        }
+    }
+
+    return when (mode) {
+        MoviesMode.BROWSE -> handleBrowse(command)
+        MoviesMode.EPISODES -> handleEpisodes(command)
+        MoviesMode.SOURCES -> handleSources(command)
+        MoviesMode.PLAYING -> handlePlaying(command)
+    }
+}
+
+private fun MoviesSectionState.switchMediaType(type: MediaType): Boolean {
+    focusedSource = 0
+    mode = MoviesMode.BROWSE
+    viewModel.switchType(type)
+    return true
 }
 
 private fun MoviesSectionState.handleBrowse(command: ControllerCommand): Boolean = when (command) {
@@ -111,17 +151,18 @@ private fun MoviesSectionState.handleBrowse(command: ControllerCommand): Boolean
     ControllerCommand.NAVIGATE_UP -> { viewModel.move(-1, 0); true }
     ControllerCommand.NAVIGATE_DOWN -> { viewModel.move(1, 0); true }
 
-    /*
-     * Confirm moves into the source list rather than playing something.
-     *
-     * The list is already on screen beside the description, populated after a
-     * short dwell, so this is a move rather than a fetch. Playing the top-ranked
-     * source outright was the old behaviour and it read as the launcher picking
-     * at random: the ranking is an opinion, and the viewer could neither see it
-     * nor overrule it before it acted.
-     */
+    // Shows stop at their season/episode pair before entering the source list.
+    // Films have no such intermediate choice and retain the old direct route.
     ControllerCommand.CONFIRM -> {
-        mode = MoviesMode.SOURCES
+        val selected = viewModel.detail.value.item
+        mode = if (
+            selected?.isSeries == true &&
+            selected.orderedSeasons.any { it.episodes.isNotEmpty() }
+        ) {
+            MoviesMode.EPISODES
+        } else {
+            MoviesMode.SOURCES
+        }
         focusedSource = 0
         true
     }
@@ -133,10 +174,76 @@ private fun MoviesSectionState.handleBrowse(command: ControllerCommand): Boolean
         true
     }
 
-    // Films and shows, on the bumpers, because they are the section's two halves
-    // rather than a setting.
-    ControllerCommand.PAGE_PREVIOUS -> { viewModel.switchType(MediaType.MOVIE); true }
-    ControllerCommand.PAGE_NEXT -> { viewModel.switchType(MediaType.SERIES); true }
+    /*
+     * Y opens the search box, the way it opens a context menu on the grid.
+     *
+     * A search box the controller cannot reach would be a touch-only feature on
+     * a device built to be driven by a pad — and the on-screen keyboard it
+     * raises is itself controller-driven, so the whole path works from the
+     * stick. B leaves it again, which `handleBrowse` already treats as back.
+     */
+    ControllerCommand.CONTEXT_MENU -> {
+        requestSearch()
+        true
+    }
+
+    // Back leaves a search before it leaves the section.
+    ControllerCommand.BACK -> {
+        if (viewModel.uiState.value.isSearching) {
+            viewModel.clearSearch()
+            true
+        } else {
+            false
+        }
+    }
+
+    else -> false
+}
+
+/**
+ * A show's pair selector: horizontal movement changes season, vertical movement
+ * changes episode, and confirm hands the chosen pair to the source list.
+ */
+private fun MoviesSectionState.handleEpisodes(command: ControllerCommand): Boolean = when (command) {
+    ControllerCommand.NAVIGATE_LEFT -> {
+        focusedSource = 0
+        viewModel.stepSeason(-1)
+        true
+    }
+
+    ControllerCommand.NAVIGATE_RIGHT -> {
+        focusedSource = 0
+        viewModel.stepSeason(1)
+        true
+    }
+
+    ControllerCommand.NAVIGATE_UP -> {
+        focusedSource = 0
+        viewModel.stepEpisode(-1)
+        true
+    }
+
+    ControllerCommand.NAVIGATE_DOWN -> {
+        focusedSource = 0
+        viewModel.stepEpisode(1)
+        true
+    }
+
+    ControllerCommand.CONFIRM -> {
+        mode = MoviesMode.SOURCES
+        focusedSource = 0
+        true
+    }
+
+    ControllerCommand.PICK_UP -> {
+        viewModel.playBest()
+        true
+    }
+
+    ControllerCommand.BACK -> {
+        mode = MoviesMode.BROWSE
+        true
+    }
 
     else -> false
 }
@@ -149,9 +256,17 @@ private fun MoviesSectionState.handleSources(command: ControllerCommand): Boolea
         true
     }
 
-    // Left returns to the shelves, matching where the list sits on screen.
+    // A show returns to its pair selector; a film returns straight to browsing.
     ControllerCommand.NAVIGATE_LEFT, ControllerCommand.BACK -> {
-        mode = MoviesMode.BROWSE
+        val selected = viewModel.detail.value.item
+        mode = if (
+            selected?.isSeries == true &&
+            selected.orderedSeasons.any { it.episodes.isNotEmpty() }
+        ) {
+            MoviesMode.EPISODES
+        } else {
+            MoviesMode.BROWSE
+        }
         true
     }
 
@@ -170,6 +285,19 @@ fun MoviesSectionState.pickSource(index: Int) {
     sourceAt(index)?.let(viewModel::play)
 }
 
+/** Touch/pointer selection also hands subsequent controller input to the selector. */
+fun MoviesSectionState.pickSeason(number: Int) {
+    focusedSource = 0
+    mode = MoviesMode.EPISODES
+    viewModel.selectSeason(number)
+}
+
+fun MoviesSectionState.pickEpisode(number: Int) {
+    focusedSource = 0
+    viewModel.selectEpisode(number)
+    mode = MoviesMode.SOURCES
+}
+
 private fun MoviesSectionState.handlePlaying(command: ControllerCommand): Boolean = when (command) {
     ControllerCommand.NAVIGATE_LEFT -> { stepAction(-1); true }
     ControllerCommand.NAVIGATE_RIGHT -> { stepAction(1); true }
@@ -185,27 +313,25 @@ private fun MoviesSectionState.handlePlaying(command: ControllerCommand): Boolea
 /** Carries out a transport action, wherever it came from. */
 fun MoviesSectionState.perform(action: PlayerAction) {
     when (action) {
-        PlayerAction.PLAY_PAUSE -> commands?.playPause()
-        PlayerAction.REWIND -> commands?.seekBy(-SKIP_BACK_MS)
-        PlayerAction.FORWARD -> commands?.seekBy(SKIP_FORWARD_MS)
+        PlayerAction.PLAY_PAUSE -> player.playPause()
+        PlayerAction.REWIND -> player.seekBy(-SKIP_BACK_MS)
+        PlayerAction.FORWARD -> player.seekBy(SKIP_FORWARD_MS)
         PlayerAction.STOP -> {
-            // Recorded before the player goes away, or the position is lost and
-            // the title cannot be resumed.
-            viewModel.onProgress(status.positionMs, status.durationMs)
+            // stopPlayback takes the final player snapshot before closing it,
+            // bypassing the periodic-write throttle so resume cannot lag behind.
             viewModel.stopPlayback()
             mode = MoviesMode.BROWSE
         }
 
-        PlayerAction.NEXT_EPISODE -> viewModel.nextEpisode()?.let { (season, episode) ->
-            viewModel.stopPlayback()
-            viewModel.playBest(season, episode)
-        }
+        PlayerAction.NEXT_EPISODE -> viewModel.playNextEpisode()
     }
 }
 
 private fun MoviesSectionState.stepAction(delta: Int) {
-    val actions = PlayerAction.entries
-    val index = actions.indexOf(focusedAction)
+    val actions = PlayerAction.entries.filter { action ->
+        action != PlayerAction.NEXT_EPISODE || viewModel.nextEpisode() != null
+    }
+    val index = actions.indexOf(focusedAction).coerceAtLeast(0)
     focusedAction = actions[(index + delta).coerceIn(0, actions.lastIndex)]
 }
 

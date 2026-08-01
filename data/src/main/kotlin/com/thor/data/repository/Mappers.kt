@@ -59,6 +59,7 @@ fun GameEntity.toDomain(): GameEntry = GameEntry(
     ),
     emulatorPackage = emulatorPackage,
     tags = tags.toSet(),
+    isMissing = isMissing,
     isFavorite = isFavorite,
     isHidden = isHidden,
 )

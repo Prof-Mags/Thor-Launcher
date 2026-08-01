@@ -10,4 +10,21 @@
     -->
     <string name="mouse_service_summary">Controller pointer for apps and games</string>
     <string name="mouse_service_description">Lets THOR show a pointer you can move with the controller and use anywhere on the device, including inside games and apps. Hold Start and Select to turn it on or off.\n\nTHOR does not read the contents of your screen. This permission is used only to draw the pointer and to send the taps it makes.</string>
+
+    <!--
+      Shown beside THOR in the system's notification-access list, which is the
+      one place the user sees this service named. Says what it is for, because
+      the system screen gives no other context.
+    -->
+    <string name="notification_service_summary">Device notifications on the top screen</string>
+
+    <!--
+      Shown over the black surface while a stream is being set up.
+
+      Named rather than generic, because launching a game on the PC can take
+      half a minute and a bare spinner for that long reads as a hang.
+    -->
+    <string name="stream_connecting">Starting %1$s…</string>
+    <!-- The core's own name for the step it is on, so a stall says where. -->
+    <string name="stream_stage">Connecting — %1$s…</string>
 </resources>

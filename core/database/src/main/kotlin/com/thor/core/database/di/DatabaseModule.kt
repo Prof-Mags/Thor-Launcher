@@ -12,6 +12,7 @@ import com.thor.core.database.dao.GameDao
 import com.thor.core.database.dao.GridDao
 import com.thor.core.database.dao.PlatformDao
 import com.thor.core.database.dao.PlayHistoryDao
+import com.thor.core.database.dao.WatchProgressDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -45,5 +46,8 @@ object DatabaseModule {
     @Provides fun providesGridDao(db: ThorDatabase): GridDao = db.gridDao()
     @Provides fun providesCollectionDao(db: ThorDatabase): CollectionDao = db.collectionDao()
     @Provides fun providesPlayHistoryDao(db: ThorDatabase): PlayHistoryDao = db.playHistoryDao()
+
+    @Provides fun providesWatchProgressDao(db: ThorDatabase): WatchProgressDao =
+        db.watchProgressDao()
     @Provides fun providesAchievementDao(db: ThorDatabase): AchievementDao = db.achievementDao()
 }

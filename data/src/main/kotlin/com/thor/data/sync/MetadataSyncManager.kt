@@ -81,7 +81,18 @@ class MetadataSyncManager @Inject constructor(
      */
     fun requestTrailerRefresh() = requestScrape(onlyMissing = false, trailersOnly = true)
 
-    fun requestScrape(onlyMissing: Boolean = true, trailersOnly: Boolean = false) {
+    /**
+     * @param platformId scrape only this system's games, or null for all of them.
+     *   One console at a time is the useful unit: a scrape is hundreds of
+     *   rate-limited calls, and a library spanning a dozen systems means an hour
+     *   of them to fix artwork on one. It is also the natural retry after adding
+     *   a system, where everything else is already scraped.
+     */
+    fun requestScrape(
+        onlyMissing: Boolean = true,
+        trailersOnly: Boolean = false,
+        platformId: String? = null,
+    ) {
         if (isRunning) return
         /*
          * [launchSafely] rather than `runCatching`, and the difference is visible to
@@ -100,7 +111,11 @@ class MetadataSyncManager @Inject constructor(
                 _state.value = ScrapeState.Failed(error.message ?: "Scrape failed")
             },
         ) {
-            scrape(onlyMissing = onlyMissing, trailersOnly = trailersOnly)
+            scrape(
+                onlyMissing = onlyMissing,
+                trailersOnly = trailersOnly,
+                platformId = platformId,
+            )
         }
     }
 
@@ -113,6 +128,7 @@ class MetadataSyncManager @Inject constructor(
     private suspend fun scrape(
         onlyMissing: Boolean,
         trailersOnly: Boolean = false,
+        platformId: String? = null,
     ) = withContext(ioDispatcher) {
         // A provider that is enabled but unconfigured contributes nothing, so a
         // scrape with none usable would churn through the whole library and
@@ -133,7 +149,20 @@ class MetadataSyncManager @Inject constructor(
         }
 
         val platforms = platformDao.getAll().associateBy { it.id }
+
+        /*
+         * Narrowed to one system before anything else is decided.
+         *
+         * `skipped` is then counted against this system's games rather than the
+         * whole library, so "updated 12, skipped 0" is a statement about the
+         * console that was asked about rather than a number that looks like a
+         * failure beside four thousand untouched games.
+         */
         val all = gameDao.getVisible()
+            .let { games ->
+                if (platformId == null) games else games.filter { it.platformId == platformId }
+            }
+
         val targets = when {
             /*
              * Games with no trailer, whether or not they have been scraped.

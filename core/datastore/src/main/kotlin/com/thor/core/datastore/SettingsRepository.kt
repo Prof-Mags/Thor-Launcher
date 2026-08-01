@@ -14,6 +14,7 @@ import com.thor.core.model.IconPack
 import com.thor.core.model.LibrarySettings
 import com.thor.core.model.MetadataSettings
 import com.thor.core.model.MediaSettings
+import com.thor.core.model.StreamSettings
 import com.thor.core.model.MouseSettings
 import com.thor.core.model.PerformanceSettings
 import com.thor.core.model.PersonalizationSettings
@@ -76,6 +77,7 @@ class SettingsRepository @Inject constructor(
     val iconPacks: Flow<List<IconPack>> = settings.map { it.iconPacks }.distinctUntilChanged()
     val mouse: Flow<MouseSettings> = settings.map { it.mouse }.distinctUntilChanged()
     val media: Flow<MediaSettings> = settings.map { it.media }.distinctUntilChanged()
+    val stream: Flow<StreamSettings> = settings.map { it.stream }.distinctUntilChanged()
     val metadata: Flow<MetadataSettings> = settings.map { it.metadata }.distinctUntilChanged()
     val controls: Flow<ControlSettings> = settings.map { it.controls }.distinctUntilChanged()
     val display: Flow<DisplaySettings> = settings.map { it.display }.distinctUntilChanged()
@@ -112,6 +114,10 @@ class SettingsRepository @Inject constructor(
 
     suspend fun updateMouse(transform: (MouseSettings) -> MouseSettings) {
         edit { it.copy(mouse = transform(it.mouse)) }
+    }
+
+    suspend fun updateStream(transform: (StreamSettings) -> StreamSettings) {
+        edit { it.copy(stream = transform(it.stream)) }
     }
 
     suspend fun updateMedia(transform: (MediaSettings) -> MediaSettings) {

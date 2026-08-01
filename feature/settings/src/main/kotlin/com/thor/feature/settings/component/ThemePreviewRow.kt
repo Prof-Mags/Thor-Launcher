@@ -152,32 +152,45 @@ fun ThemePreviewRow(
         }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = ROW_INSET.dp, vertical = dimens.spacingSmall),
-        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-    ) {
-        Text(
-            text = "Theme",
-            style = MaterialTheme.typography.titleSmall,
-            color = if (focused) colors.cursor else colors.onSurface,
-        )
-
-        LazyRow(
-            state = listState,
-            horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+    SettingsCard(focused = focused, modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = ROW_INSET.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
         ) {
-            itemsIndexed(themes, key = { _, spec -> spec.id.name }) { index, spec ->
-                ThemeCard(
-                    spec = spec,
-                    selected = spec.id == selected,
-                    cursorOn = focused && index == highlighted,
-                    onClick = {
-                        highlighted = index
-                        onSelected(spec.id)
-                    },
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Theme gallery",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = if (focused) colors.cursor else colors.onSurface,
                 )
+                Text(
+                    text = "${selected.displayName}  ·  ${themes.size} themes",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+
+            LazyRow(
+                state = listState,
+                horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+            ) {
+                itemsIndexed(themes, key = { _, spec -> spec.id.name }) { index, spec ->
+                    ThemeCard(
+                        spec = spec,
+                        selected = spec.id == selected,
+                        cursorOn = focused && index == highlighted,
+                        onClick = {
+                            highlighted = index
+                            onSelected(spec.id)
+                        },
+                    )
+                }
             }
         }
     }

@@ -42,6 +42,7 @@ splashscreen = "1.0.1"
 # --- Third party -------------------------------------------------------------
 hilt = "2.56.1"
 coil = "2.7.0"
+bouncycastle = "1.78.1"
 okhttp = "4.12.0"
 retrofit = "2.11.0"
 retrofitSerialization = "1.0.0"
@@ -113,9 +114,19 @@ androidx-hilt-work = { group = "androidx.hilt", name = "hilt-work", version.ref 
 androidx-hilt-compiler = { group = "androidx.hilt", name = "hilt-compiler", version.ref = "hiltWork" }
 androidx-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltNavigationCompose" }
 
-# --- Media3 (gameplay video previews) ----------------------------------------
+# --- Media3 (gameplay video previews, and the Movies player) -----------------
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+# Streams the player is handed are not always progressive files: addons hand back
+# HLS playlists as readily as they hand back an MKV, and without this the player
+# has no reader for one and reports a container it cannot recognise.
+androidx-media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3" }
+# Some Stremio addons return MPEG-DASH manifests rather than HLS/progressive URLs.
+androidx-media3-exoplayer-dash = { group = "androidx.media3", name = "media3-exoplayer-dash", version.ref = "media3" }
+# The player uses the same HTTP client as everything else in THOR, rather than
+# the platform's `HttpURLConnection`: one connection pool, one set of timeouts
+# that actually fire, and redirect handling that debrid links depend on.
+androidx-media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3" }
 
 # --- Hilt --------------------------------------------------------------------
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
@@ -130,6 +141,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" }
 
 # --- Networking / images -----------------------------------------------------
+coil-base = { group = "io.coil-kt", name = "coil-base", version.ref = "coil" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 coil-gif = { group = "io.coil-kt", name = "coil-gif", version.ref = "coil" }
 coil-video = { group = "io.coil-kt", name = "coil-video", version.ref = "coil" }
@@ -138,6 +150,11 @@ okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor",
 retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
 retrofit-kotlinx-serialization = { group = "com.jakewharton.retrofit", name = "retrofit2-kotlinx-serialization-converter", version.ref = "retrofitSerialization" }
 apache-commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "apacheCompress" }
+
+# Generating the client certificate pairing is bound to. Android can read X.509
+# but has no public API to create one, and the platform's own BouncyCastle is
+# stripped and off-limits.
+bouncycastle-pkix = { group = "org.bouncycastle", name = "bcpkix-jdk18on", version.ref = "bouncycastle" }
 
 # --- Testing -----------------------------------------------------------------
 junit4 = { group = "junit", name = "junit", version.ref = "junit4" }

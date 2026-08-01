@@ -59,6 +59,7 @@ fun localProperty(name: String): String {
 }
 
 dependencies {
+    api(projects.core.moonlight)
     api(projects.core.model)
     api(projects.core.database)
     api(projects.core.datastore)
@@ -76,4 +77,5 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.kotlinx.serialization)
     implementation(libs.apache.commons.compress)
+    implementation(libs.bouncycastle.pkix)
 }

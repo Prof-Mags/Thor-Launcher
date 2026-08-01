@@ -9,6 +9,19 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      Finding a streaming PC on the local network.
+
+      mDNS is multicast, and Android drops multicast packets to the app layer
+      unless this is held — so without it `NsdManager` starts, reports no error,
+      and simply never finds anything. Neither is a runtime permission; both are
+      granted at install.
+
+      WIFI_STATE is what lets the multicast lock be taken at all.
+    -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -50,9 +63,25 @@
         </intent>
     </queries>
 
+    <!--
+      `usesCleartextTraffic`, because the servers THOR exists to reach are on the
+      user's own LAN and offer nothing else.
+
+      Blocked by default since API 28, and rightly so for the open internet — but
+      Sunshine answers `/serverinfo` on port 47989 over plain HTTP before any
+      pairing exists, and Jackett and Prowlarr serve Torznab over HTTP by
+      default. Without this, discovery finds a PC and every request to it fails,
+      and a local indexer reports itself unreachable while working perfectly from
+      a browser on the same network.
+
+      Nothing remote is downgraded by it. The catalogue, Real-Debrid, the addons
+      and the artwork scrapers are all addressed by `https://` URLs; this permits
+      cleartext where it is asked for rather than preferring it anywhere.
+    -->
     <application
         android:name=".ThorApplication"
         android:allowBackup="true"
+        android:usesCleartextTraffic="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@drawable/ic_thor_logo"
@@ -116,6 +145,15 @@
           repeated Home press still arrives at onNewIntent rather than creating
           anything. This is the configuration AOSP's own SecondaryDisplayLauncher uses.
         -->
+        <!--
+          `excludeFromRecents` keeps *this* out of Recents, and nothing else.
+
+          It is right for what it covers: a home activity that draws nothing has
+          no business in the task switcher. It was wrong for what it used to
+          cover as well — apps launched onto this panel joined this activity's
+          task and inherited the exclusion, so they could never be closed. They
+          are given their own task now; see `SecondaryHomeHost.start`.
+        -->
         <activity
             android:name=".SecondaryHomeActivity"
             android:exported="true"
@@ -133,6 +171,36 @@
         </activity>
 
         <!--
+          The window a stream is drawn in.
+
+          Not exported: it is only ever started by THOR, and it attaches to a
+          session already agreed with the host. Started from anywhere else it
+          would find nothing prepared and close again.
+
+          `singleTask` because there is one stream at a time by definition — the
+          host serves one session — so a second instance could only ever be a
+          window with no session behind it.
+
+          The `configChanges` list is what keeps the stream alive through a
+          rotation or a resize. Without it the activity is destroyed and
+          recreated, which takes the surface with it, which tears down the
+          decoder mid-frame — a rotation would end the game.
+
+          `landscape` because the panel is landscape and a game encoded for it
+          has nothing sensible to show in portrait.
+        -->
+        <activity
+            android:name=".stream.StreamSessionActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:stateNotNeeded="true"
+            android:resizeableActivity="false"
+            android:preferMinimalPostProcessing="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|uiMode"
+            android:theme="@style/Theme.Thor" />
+
+        <!--
           The controller pointer.
 
           An accessibility service because that is the only route an unprivileged
@@ -145,6 +213,27 @@
           `exported` is false: nothing else may bind to it. The system binds it
           through the permission below, which only the system holds.
         -->
+        <!--
+          Reads the device's notifications for the top screen's panel.
+
+          `exported="true"` and the bind permission are both required by the
+          platform: the system binds this from outside the app, and will only do
+          so for a service that declares it can only be bound by the system.
+          It is unreachable by any other app despite being exported.
+
+          Does nothing until the user grants notification access in system
+          settings — there is no way to request it in-app, and no dialog.
+        -->
+        <service
+            android:name=".notification.ThorNotificationService"
+            android:exported="true"
+            android:label="@string/notification_service_summary"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".mouse.ThorMouseService"
             android:exported="false"

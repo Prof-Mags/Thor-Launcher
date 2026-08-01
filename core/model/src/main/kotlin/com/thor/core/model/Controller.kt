@@ -25,6 +25,19 @@ enum class ControllerCommand(val label: String, val description: String) {
     CYCLE_IMAGE_NEXT("Next image", "Show the game's next screenshot"),
     OPEN_SIDE_MENU("Side menu", "Open the Start panel"),
     OPEN_APP_DRAWER("App drawer", "Open the app drawer"),
+
+    /**
+     * Shows the device's notifications on the top screen.
+     *
+     * A binding rather than a gesture, because the top screen is the one nobody
+     * touches — it faces the user while both thumbs are on the controller, and a
+     * pull-down there would be the only interaction in the launcher that needed
+     * a hand moved across the device.
+     *
+     * Unbound by default: it is a new command, and quietly taking a button a
+     * profile already assigns would change what an existing control does.
+     */
+    OPEN_NOTIFICATIONS("Notifications", "Show device notifications on the top screen"),
     OPEN_SHORTCUTS("Shortcuts", "Open the quick shortcut panel"),
     GO_HOME("Home", "Return to the launcher home"),
     PICK_UP("Pick up", "Grab the selected icon to move it"),

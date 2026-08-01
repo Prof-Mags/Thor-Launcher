@@ -17,7 +17,17 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class MediaSettings(
-    /** TMDb API key: artwork, synopses, cast, seasons and episodes. */
+    /**
+     * Kept only so an older settings file still reads back.
+     *
+     * TMDb used to supply the catalogue and required this key to supply
+     * anything, which made an API key the first thing the section asked a new
+     * user for. The catalogue is the Stremio protocol now — the same one the
+     * source addons speak, keyed by the same IMDb ids — and it needs no
+     * credential, so nothing reads this any more. The field stays because
+     * removing it from a serialised document is a migration, and gains nothing.
+     */
+    @Deprecated("The catalogue needs no key; nothing reads this.")
     val tmdbApiKey: String = "",
 
     /**
@@ -113,13 +123,27 @@ data class MediaSettings(
     /** Subtitle language to enable on start, or empty for none. */
     val defaultSubtitleLanguage: String = "",
 ) {
-    val isMetadataConfigured: Boolean get() = tmdbApiKey.isNotBlank()
+    /**
+     * Always true, and kept as a name rather than deleted.
+     *
+     * Browsing needs no credential now. This used to gate the whole section on a
+     * TMDb key, so a fresh install opened Movies onto an instruction to go and
+     * register with a website — the first thing the section ever said, on a
+     * screen that could otherwise have been showing films.
+     */
+    val isMetadataConfigured: Boolean get() = true
     val isDebridConfigured: Boolean get() = realDebridToken.isNotBlank()
     val hasSources: Boolean
         get() = addons.any { it.isUsable } || indexers.any { it.isUsable }
 
-    /** Everything needed to actually play something. */
-    val isPlayable: Boolean get() = isMetadataConfigured && hasSources
+    /**
+     * Everything needed to actually play something.
+     *
+     * A source is the only requirement: the catalogue answers without one, so a
+     * user who has configured nothing can still browse — and finds out what is
+     * missing at the point where it matters rather than at the door.
+     */
+    val isPlayable: Boolean get() = hasSources
 }
 
 /**

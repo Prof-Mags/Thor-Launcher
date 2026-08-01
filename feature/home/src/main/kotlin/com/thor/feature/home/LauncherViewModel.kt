@@ -28,8 +28,6 @@ import com.thor.data.capture.ScreenRecorder
 import com.thor.data.clipboard.ThorClipboard
 import com.thor.data.launcher.EntryLauncher
 import com.thor.data.launcher.LaunchTarget
-import com.thor.data.launcher.LauncherForeground
-import kotlinx.coroutines.delay
 import com.thor.data.launcher.SystemPanel
 import com.thor.feature.home.component.ContextAction
 import com.thor.feature.home.component.EmulatorOption
@@ -85,8 +83,6 @@ class LauncherViewModel @Inject constructor(
     private val playtimeTracker: PlaytimeTracker,
     private val screenRecorder: ScreenRecorder,
     private val clipboard: ThorClipboard,
-    /** Answers whether a launch actually brought anything to the front. */
-    private val launcherForeground: LauncherForeground,
 ) : ViewModel() {
 
     private val cursor = MutableStateFlow(CursorPosition(0, 0))
@@ -136,44 +132,6 @@ class LauncherViewModel @Inject constructor(
      */
     private val _secondScreenOccupied = MutableStateFlow(false)
     val secondScreenOccupied: StateFlow<Boolean> = _secondScreenOccupied.asStateFlow()
-
-    /**
-     * Takes the second panel back only when a launch really did nothing.
-     *
-     * `startMainActivity` returning without throwing does not mean the app came
-     * to the foreground: a ROM can queue it, refuse it silently, or bring it up
-     * behind whatever is showing. The launcher has already handed the panel over
-     * by then, so nothing is on screen, nothing has focus, and the controller
-     * does nothing — the launcher looks frozen while the app runs in the
-     * background.
-     *
-     * The test is whether THOR is *still the activity in front* after the grace
-     * period. If an app arrived, on either display, THOR stopped being top
-     * resumed and this does nothing.
-     *
-     * An earlier version watched for the presentation reporting a lost focus
-     * instead, which cannot happen on a successful launch: taking the panel tears
-     * that window down rather than defocusing it, so the evidence never arrived,
-     * the watchdog fired every time, and the panel was reclaimed out from under
-     * apps that had started perfectly well. That is what closed an app on the
-     * bottom screen a few seconds after opening it.
-     */
-    private fun watchForSilentLaunch() {
-        launchWatchdog?.cancel()
-        launchWatchdog = viewModelScope.launchSafely(TAG) {
-            delay(LAUNCH_TAKEOVER_GRACE_MS)
-
-            // Something is in front of us: the launch worked. Nothing to undo.
-            if (!launcherForeground.topResumed.value) return@launchSafely
-            if (!_secondScreenOccupied.value) return@launchSafely
-
-            ThorLog.i(TAG, "Nothing took the second panel; taking it back")
-            _secondScreenOccupied.value = false
-            settlePlaytime()
-        }
-    }
-
-    private var launchWatchdog: Job? = null
 
     /** Whether the secondary panel's Presentation is still attached to its display. */
     private val secondaryPresentationVisible = MutableStateFlow(false)
@@ -318,6 +276,9 @@ class LauncherViewModel @Inject constructor(
                 }
 
             ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
+            // Shown on the top screen, so it does not disturb the grid the
+            // cursor is on — see NotificationPanel for why it is a binding.
+            ControllerCommand.OPEN_NOTIFICATIONS -> toggleNotifications()
 
             else -> Unit
         }
@@ -702,6 +663,33 @@ class LauncherViewModel @Inject constructor(
      * obvious thing to press to make it go away, and it is the only control the
      * user is guaranteed to still have while a game holds the other panel.
      */
+    private val _notificationsOpen = MutableStateFlow(false)
+
+    /**
+     * Whether the notification panel is showing on the top screen.
+     *
+     * Held here rather than in the notification view model because it is a
+     * property of the *launcher's* state — what the top screen is currently
+     * given over to — and the same shell that decides between a game's details
+     * and a platform's has to decide this too.
+     */
+    val notificationsOpen: StateFlow<Boolean> = _notificationsOpen.asStateFlow()
+
+    /**
+     * Opens or closes it.
+     *
+     * A toggle on one button, because it occupies the top screen entirely: the
+     * button that shows it is the obvious one to press to get the game details
+     * back, and a separate close binding would be a second thing to learn.
+     */
+    fun toggleNotifications() {
+        _notificationsOpen.value = !_notificationsOpen.value
+    }
+
+    fun closeNotifications() {
+        _notificationsOpen.value = false
+    }
+
     fun toggleShortcutPanel() {
         if (_shortcutPanel.value.visible) {
             closeShortcutPanel()
@@ -1152,6 +1140,7 @@ class LauncherViewModel @Inject constructor(
                 ControllerCommand.NAVIGATE_DOWN, ControllerCommand.BACK -> enterNavBar()
                 ControllerCommand.GO_HOME -> goHome()
                 ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
+                ControllerCommand.OPEN_NOTIFICATIONS -> toggleNotifications()
                 else -> Unit
             }
             return
@@ -1179,6 +1168,9 @@ class LauncherViewModel @Inject constructor(
             ControllerCommand.OPEN_APP_DRAWER -> openAppDrawer()
             // Already handled above, where it applies from every surface.
             ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
+            // Shown on the top screen, so it does not disturb the grid the
+            // cursor is on — see NotificationPanel for why it is a binding.
+            ControllerCommand.OPEN_NOTIFICATIONS -> toggleNotifications()
             ControllerCommand.GO_HOME -> goHome()
             ControllerCommand.PICK_UP -> pickUp()
             ControllerCommand.CANCEL_EDIT -> cancelEdit()
@@ -1340,22 +1332,26 @@ class LauncherViewModel @Inject constructor(
     }
 
     /**
-     * Where an ordinary launch sends an entry.
+     * Where an ordinary launch sends an entry: **the main panel, always**.
      *
-     * The screen the user is touching, not whichever one the activity happens to
-     * live on. `DEFAULT` means "wherever the system would put it", which is the
-     * activity's display — so pressing A on the grid opened the game on the *other*
-     * panel, left the grid on screen in front of the user, and handed input to the
-     * app behind it. Nothing had covered the grid's own display, so the presentation
-     * was never stood down either: the launcher looked frozen because it was still
-     * being drawn while no longer receiving input.
+     * This used to follow the grid — press A on a grid that lives on the second
+     * panel and the app was sent to that panel, taking the launcher's own screen
+     * with it. That is the arrangement this hardware is least able to deliver and
+     * the least useful when it works: the second panel accepts an activity only
+     * through a narrow route, and succeeding means the screen the user is holding
+     * stops being a launcher.
+     *
+     * Sending it to the main panel is both the reliable answer and the better
+     * one. It is the display every app can be placed on, and it leaves the grid
+     * where the user is looking — game above, launcher below, both live. That is
+     * what two screens are for, and it is what the other frontends on this device
+     * settle on.
+     *
+     * The other panel is still available, from an entry's context menu, and is
+     * treated as an explicit request: see [launchEntryOn].
      */
     private val defaultLaunchTarget: LaunchTarget
-        get() = if (gridOnSecondaryDisplay) {
-            LaunchTarget.SECOND_SCREEN
-        } else {
-            LaunchTarget.MAIN_SCREEN
-        }
+        get() = LaunchTarget.MAIN_SCREEN
 
     fun launchEntry(entry: GridEntry) {
         // A folder opens in place; it has nothing to launch.
@@ -1402,24 +1398,53 @@ class LauncherViewModel @Inject constructor(
         is LaunchFailure.EmulatorNotInstalled ->
             "The configured emulator (${failure.packageName}) is not installed"
 
+        LaunchFailure.RomUnavailable ->
+            "ROM unavailable — regrant its folder or rescan the library"
+
+        is LaunchFailure.UnsupportedEmulatorLaunch -> failure.message
+
         is LaunchFailure.NoHandler -> "Nothing on this device can open that"
 
         /*
-         * Never the platform's own words.
+         * A sentence someone can act on, and then the platform's own first line.
          *
-         * This used to print `cause.message` verbatim, which for a refused
-         * display placement is a line of internal diagnostics — process records,
-         * uids, and the display's own identifier — shown to someone who pressed
-         * A on an icon. It says nothing they can act on and reads as the launcher
-         * having broken. The raw throwable is already logged by `EntryLauncher`,
-         * where it is useful; here it becomes the one sentence that is true.
+         * This printed `cause.message` verbatim once, which for a refused display
+         * placement is a paragraph of process records and uids shown to someone
+         * who pressed A on an icon; it was replaced with a fixed sentence, and
+         * that went too far the other way. "Android would not let THOR open that
+         * app on this screen" was shown for every game on the grid for a reason
+         * that had nothing to do with screens — a URI permission the launcher was
+         * passing on without holding — and the sentence was general enough to be
+         * true of that, so nothing on the device contradicted it. A wrong
+         * diagnosis that reads as authoritative is worse than a raw one.
+         *
+         * So: the sentence, and then the platform's first line, trimmed to
+         * something that fits on a panel. The full throwable is still logged by
+         * `EntryLauncher`, which is where the rest of it belongs.
          */
-        is LaunchFailure.Unknown -> when (failure.cause) {
+        is LaunchFailure.Unknown -> when (val cause = failure.cause) {
             is SecurityException ->
-                "Android would not let THOR open that app on this screen"
+                "Android refused to open that" + cause.detail()
 
-            else -> "That app would not open"
+            else -> "That app would not open" + cause.detail()
         }
+    }
+
+    /**
+     * The first line of a throwable's message, short enough to show.
+     *
+     * One line, because these are usually many and only the first names what was
+     * refused; the rest is the stack the log already has.
+     */
+    private fun Throwable.detail(): String {
+        val first = message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
+        if (first.isBlank()) return ""
+        val clipped = if (first.length > DETAIL_LIMIT) {
+            first.take(DETAIL_LIMIT).trimEnd() + "…"
+        } else {
+            first
+        }
+        return " — $clipped"
     }
 
     fun back() {
@@ -1884,10 +1909,10 @@ class LauncherViewModel @Inject constructor(
             }
 
             ContextAction.LAUNCH_MAIN_SCREEN ->
-                launchEntryOn(entry, LaunchTarget.MAIN_SCREEN)
+                launchEntryOn(entry, LaunchTarget.MAIN_SCREEN, explicit = true)
 
             ContextAction.LAUNCH_SECOND_SCREEN ->
-                launchEntryOn(entry, LaunchTarget.SECOND_SCREEN)
+                launchEntryOn(entry, LaunchTarget.SECOND_SCREEN, explicit = true)
 
             ContextAction.ADD_TO_GRID -> addToGrid(entry)
 
@@ -1966,14 +1991,37 @@ class LauncherViewModel @Inject constructor(
      * that block runs — which threw the moment the view model was constructed.
      */
 
-    /** Launches an entry on a specific panel. */
-    fun launchEntryOn(entry: GridEntry, target: LaunchTarget) {
+    /**
+     * Launches an entry on a specific panel.
+     *
+     * @param explicit whether the panel was chosen by the user rather than
+     *   derived from where the grid happens to be. Only an explicit choice is
+     *   worth reporting when it cannot be honoured: on hardware whose second
+     *   panel does not accept activity starts — which is most of it, the panel
+     *   has to be a public display and usually is not — the derived target is
+     *   refused on *every* launch, and announcing that every time is a notice
+     *   about the device's wiring shown to someone who pressed A on a game.
+     */
+    fun launchEntryOn(entry: GridEntry, target: LaunchTarget, explicit: Boolean = false) {
         /*
          * A controller Confirm can coincide with a touch callback in one frame.
          * Two start requests make one task steal focus from the other and look
          * exactly like the app opened behind a frozen grid.
+         *
+         * Said out loud when it happens, because the failure it produces is
+         * indistinguishable from a dead button: a launch that never finished
+         * leaves this job alive, and every press afterwards returns here in
+         * silence. "Nothing happens when I press A" has no other symptom, and
+         * with nothing logged there was no way to tell it from a press that was
+         * never received.
          */
-        if (launchJob?.isActive == true) return
+        if (launchJob?.isActive == true) {
+            ThorLog.w(TAG, "Ignoring launch of ${entry.id}: one is already in flight")
+            viewModelScope.launchSafely(TAG) {
+                emit(LauncherEffect.ShowMessage("Still opening the last one…"))
+            }
+            return
+        }
 
         launchJob = viewModelScope.launchSafely(TAG) {
             try {
@@ -1999,21 +2047,87 @@ class LauncherViewModel @Inject constructor(
              * See https://source.android.com/docs/core/display/multi_display/activity-launch
              */
             /*
-             * Asked rather than discovered by exception.
+             * Only one thing can rule the second panel out in advance, and it is
+             * not a permission check.
              *
-             * A refusal is a normal answer here — some ROMs will not place a
-             * third-party app on the built-in second panel however the launch is
-             * phrased — and it should read as "opened on the other screen", not
-             * as an error about permissions.
+             * This asked `isActivityStartAllowedOnDisplay` first and downgraded
+             * the target on a "no" — but that question is about a *pinned* start,
+             * and it was being asked while the presentation was still up and
+             * before the panel's own activity had been given a chance to exist.
+             * So an explicit "open on the bottom screen" could be turned into
+             * "opened on the top screen" before anything had been attempted, on
+             * the strength of an answer about a route this launch was not going
+             * to take. That is the intermittency: the check's answer depended on
+             * timing the user had no way to see.
+             *
+             * The launch is simply attempted now. If the second panel genuinely
+             * will not take it, `startFirstThatOpens` drops the display pin and
+             * opens it on the main panel — a real refusal rather than a predicted
+             * one — and the caller is told where it actually landed.
+             *
+             * A missing second panel is the exception, because that is a fact
+             * rather than a prediction.
              */
             val effectiveTarget = if (
-                target == LaunchTarget.SECOND_SCREEN && !entryLauncher.canLaunchOn(target)
+                target == LaunchTarget.SECOND_SCREEN && !entryLauncher.hasSecondaryDisplay()
             ) {
-                ThorLog.i(TAG, "Second panel refuses launches; using the near one")
-                emit(LauncherEffect.ShowMessage("This screen will not take that app — opened here"))
-                LaunchTarget.DEFAULT
+                ThorLog.i(TAG, "No second panel attached; using the main one")
+                if (explicit) {
+                    emit(LauncherEffect.ShowMessage("No second screen — opened on this one"))
+                }
+                LaunchTarget.MAIN_SCREEN
             } else {
                 target
+            }
+
+            /*
+             * The panel comes down *before* the launch when it safely can, and
+             * that is the difference between an app arriving on the second screen
+             * and arriving behind it.
+             *
+             * A `Presentation` sits above application windows on its display, so
+             * starting an app while it is still up puts the app underneath a
+             * window that has not gone yet — which is exactly "it opened in the
+             * background". This code knew that and could not act on it: standing
+             * the panel down first removed THOR's only claim to the display, and
+             * the *pinned* launch that followed was refused outright.
+             *
+             * The direct route has a different claim. It starts from
+             * `SecondaryHomeActivity`, which is an activity actually on that
+             * display and stays there whether or not the presentation is up — so
+             * for that route the panel can come down first, with nothing lost.
+             * `awaitSecondaryPresentationDismissal` then waits for the teardown to
+             * actually happen rather than assuming a fixed delay was enough; it
+             * has existed unused since it was written.
+             *
+             * The pinned route keeps the old ordering, because for it the
+             * presentation *is* the claim.
+             */
+            val handOverFirst = effectiveTarget == LaunchTarget.SECOND_SCREEN
+            if (handOverFirst) {
+                _secondScreenOccupied.value = true
+                if (!awaitSecondaryPresentationDismissal()) {
+                    ThorLog.w(TAG, "Second panel did not stand down; launching over it")
+                }
+
+                /*
+                 * Then wait for the activity the launch will be started from.
+                 *
+                 * Standing the presentation down is what uncovers
+                 * `SecondaryHomeActivity` — and what prompts the system to
+                 * recreate it if it had been reclaimed, which it is free to do at
+                 * any time. Checking once and giving up made the second screen
+                 * work or not depending on whether that had happened to occur,
+                 * which is the whole of "sometimes it opens on the bottom screen
+                 * and sometimes it does not".
+                 *
+                 * A timeout rather than a wait without end: if nothing appears,
+                 * the launch still goes ahead by the pinned route and falls back
+                 * to the near panel rather than not happening at all.
+                 */
+                if (!entryLauncher.awaitSecondPanelHost(SECOND_PANEL_HOST_TIMEOUT_MS)) {
+                    ThorLog.w(TAG, "No activity on the second panel to launch from")
+                }
             }
 
             val result = when (entry) {
@@ -2065,7 +2179,26 @@ class LauncherViewModel @Inject constructor(
                 // Reports where the app *landed*, not where it was aimed, so the
                 // shell yields focus for the panel actually being taken.
                 emit(LauncherEffect.Launched(onSecondaryPanel = arrivedOnSecondPanel))
-                if (arrivedOnSecondPanel) watchForSilentLaunch()
+
+                /*
+                 * Said only when the user asked for the panel by name.
+                 *
+                 * An explicit "open on the bottom screen" that quietly opened on
+                 * the top one is the launcher ignoring an instruction, and the
+                 * two screens look similar enough from a glance that it is worth
+                 * saying which happened. The automatic case says nothing —
+                 * everything goes to the main panel by default now, so there is
+                 * nothing to report.
+                 */
+                if (explicit && effectiveTarget == LaunchTarget.SECOND_SCREEN &&
+                    !arrivedOnSecondPanel
+                ) {
+                    emit(
+                        LauncherEffect.ShowMessage(
+                            "That screen would not take it — opened on the other one",
+                        ),
+                    )
+                }
             }
             handleResult(result, entry.id)
             closeContextMenu()
@@ -2457,6 +2590,9 @@ class LauncherViewModel @Inject constructor(
         const val STOP_TIMEOUT_MS = 5_000L
         const val DOCK_SLOTS = 5
 
+        /** As much of a platform message as fits on a panel beside a sentence. */
+        const val DETAIL_LIMIT = 120
+
         /**
          * A guard only; normal handoff proceeds the moment dismissal is
          * acknowledged, which is usually within a frame or two.
@@ -2472,14 +2608,15 @@ class LauncherViewModel @Inject constructor(
         const val PRESENTATION_HANDOVER_TIMEOUT_MS = 4_000L
 
         /**
-         * How long a launch has to actually put something in front.
+         * How long to wait for the second panel's activity once the panel has
+         * been handed over.
          *
-         * Generous on purpose. A cold app on a handheld can take seconds to draw
-         * its first frame, and taking the panel back from one that was merely
-         * slow is worse than the fault this guards against — that mistake closed
-         * apps on the second screen moments after they opened.
+         * Short, because it is either already there or the system is recreating
+         * it as that display's home the moment the presentation goes. Anything
+         * longer would be a pause the user feels between pressing the row and the
+         * app appearing.
          */
-        const val LAUNCH_TAKEOVER_GRACE_MS = 8_000L
+        const val SECOND_PANEL_HOST_TIMEOUT_MS = 1_500L
 
         /** Fallback capture size, used only until the shell reports the panels. */
         const val DEFAULT_CAPTURE_WIDTH = 1080

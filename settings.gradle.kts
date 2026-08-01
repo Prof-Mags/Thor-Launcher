@@ -50,3 +50,6 @@ include(":feature:topscreen")
 include(":feature:settings")
 include(":feature:search")
 include(":feature:movies")
+include(":feature:stream")
+
+include(":core:moonlight")

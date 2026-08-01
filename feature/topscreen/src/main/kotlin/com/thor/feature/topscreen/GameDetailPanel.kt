@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -38,6 +39,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.thor.core.designsystem.component.GlassSurface
+import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AchievementSummary
 import com.thor.core.model.GameEntry
@@ -72,55 +75,61 @@ fun GameDetailPanel(
     val artwork = game.metadata.artwork
 
     Row(modifier = modifier.fillMaxSize()) {
-        Column(
+        /*
+         * A column of cards, as the settings screen is.
+         *
+         * This was one bordered box with hairline rules inside it, which made
+         * every section look like a paragraph of the same document — the facts,
+         * the achievements and the screenshots all read as one undifferentiated
+         * block. Settings had already solved the same problem: a stack of raised
+         * cards, each with a small caption above it, so a section is a *thing*
+         * rather than a region between two lines.
+         *
+         * Using the same surface means it also inherits the theme's edge and
+         * shadow treatment, so this panel changes with a theme rather than
+         * keeping its own hardcoded border.
+         */
+        PanelCard(
             modifier = Modifier
                 .weight(PANEL_WEIGHT)
                 .fillMaxHeight()
-                .padding(dimens.spacing)
-                .clip(RoundedCornerShape(dimens.cornerRadius))
-                // Translucent rather than opaque so the artwork behind still
-                // reads through it, with a hairline edge to keep it defined
-                // against a bright image.
-                .background(colors.background.copy(alpha = PANEL_ALPHA))
-                .border(
-                    width = 1.dp,
-                    color = colors.outline.copy(alpha = 0.35f),
-                    shape = RoundedCornerShape(dimens.cornerRadius),
-                )
-                .padding(dimens.spacing)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(dimens.spacing),
+                .padding(dimens.spacing),
         ) {
-            Header(game = game, artwork = artwork, colors = colors)
-
-            PlatformRow(game = game, platform = platform)
-
-            game.metadata.description?.takeIf(String::isNotBlank)?.let { description ->
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                    maxLines = DESCRIPTION_LINES,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Section {
+                Header(game = game, artwork = artwork, colors = colors)
+                PlatformRow(game = game, platform = platform)
             }
 
-            Divider()
+            game.metadata.description?.takeIf(String::isNotBlank)?.let { description ->
+                Section(label = "ABOUT") {
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                        maxLines = DESCRIPTION_LINES,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
 
-            FactsGrid(game = game)
+            Section(label = "DETAILS") {
+                FactsGrid(game = game)
+            }
 
             game.metadata.achievements?.let {
-                Divider()
-                AchievementBlock(summary = it)
+                Section(label = "ACHIEVEMENTS") {
+                    AchievementBlock(summary = it)
+                }
             }
 
             if (artwork.cappedScreenshots.size > 1) {
-                Divider()
-                ScreenshotStrip(
-                    urls = artwork.cappedScreenshots,
-                    selected = selectedScreenshot,
-                    onSelected = onScreenshotSelected,
-                )
+                Section(label = "SCREENSHOTS") {
+                    ScreenshotStrip(
+                        urls = artwork.cappedScreenshots,
+                        selected = selectedScreenshot,
+                        onSelected = onScreenshotSelected,
+                    )
+                }
             }
         }
 
@@ -157,9 +166,80 @@ private fun Header(
     }
 }
 
+/**
+ * One card of the panel, with the caption settings puts above a group of rows.
+ *
+ * The caption is optional because the first card is the game's name and needs no
+ * label — a heading over a title would be saying the same thing twice.
+ *
+ * Shared with the platform panel, so a folder and a game are built from the same
+ * pieces and cannot drift apart as either is edited.
+ */
+@Composable
+internal fun Section(
+    label: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val colors = ThorTheme.colors
+    val dimens = ThorTheme.dimens
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+    ) {
+        if (label != null) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                // Dimmed, as a settings group's caption is: it names what
+                // follows without competing with it.
+                color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+            )
+        }
+        content()
+    }
+}
+
+/**
+ * The card both panels sit inside.
+ *
+ * One surface holding every section, rather than a card per section. A stack of
+ * separate cards gave each group its own edge and shadow, which at five groups
+ * read as five unrelated things scattered down the screen — the panel describes
+ * a single subject and should look like one object.
+ *
+ * The gaps between sections do the separating instead, which is enough: a
+ * caption and a clear space already say "new group" without an outline round
+ * every one of them.
+ */
+@Composable
+internal fun PanelCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val dimens = ThorTheme.dimens
+
+    GlassSurface(
+        modifier = modifier,
+        shape = RoundedCornerShape(dimens.cornerRadius),
+        level = SurfaceLevel.RAISED,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(dimens.spacing)
+                .verticalScroll(rememberScrollState()),
+            // Wider than the gap inside a section, so a new group is visibly a
+            // new group even without a rule between them.
+            verticalArrangement = Arrangement.spacedBy(dimens.spacingLarge),
+            content = content,
+        )
+    }
+}
+
 /** Hairline rule separating blocks within the panel. */
 @Composable
-private fun Divider() {
+internal fun Divider() {
     val colors = ThorTheme.colors
     Box(
         modifier = Modifier
@@ -277,7 +357,7 @@ private fun FactsGrid(game: GameEntry) {
  * keeps every game's panel identical in shape.
  */
 @Composable
-private fun Fact(label: String, value: String?, modifier: Modifier = Modifier) {
+internal fun Fact(label: String, value: String?, modifier: Modifier = Modifier) {
     val colors = ThorTheme.colors
     val known = !value.isNullOrBlank()
     Column(modifier = modifier) {

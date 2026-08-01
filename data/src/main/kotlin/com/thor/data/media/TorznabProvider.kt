@@ -11,8 +11,10 @@ import com.thor.core.model.TorznabIndexer
 import com.thor.data.network.await
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -55,17 +57,126 @@ class TorznabProvider @Inject constructor(
     private suspend fun indexers(): List<TorznabIndexer> =
         settings.media.first().indexers.filter { it.isUsable }
 
-    override suspend fun find(query: SourceQuery): List<StreamSource> = coroutineScope {
+    override suspend fun find(query: SourceQuery): ProviderResult = supervisorScope {
         val configured = indexers()
-        if (configured.isEmpty()) return@coroutineScope emptyList()
+        if (configured.isEmpty()) return@supervisorScope ProviderResult()
 
-        configured
-            .map { indexer -> async { search(indexer, query) } }
+        val results = configured
+            .map { indexer -> async { searchBounded(indexer, query) } }
             .awaitAll()
-            .flatten()
-            // The same release is carried by many indexers. Keyed on the hash,
-            // because names differ between them while the torrent is one file.
-            .distinctBy { it.infoHash?.lowercase() ?: it.id }
+
+        ProviderResult(
+            sources = results
+                .flatMap { it.sources }
+                // The same release is carried by many indexers. Keyed on the
+                // hash, because names differ between them while the torrent is
+                // one file.
+                .distinctBy { it.infoHash?.lowercase() ?: it.id },
+            outcomes = results.flatMap { it.outcomes },
+        )
+    }
+
+    /** A dead indexer must not make the rest of the configured indexers disappear. */
+    private suspend fun searchBounded(
+        indexer: TorznabIndexer,
+        query: SourceQuery,
+    ): ProviderResult {
+        val name = indexer.name.ifBlank { "Indexer" }
+        return try {
+            val found = withTimeoutOrNull(INDEXER_TIMEOUT_MS) { search(indexer, query) }
+                ?: return ProviderResult(
+                    outcomes = listOf(ProviderOutcome(name, 0, "did not answer in time")),
+                ).also { ThorLog.w(TAG, "$name: did not answer in time") }
+
+            ProviderResult(
+                sources = found,
+                outcomes = listOf(
+                    ProviderOutcome(
+                        provider = name,
+                        found = found.size,
+                        note = "has nothing for this title".takeIf { found.isEmpty() },
+                    ),
+                ),
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            ThorLog.w(TAG, "$name: search failed", error)
+            ProviderResult(outcomes = listOf(ProviderOutcome(name, 0, error.shortReason())))
+        }
+    }
+
+    /**
+     * The query endpoint, tolerant of the URL people actually paste.
+     *
+     * Jackett and Prowlarr both show a "Torznab Feed" address, and their copy
+     * buttons hand over a form that already ends in `/api`, sometimes with a
+     * query string attached. The field's subtitle asks for it without, which is a
+     * request rather than a guarantee — and appending unconditionally turned a
+     * perfectly good endpoint into `…/api/api`, whose only symptom was an indexer
+     * that silently found nothing. Both forms work now.
+     */
+    private fun endpoint(indexer: TorznabIndexer) = indexer.url
+        .trim()
+        .substringBefore('?')
+        .trimEnd('/')
+        .removeSuffix("/api")
+        .trimEnd('/')
+        .plus("/api")
+        .toHttpUrlOrNull()
+
+    /**
+     * Asks one indexer whether it actually works, and says what it answered.
+     *
+     * The settings page could previously only report whether the *fields* were
+     * filled in — it said "Ready" for a mistyped host, a revoked key, a Jackett
+     * that was not running, and an indexer whose categories return nothing. Every
+     * one of those presents identically much later, as a film with no sources,
+     * on a screen that cannot say why.
+     *
+     * A real query, against the same endpoint a search would use, so what it
+     * proves is what matters. `t=caps` is Torznab's own capabilities call and is
+     * the one request every implementation answers without a search term.
+     */
+    suspend fun test(indexer: TorznabIndexer): String {
+        if (indexer.url.isBlank()) return "Needs a URL"
+        if (indexer.apiKey.isBlank()) return "Needs an API key"
+
+        val url = endpoint(indexer)
+            ?.newBuilder()
+            ?.addQueryParameter("apikey", indexer.apiKey)
+            ?.addQueryParameter("t", "caps")
+            ?.build()
+            ?: return "That URL is not valid"
+
+        return try {
+            client.newCall(Request.Builder().url(url).build()).await().use { response ->
+                val body = response.body?.string().orEmpty()
+                when {
+                    response.code == 401 || response.code == 403 -> "Rejected the API key"
+                    !response.isSuccessful -> "HTTP ${response.code}"
+
+                    /*
+                     * Torznab reports its own failures inside a 200.
+                     *
+                     * An unknown key or a disabled indexer comes back as
+                     * `<error code="100" description="…"/>` with a perfectly
+                     * successful status line, so the status code alone would call
+                     * a refusal a success.
+                     */
+                    "<error" in body -> ERROR_DESCRIPTION.find(body)
+                        ?.groupValues
+                        ?.get(1)
+                        ?.let { "Refused: $it" }
+                        ?: "Refused the request"
+
+                    "<caps" in body || "<categories" in body -> "Answering"
+                    else -> "Answered, but not with Torznab"
+                }
+            }
+        } catch (e: IOException) {
+            "Could not reach it: ${e.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()}"
+        }
     }
 
     /**
@@ -90,8 +201,7 @@ class TorznabProvider @Inject constructor(
         query: SourceQuery,
         freeText: Boolean,
     ): List<StreamSource> {
-        val base = indexer.url.trim().removeSuffix("/")
-        val url = "$base/api".toHttpUrlOrNull()
+        val url = endpoint(indexer)
             ?.newBuilder()
             ?.apply {
                 addQueryParameter("apikey", indexer.apiKey)
@@ -258,11 +368,15 @@ class TorznabProvider @Inject constructor(
     private companion object {
         const val TAG = "Media"
         const val RESULT_LIMIT = 100
+        const val INDEXER_TIMEOUT_MS = 12_000L
 
         /** Torznab's standard category numbers. */
         const val MOVIE_CATEGORIES = "2000"
         const val SERIES_CATEGORIES = "5000"
 
         val HASH_PATTERN = Regex("btih:([a-fA-F0-9]{40})")
+
+        /** Torznab reports refusals as `<error code="…" description="…"/>`. */
+        val ERROR_DESCRIPTION = Regex("""description="([^"]*)"""")
     }
 }

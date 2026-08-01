@@ -2,44 +2,42 @@ package com.thor.core.ui.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thor.core.designsystem.theme.ThorTheme
+import kotlin.math.roundToInt
 
 /**
- * The launcher's cold-start intro.
+ * THOR's cold-start sequence, rendered from the same [progress] on both panels.
  *
- * A pure function of [progress], with no animation state of its own. That is
- * deliberate: the launcher owns two windows on two panels, and the only way to have
- * them animate as one thing rather than as two coincidentally similar things is for
- * a single driver to hand the same number to both.
- *
- * Plays once per process. It is not a loading screen — the launcher is already
- * composed behind it — so it is skippable on any button or tap, and short enough
- * that reaching for the button is a choice rather than a rescue.
- *
- * @param progress 0 at the first frame, 1 when the launcher is fully revealed
- * @param motion false under reduced-motion or performance mode, which collapses the
- *   whole thing to a fade — the mark still appears, it simply does not travel
- * @param onSkip the surface was tapped
+ * The background is deliberately one flat theme color. Motion comes from the
+ * mark, rings, typography, and progress rail instead of a gradient or glow that
+ * competes with the launcher before it has even appeared.
  */
 @Composable
 fun ThorIntro(
@@ -49,77 +47,44 @@ fun ThorIntro(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
-
-    // The overlay fades out over the last fifth, so the launcher is revealed rather
-    // than swapped in.
-    val overlayAlpha = 1f - span(progress, REVEAL_FROM, 1f)
+    val value = progress.coerceIn(0f, 1f)
+    val visualProgress = if (motion) value else REVEAL_FROM
+    val overlayAlpha = if (motion) {
+        1f - span(value, REVEAL_FROM, 1f)
+    } else {
+        1f - value
+    }
     if (overlayAlpha <= 0f) return
 
-    val lineProgress = span(progress, 0f, LINE_TO)
-    val markProgress = span(progress, MARK_FROM, MARK_TO)
-    val wordProgress = span(progress, WORD_FROM, WORD_TO)
+    val markProgress = span(visualProgress, MARK_FROM, MARK_TO)
+    // The rings are loaders, not a brief logo flourish: they advance alongside
+    // the rail and close only when the loading state reaches 100%.
+    val ringProgress = span(visualProgress, RING_FROM, LOAD_TO)
+    val wordProgress = span(visualProgress, WORD_FROM, WORD_TO)
+    val loadingProgress = span(visualProgress, LOAD_FROM, LOAD_TO)
+    val loaderAlpha = span(visualProgress, LOADER_FADE_FROM, LOADER_FADE_TO)
+    val ready = loadingProgress >= 1f
 
-    // Under reduced motion every element is placed at its final geometry and only
-    // opacity moves.
-    val markScale = if (motion) MARK_SCALE_FROM + (1f - MARK_SCALE_FROM) * markProgress else 1f
-    val lineWidth = if (motion) lineProgress else 1f
+    val markScale = if (motion) {
+        MARK_SCALE_FROM + (1f - MARK_SCALE_FROM) * markProgress
+    } else {
+        1f
+    }
+    val markRotation = if (motion) MARK_ROTATION_FROM * (1f - markProgress) else 0f
+    val visibleRingProgress = if (motion) ringProgress else 1f
+    val percent = (loadingProgress * 100f).roundToInt().coerceIn(0, 100)
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .graphicsLayer { alpha = overlayAlpha }
             .background(colors.background)
-            // Owns the panel's touches while it is up: a tap is a skip, and nothing
-            // beneath it should be reachable through it.
-            .clickable(onClick = onSkip)
-            .drawBehind {
-                /*
-                 * A hairline opening outwards from the centre, under everything else.
-                 * It is what makes the mark feel like it arrives rather than simply
-                 * being there — the eye is already at the centre when it lands.
-                 */
-                val half = size.width * LINE_WIDTH_FRACTION * 0.5f * lineWidth
-                if (half > 0f) {
-                    val thickness = LINE_THICKNESS_PX
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                colors.primary,
-                                colors.accentEnd,
-                                Color.Transparent,
-                            ),
-                            startX = size.width / 2f - half,
-                            endX = size.width / 2f + half,
-                        ),
-                        topLeft = Offset(size.width / 2f - half, size.height / 2f - thickness / 2f),
-                        size = Size(half * 2f, thickness),
-                        alpha = 1f - span(progress, GLOW_FADE_FROM, 1f),
-                    )
-                }
-
-                // A bloom behind the mark, so the accent reads as light rather than
-                // as a flat shape on a flat field.
-                if (markProgress > 0f) {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                colors.glow.copy(alpha = GLOW_ALPHA * markProgress),
-                                Color.Transparent,
-                            ),
-                            center = Offset(size.width / 2f, size.height / 2f),
-                            radius = size.minDimension * GLOW_RADIUS_FRACTION,
-                        ),
-                        radius = size.minDimension * GLOW_RADIUS_FRACTION,
-                        center = Offset(size.width / 2f, size.height / 2f),
-                    )
-                }
-            },
-        contentAlignment = Alignment.Center,
+            .clickable(onClick = onSkip),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // The same bolt as the launcher icon, drawn rather than loaded so it can
-            // take the current theme's accent pair instead of the icon's fixed blue.
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Box(
                 modifier = Modifier
                     .size(MARK_SIZE.dp)
@@ -127,28 +92,87 @@ fun ThorIntro(
                         alpha = markProgress
                         scaleX = markScale
                         scaleY = markScale
+                        rotationZ = markRotation
                     }
                     .drawBehind {
+                        val outerStroke = 2.dp.toPx()
+                        val activeStroke = 3.dp.toPx()
+                        val outerRadius = size.minDimension * 0.47f
+                        val innerRadius = size.minDimension * 0.37f
+                        val outerTopLeft = androidx.compose.ui.geometry.Offset(
+                            center.x - outerRadius,
+                            center.y - outerRadius,
+                        )
+                        val outerSize = androidx.compose.ui.geometry.Size(
+                            outerRadius * 2f,
+                            outerRadius * 2f,
+                        )
+                        val innerTopLeft = androidx.compose.ui.geometry.Offset(
+                            center.x - innerRadius,
+                            center.y - innerRadius,
+                        )
+                        val innerSize = androidx.compose.ui.geometry.Size(
+                            innerRadius * 2f,
+                            innerRadius * 2f,
+                        )
+
+                        drawCircle(
+                            color = colors.outline.copy(alpha = 0.28f),
+                            radius = outerRadius,
+                            style = Stroke(width = outerStroke),
+                        )
+                        drawCircle(
+                            color = colors.outline.copy(alpha = 0.16f),
+                            radius = innerRadius,
+                            style = Stroke(width = outerStroke),
+                        )
+                        if (visibleRingProgress >= COMPLETE_RING_THRESHOLD) {
+                            // A circle has no cap seam, so the completed state is
+                            // visibly closed rather than merely a 360-degree arc.
+                            drawCircle(
+                                color = colors.cursor,
+                                radius = outerRadius,
+                                style = Stroke(width = activeStroke),
+                            )
+                            drawCircle(
+                                color = colors.accentEnd,
+                                radius = innerRadius,
+                                style = Stroke(width = outerStroke),
+                            )
+                        } else {
+                            drawArc(
+                                color = colors.cursor,
+                                startAngle = -90f,
+                                sweepAngle = FULL_CIRCLE_DEGREES * visibleRingProgress,
+                                useCenter = false,
+                                topLeft = outerTopLeft,
+                                size = outerSize,
+                                style = Stroke(width = activeStroke, cap = StrokeCap.Round),
+                            )
+                            drawArc(
+                                color = colors.accentEnd,
+                                startAngle = 90f,
+                                sweepAngle = -FULL_CIRCLE_DEGREES * visibleRingProgress,
+                                useCenter = false,
+                                topLeft = innerTopLeft,
+                                size = innerSize,
+                                style = Stroke(width = outerStroke, cap = StrokeCap.Round),
+                            )
+                        }
                         drawPath(
                             path = boltPath(size.minDimension),
-                            brush = Brush.linearGradient(
-                                colors = colors.accentStops,
-                                start = Offset(0f, 0f),
-                                end = Offset(size.width, size.height),
-                            ),
+                            color = colors.cursor,
                         )
                     },
             )
 
-            Box(modifier = Modifier.height(MARK_GAP.dp))
+            Spacer(modifier = Modifier.height(MARK_GAP.dp))
 
             Text(
                 text = "THOR",
                 style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.Light,
                 color = colors.onBackground,
-                // Tracking closes as it fades in, which is the whole trick: the word
-                // settles instead of appearing.
                 letterSpacing = if (motion) {
                     (TRACKING_FROM + (TRACKING_TO - TRACKING_FROM) * wordProgress).sp
                 } else {
@@ -156,51 +180,133 @@ fun ThorIntro(
                 },
                 modifier = Modifier.graphicsLayer { alpha = wordProgress },
             )
+            Text(
+                text = "DUAL-SCREEN LAUNCHER",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 2.4.sp,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier
+                    .padding(top = 5.dp)
+                    .graphicsLayer { alpha = wordProgress },
+            )
+        }
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = LOADER_BOTTOM_GAP.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            val loaderWidth = minOf(
+                maxWidth * LOADER_WIDTH_FRACTION,
+                LOADER_MAX_WIDTH.dp,
+            )
+            Column(
+                modifier = Modifier
+                    .width(loaderWidth)
+                    .graphicsLayer { alpha = loaderAlpha },
+                verticalArrangement = Arrangement.spacedBy(9.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = loadingLabel(loadingProgress),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.3.sp,
+                        color = if (ready) colors.cursor else colors.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "$percent%",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (ready) colors.cursor else colors.onSurface,
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(LOADER_HEIGHT.dp)
+                        .clip(ThorTheme.shapes.pill)
+                        .background(colors.surfaceHighest),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(loadingProgress)
+                            .height(LOADER_HEIGHT.dp)
+                            .clip(ThorTheme.shapes.pill)
+                            .background(colors.cursor),
+                    ) {
+                    }
+                }
+
+                Text(
+                    text = if (ready) "SYSTEM READY" else "PRESS ANY KEY TO SKIP",
+                    style = MaterialTheme.typography.labelSmall,
+                    letterSpacing = 1.sp,
+                    textAlign = TextAlign.Center,
+                    color = colors.onSurfaceVariant.copy(alpha = 0.62f),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }
 
-/**
- * The THOR bolt, in the same 108-unit space as `ic_thor_logo`.
- *
- * Built as a path rather than loaded as a vector so the mark can be filled with the
- * live theme gradient — and so `:core:ui` needs no drawable of its own.
- */
+private fun loadingLabel(progress: Float): String = when {
+    progress < 0.18f -> "INITIALIZING CORE"
+    progress < 0.48f -> "SYNCING DISPLAYS"
+    progress < 0.76f -> "RESTORING LIBRARY"
+    progress < 1f -> "PREPARING HOME"
+    else -> "READY"
+}
+
+/** The THOR bolt, in the same 108-unit space as the launcher icon. */
 private fun boltPath(size: Float): Path {
-    val s = size / VIEWPORT
+    val scale = size / VIEWPORT
     return Path().apply {
-        moveTo(60f * s, 20f * s)
-        lineTo(34f * s, 58f * s)
-        lineTo(50f * s, 58f * s)
-        lineTo(46f * s, 88f * s)
-        lineTo(74f * s, 48f * s)
-        lineTo(57f * s, 48f * s)
+        moveTo(60f * scale, 20f * scale)
+        lineTo(34f * scale, 58f * scale)
+        lineTo(50f * scale, 58f * scale)
+        lineTo(46f * scale, 88f * scale)
+        lineTo(74f * scale, 48f * scale)
+        lineTo(57f * scale, 48f * scale)
         close()
     }
 }
 
-/** Progress within one stage of the sequence, clamped to 0..1 outside it. */
 private fun span(progress: Float, from: Float, to: Float): Float {
     if (to <= from) return if (progress >= to) 1f else 0f
     return ((progress - from) / (to - from)).coerceIn(0f, 1f)
 }
 
-/** How far through the whole sequence each element runs. */
-private const val LINE_TO = 0.34f
-private const val MARK_FROM = 0.20f
-private const val MARK_TO = 0.62f
-private const val WORD_FROM = 0.44f
-private const val WORD_TO = 0.82f
-private const val GLOW_FADE_FROM = 0.62f
-private const val REVEAL_FROM = 0.80f
+private const val MARK_FROM = 0.02f
+private const val MARK_TO = 0.20f
+private const val RING_FROM = 0.07f
+private const val WORD_FROM = 0.13f
+private const val WORD_TO = 0.28f
+private const val LOADER_FADE_FROM = 0.16f
+private const val LOADER_FADE_TO = 0.25f
+private const val LOAD_FROM = 0.20f
+private const val LOAD_TO = 0.90f
+private const val REVEAL_FROM = 0.94f
 
 private const val VIEWPORT = 108f
-private const val MARK_SIZE = 92
-private const val MARK_GAP = 20
-private const val MARK_SCALE_FROM = 0.82f
-private const val LINE_WIDTH_FRACTION = 0.66f
-private const val LINE_THICKNESS_PX = 3f
-private const val GLOW_ALPHA = 0.5f
-private const val GLOW_RADIUS_FRACTION = 0.45f
-private const val TRACKING_FROM = 22f
-private const val TRACKING_TO = 9f
+private const val MARK_SIZE = 122
+private const val MARK_GAP = 18
+private const val MARK_SCALE_FROM = 0.72f
+private const val MARK_ROTATION_FROM = -14f
+private const val TRACKING_FROM = 18f
+private const val TRACKING_TO = 8f
+private const val LOADER_WIDTH_FRACTION = 0.68f
+private const val LOADER_MAX_WIDTH = 360
+private const val LOADER_HEIGHT = 5
+private const val LOADER_BOTTOM_GAP = 42
+private const val FULL_CIRCLE_DEGREES = 360f
+private const val COMPLETE_RING_THRESHOLD = 0.999f

@@ -150,6 +150,23 @@ sealed interface LauncherEffect {
      *   actually holding visible but unable to answer the controller at all.
      */
     data class Launched(val onSecondaryPanel: Boolean) : LauncherEffect
+
+    /**
+     * The app a panel was handed over for never arrived.
+     *
+     * The exact undo of [Launched], and it has to exist because the two halves of
+     * a handover are separable: the launcher gives away the *panel* and the
+     * *controller* together, and the watchdog that notices nothing took the panel
+     * only ever gave the panel back. What that leaves is the grid returning to
+     * the screen, fully drawn and fully animated, having permanently yielded its
+     * claim on the pad to an app that does not exist — which is the frozen panel
+     * this design keeps re-inventing, arriving this time by way of a launch that
+     * failed after `startActivity` had already returned.
+     *
+     * Home cleared the claim, which is why Home was the only way out.
+     */
+    data object LaunchAbandoned : LauncherEffect
+
     data object OpenPowerMenu : LauncherEffect
 
     /**

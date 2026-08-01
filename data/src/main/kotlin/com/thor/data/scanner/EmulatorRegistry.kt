@@ -2,6 +2,21 @@ package com.thor.data.scanner
 
 import com.thor.core.model.BuiltInPlatforms
 
+/** The exact public intent shape an emulator accepts for a ROM launch. */
+sealed interface RomLaunchContract {
+    /** A normal ACTION_VIEW intent carrying THOR's persisted content URI. */
+    data object ContentUriView : RomLaunchContract
+
+    /** A raw shared-storage path under the emulator's documented extra key. */
+    data class PathExtra(val key: String) : RomLaunchContract
+
+    /** RetroArch's explicit ROM extra; core selection is handled by RetroArch. */
+    data object RetroArch : RomLaunchContract
+
+    /** This emulator exposes no supported public arbitrary-ROM launch contract. */
+    data class Unsupported(val reason: String) : RomLaunchContract
+}
+
 /**
  * Known Android emulators and how to hand a ROM to them.
  *
@@ -20,40 +35,217 @@ data class EmulatorSpec(
      * package's default `VIEW` handler instead.
      */
     val activityName: String? = null,
-    /**
-     * Extra key the emulator expects the file path under, for the ones that do
-     * not read the intent data URI.
-     */
-    val pathExtraKey: String? = null,
-    /** True when the emulator needs a real file path rather than a content URI. */
-    val requiresFilePath: Boolean = false,
+    /** How this emulator publicly accepts a selected ROM. */
+    val launchContract: RomLaunchContract = RomLaunchContract.ContentUriView,
+    /** Its activity may be reused on another display instead of being re-created. */
+    val mayReuseExistingTask: Boolean = false,
 )
 
 object EmulatorRegistry {
 
     val KNOWN: List<EmulatorSpec> = listOf(
+        /*
+         * Lemuroid, which like RetroArch is many cores behind one application.
+         *
+         * Listed with an explicit platform set rather than "everything" because
+         * it ships a fixed roster of cores, unlike RetroArch where the user
+         * installs whichever they want. Claiming systems it cannot run would put
+         * it in the "launch with" list for games it would refuse.
+         */
+        EmulatorSpec(
+            packageName = "com.swordfish.lemuroid",
+            displayName = "Lemuroid",
+            platformIds = setOf(
+                "nes", "snes", "n64", "gb", "gbc", "gba", "nds", "psx",
+                "genesis", "mastersystem", "gamegear", "segacd", "sega32x",
+                "atari2600", "atari7800", "lynx", "pcengine", "ngpc", "arcade",
+            ),
+        ),
+
+        // ---- PlayStation ----------------------------------------------------
+        EmulatorSpec(
+            packageName = "com.epsxe.ePSXe",
+            displayName = "ePSXe",
+            platformIds = setOf("psx"),
+        ),
+        EmulatorSpec(
+            packageName = "com.emulator.fpse",
+            displayName = "FPse",
+            platformIds = setOf("psx"),
+        ),
+        EmulatorSpec(
+            packageName = "com.emulator.fpse64",
+            displayName = "FPse64",
+            platformIds = setOf("psx"),
+        ),
+
+        // ---- Sega -----------------------------------------------------------
+        EmulatorSpec(
+            packageName = "io.recompiled.redream",
+            displayName = "Redream",
+            platformIds = setOf("dreamcast"),
+        ),
+        EmulatorSpec(
+            packageName = "org.uoyabause.uranus",
+            displayName = "Yaba Sanshiro 2",
+            platformIds = setOf("saturn"),
+        ),
+
+        // ---- Nintendo handhelds ---------------------------------------------
+        EmulatorSpec(
+            packageName = "it.dbtecno.pizzaboygba",
+            displayName = "Pizza Boy GBA",
+            platformIds = setOf("gba"),
+        ),
+        EmulatorSpec(
+            packageName = "it.dbtecno.pizzaboygbc",
+            displayName = "Pizza Boy GBC",
+            platformIds = setOf("gb", "gbc"),
+        ),
+        EmulatorSpec(
+            packageName = "org.mupen64plusae.v3.fzurita.pro",
+            displayName = "M64Plus FZ Pro",
+            platformIds = setOf("n64"),
+        ),
+
+        // ---- Arcade and home computers --------------------------------------
+        EmulatorSpec(
+            packageName = "com.seleuco.mame4d2024",
+            displayName = "MAME4droid 2024",
+            platformIds = setOf("arcade", "neogeo"),
+        ),
+        EmulatorSpec(
+            packageName = "com.fms.speccy.deluxe",
+            displayName = "Speccy Deluxe",
+            platformIds = setOf("zxspectrum"),
+        ),
+        EmulatorSpec(
+            packageName = "com.fms.colem.deluxe",
+            displayName = "ColEm Deluxe",
+            platformIds = setOf("colecovision"),
+        ),
+
+        /*
+         * Winlator, which runs Windows games through Wine and Box64.
+         *
+         * Launched by **shortcut**, not by executable. Winlator does not accept a
+         * `.exe` handed to it: a Windows program needs a container — a Wine
+         * prefix, a graphics driver, a set of DLL overrides — and the shortcut is
+         * what names all of that alongside the executable. `XServerDisplayActivity`
+         * takes the path of a `.desktop` file that Winlator itself wrote, which is
+         * why the PC platform now scans for those.
+         *
+         * The practical consequence for the user: set the game up in Winlator
+         * once, and it appears on the grid afterwards. THOR does not create
+         * containers and should not — everything about which driver and which
+         * Proton build is Winlator's business.
+         *
+         * `mayReuseExistingTask` because the X server is expensive to start and
+         * Winlator holds one session at a time in any case.
+         */
+        EmulatorSpec(
+            packageName = "com.winlator.cmod",
+            displayName = "Winlator (cmod)",
+            platformIds = setOf(BuiltInPlatforms.ID_PC, "dos"),
+            activityName = "com.winlator.cmod.XServerDisplayActivity",
+            launchContract = RomLaunchContract.PathExtra("shortcut_path"),
+            mayReuseExistingTask = true,
+        ),
+        EmulatorSpec(
+            packageName = "com.winlator",
+            displayName = "Winlator",
+            platformIds = setOf(BuiltInPlatforms.ID_PC, "dos"),
+            activityName = "com.winlator.XServerDisplayActivity",
+            launchContract = RomLaunchContract.PathExtra("shortcut_path"),
+            mayReuseExistingTask = true,
+        ),
+
+        /*
+         * Robert Broglia's ".emu" family, which covers most of the eight- and
+         * sixteen-bit systems on its own.
+         *
+         * Listed individually rather than as one entry because they are separate
+         * applications with separate packages — a user may own three of them and
+         * none of the others, and the registry's job is to say which of the
+         * installed ones can open a given file.
+         */
+        EmulatorSpec(
+            packageName = "com.explusalpha.MsxEmu",
+            displayName = "MSX.emu",
+            platformIds = setOf("msx"),
+        ),
+        EmulatorSpec(
+            packageName = "com.explusalpha.NeoEmu",
+            displayName = "NEO.emu",
+            platformIds = setOf("neogeo"),
+        ),
+        EmulatorSpec(
+            packageName = "com.explusalpha.PceEmu",
+            displayName = "PCE.emu",
+            platformIds = setOf("pcengine", "pcenginecd"),
+        ),
+        EmulatorSpec(
+            packageName = "com.explusalpha.LynxEmu",
+            displayName = "Lynx.emu",
+            platformIds = setOf("lynx"),
+        ),
+        EmulatorSpec(
+            packageName = "com.explusalpha.A2600Emu",
+            displayName = "2600.emu",
+            platformIds = setOf("atari2600"),
+        ),
+        EmulatorSpec(
+            packageName = "com.explusalpha.C64Emu",
+            displayName = "C64.emu",
+            platformIds = setOf("c64"),
+        ),
+        EmulatorSpec(
+            packageName = "com.explusalpha.SwanEmu",
+            displayName = "Swan.emu",
+            platformIds = setOf("wonderswan"),
+        ),
+        EmulatorSpec(
+            packageName = "com.explusalpha.NgpEmu",
+            displayName = "NGP.emu",
+            platformIds = setOf("ngpc"),
+        ),
+
+        /*
+         * ScummVM takes a game *folder* rather than a file, which is why it is
+         * marked unsupported for direct launch: handing it a content URI to one
+         * file inside a game's directory does nothing useful.
+         */
+        EmulatorSpec(
+            packageName = "org.scummvm.scummvm",
+            displayName = "ScummVM",
+            platformIds = setOf("scummvm"),
+            launchContract = RomLaunchContract.Unsupported(
+                "Add the game's folder in ScummVM, then launch it from there.",
+            ),
+        ),
+
         EmulatorSpec(
             packageName = "org.dolphinemu.dolphinemu",
             displayName = "Dolphin",
             platformIds = setOf("gamecube", "wii"),
             activityName = "org.dolphinemu.dolphinemu.ui.main.MainActivity",
-            requiresFilePath = true,
+            launchContract = RomLaunchContract.Unsupported(
+                "Import this game into Dolphin's own library, then launch it there.",
+            ),
         ),
         EmulatorSpec(
             packageName = "org.ppsspp.ppsspp",
             displayName = "PPSSPP",
             platformIds = setOf("psp"),
             activityName = "org.ppsspp.ppsspp.PpssppActivity",
-            pathExtraKey = "org.ppsspp.ppsspp.Shortcuts",
-            requiresFilePath = true,
+            mayReuseExistingTask = true,
         ),
         EmulatorSpec(
             packageName = "org.ppsspp.ppssppgold",
             displayName = "PPSSPP Gold",
             platformIds = setOf("psp"),
             activityName = "org.ppsspp.ppsspp.PpssppActivity",
-            pathExtraKey = "org.ppsspp.ppsspp.Shortcuts",
-            requiresFilePath = true,
+            mayReuseExistingTask = true,
         ),
         // --- Switch ---------------------------------------------------------
         EmulatorSpec(
@@ -118,16 +310,14 @@ object EmulatorRegistry {
             displayName = "DuckStation",
             platformIds = setOf("psx"),
             activityName = "com.github.stenzek.duckstation.EmulationActivity",
-            pathExtraKey = "bootPath",
-            requiresFilePath = true,
+            launchContract = RomLaunchContract.PathExtra("bootPath"),
         ),
         EmulatorSpec(
             packageName = "xyz.aethersx2.android",
             displayName = "AetherSX2",
             platformIds = setOf("ps2"),
             activityName = "xyz.aethersx2.android.EmulationActivity",
-            pathExtraKey = "bootPath",
-            requiresFilePath = true,
+            launchContract = RomLaunchContract.PathExtra("bootPath"),
         ),
         EmulatorSpec(
             packageName = "com.play.emu",
@@ -164,26 +354,32 @@ object EmulatorRegistry {
             displayName = "RetroArch",
             platformIds = BuiltInPlatforms.ALL.map { it.id }.toSet(),
             activityName = "com.retroarch.browser.retroactivity.RetroActivityFuture",
-            requiresFilePath = true,
+            launchContract = RomLaunchContract.RetroArch,
+            mayReuseExistingTask = true,
         ),
         EmulatorSpec(
             packageName = "com.retroarch.aarch64",
             displayName = "RetroArch (64-bit)",
             platformIds = BuiltInPlatforms.ALL.map { it.id }.toSet(),
             activityName = "com.retroarch.browser.retroactivity.RetroActivityFuture",
-            requiresFilePath = true,
+            launchContract = RomLaunchContract.RetroArch,
+            mayReuseExistingTask = true,
         ),
         EmulatorSpec(
             packageName = "org.dolphinemu.dolphinemu.mmjr",
             displayName = "Dolphin MMJR",
             platformIds = setOf("gamecube", "wii"),
-            requiresFilePath = true,
+            launchContract = RomLaunchContract.Unsupported(
+                "This Dolphin build does not expose a supported arbitrary-ROM launch intent.",
+            ),
         ),
         EmulatorSpec(
             packageName = "org.mmjr.dolphinemu",
             displayName = "Dolphin MMJR2",
             platformIds = setOf("gamecube", "wii"),
-            requiresFilePath = true,
+            launchContract = RomLaunchContract.Unsupported(
+                "This Dolphin build does not expose a supported arbitrary-ROM launch intent.",
+            ),
         ),
         EmulatorSpec(
             packageName = "me.magnum.melonds",

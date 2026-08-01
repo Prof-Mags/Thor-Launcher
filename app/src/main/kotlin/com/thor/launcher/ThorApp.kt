@@ -55,6 +55,7 @@ import com.thor.core.common.log.ThorLog
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.display.LauncherFocus
@@ -73,6 +74,7 @@ import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.KeyboardKey
 import com.thor.core.model.PlatformFolders
+import com.thor.core.model.ThorSettings
 import com.thor.core.ui.feedback.FeedbackCue
 import com.thor.core.ui.component.ThorKeyboard
 import com.thor.core.ui.component.ThorIntro
@@ -81,6 +83,7 @@ import com.thor.core.ui.input.LocalThorTextInput
 import com.thor.core.ui.input.ThorTextInputState
 import com.thor.core.ui.feedback.rememberThorFeedback
 import com.thor.feature.home.BottomScreen
+import com.thor.launcher.stream.StreamSessionActivity
 import com.thor.feature.home.LauncherEffect
 import com.thor.feature.home.AppDrawerScreen
 import com.thor.feature.home.InputSurface
@@ -90,10 +93,16 @@ import com.thor.feature.home.component.EmptySection
 import com.thor.feature.movies.MoviesBottomPanel
 import com.thor.feature.movies.MoviesTopPanel
 import com.thor.feature.movies.MoviesViewModel
+import com.thor.feature.stream.StreamBottomPanel
+import com.thor.feature.stream.StreamTopPanel
+import com.thor.feature.stream.StreamEffect
+import com.thor.feature.stream.StreamViewModel
 import com.thor.feature.movies.rememberMoviesSection
 import com.thor.feature.movies.handleCommand
 import com.thor.feature.movies.perform
 import com.thor.feature.movies.pickSource
+import com.thor.feature.movies.pickSeason
+import com.thor.feature.movies.pickEpisode
 import com.thor.core.model.LauncherTab
 import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.ShortcutPanel
@@ -151,9 +160,12 @@ fun ThorApp(
      * of its windows exists, which is exactly as long as this composition does.
      */
     val state by viewModel.uiState.collectAsState()
+    val notificationsOpen by viewModel.notificationsOpen.collectAsState()
     val selectedScreenshot by viewModel.screenshotIndex.collectAsState()
     val settingsViewModel: com.thor.feature.settings.SettingsViewModel = hiltViewModel()
-    val settings by settingsViewModel.settings.collectAsState()
+    val loadedSettings by settingsViewModel.loadedSettings.collectAsState()
+    val settings = loadedSettings ?: ThorSettings.DEFAULT
+    val settingsLoaded = loadedSettings != null
 
     // Hoisted so controller input can drive the results list; the search screen
     // would otherwise own a separate instance that input could not reach.
@@ -220,12 +232,32 @@ fun ThorApp(
             awaitPointerEventScope {
                 while (true) {
                     awaitPointerEvent(PointerEventPass.Initial)
-                    touchedSurface = surface
-                    focusYieldedToApp = false
-                    // Stamped so a touch can be compared against the moment an
-                    // overlay claimed the controller; see [activeSurfaceNow].
-                    inputTick++
-                    touchedAtTick = inputTick
+
+                    /*
+                     * Written only when the answer changes, and that is a
+                     * performance fix rather than a tidy-up.
+                     *
+                     * This assigned all four of these on *every* pointer event.
+                     * A finger resting on the panel produces a stream of moves,
+                     * and each assignment writes snapshot state read at the top
+                     * of this composable — so a single drag recomposed the whole
+                     * shell dozens of times a second, every one of them to
+                     * conclude that the same surface was still being touched.
+                     * That is most of what "laggy, and the controls do not
+                     * respond straight away" is: the frames were being spent
+                     * re-deriving a decision that had not moved.
+                     *
+                     * The tick still advances when an overlay currently outranks
+                     * this surface, because reaching past an overlay to touch a
+                     * panel has to keep working — that comparison is the whole
+                     * reason the tick exists.
+                     */
+                    if (touchedSurface != surface || overlayClaimedAtTick >= touchedAtTick) {
+                        touchedSurface = surface
+                        inputTick++
+                        touchedAtTick = inputTick
+                    }
+                    if (focusYieldedToApp) focusYieldedToApp = false
                 }
             }
         }
@@ -251,6 +283,7 @@ fun ThorApp(
      * be the composition still running while the other is stopped.
      */
     val moviesViewModel: MoviesViewModel = hiltViewModel()
+    val streamViewModel: StreamViewModel = hiltViewModel()
     val moviesSection = rememberMoviesSection(moviesViewModel)
     val moviesState by moviesViewModel.uiState.collectAsState()
     val moviesDetail by moviesViewModel.detail.collectAsState()
@@ -522,6 +555,13 @@ fun ThorApp(
          */
         LaunchedEffect(inputRouter) {
             inputRouter.events.collect { event ->
+                // The intro is the outermost surface. Every button dismisses it
+                // before Movies, Stream, overlays, or the grid can act underneath.
+                if (viewModel.introVisible.value) {
+                    viewModel.finishIntro()
+                    return@collect
+                }
+
                 /*
                  * The keyboard, when it is up, is every button.
                  *
@@ -555,6 +595,16 @@ fun ThorApp(
                  */
                 if (selectedTabNow() == LauncherTab.MOVIES && !overlayIsOpenNow()) {
                     if (moviesSection.handleCommand(event.command)) {
+                        feedback.play(event.command.toCue())
+                        return@collect
+                    }
+                }
+
+                // Offered the same way, and declines the same way: Up and Down
+                // walk the list of PCs, everything else falls through to the
+                // shell so the nav bar and Home keep working.
+                if (selectedTabNow() == LauncherTab.STREAM && !overlayIsOpenNow()) {
+                    if (streamViewModel.handleCommand(event.command)) {
                         feedback.play(event.command.toCue())
                         return@collect
                     }
@@ -634,7 +684,9 @@ fun ThorApp(
                             // Back unwinds one level at a time: an open page
                             // first, then the overlay. Closing outright from a
                             // page would lose the user's place in the rail.
-                            if (settingsViewModel.isAtTopLevel) {
+                            if (settingsViewModel.isAddingPlatform) {
+                                settingsViewModel.cancelAddPlatform()
+                            } else if (settingsViewModel.isAtTopLevel) {
                                 overlay = Overlay.NONE
                                 settingsViewModel.resetFocus()
                             } else {
@@ -709,28 +761,75 @@ fun ThorApp(
          * on a beat instead of whenever the curve happens to finish.
          */
         val introProgress = remember { Animatable(0f) }
-        val introMotion = ThorTheme.materials.animationsEnabled
+        val introMotion = ThorTheme.materials.animationsEnabled &&
+            !settings.performance.performanceMode
 
-        if (introVisible) {
+        if (introVisible && settingsLoaded) {
             LaunchedEffect(Unit) {
-                feedback.play(FeedbackCue.BOOT)
-                introProgress.animateTo(
-                    targetValue = INTRO_LAND,
-                    animationSpec = tween(
-                        durationMillis = if (introMotion) INTRO_RISE_MS else INTRO_REDUCED_MS,
-                        easing = FastOutSlowInEasing,
-                    ),
-                )
-                introProgress.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(
-                        durationMillis = if (introMotion) INTRO_SETTLE_MS else INTRO_REDUCED_MS,
-                        easing = LinearOutSlowInEasing,
-                    ),
-                )
-                // Arrived: the same cue Home plays, because this is the same event.
-                feedback.play(FeedbackCue.HOME)
-                viewModel.finishIntro()
+                var openingStream: Int? = null
+                val openingSound = launch {
+                    openingStream = feedback.playWhenReady(
+                        if (introMotion) FeedbackCue.BOOT else FeedbackCue.SUCCESS,
+                    )
+                }
+                try {
+                    if (introMotion) {
+                        introProgress.animateTo(
+                            targetValue = INTRO_LOAD_START,
+                            animationSpec = tween(
+                                durationMillis = INTRO_MARK_MS,
+                                easing = FastOutSlowInEasing,
+                            ),
+                        )
+                        val loadingFeedback = launch {
+                            delay(INTRO_LOAD_FIRST_CUE_MS.toLong())
+                            feedback.play(FeedbackCue.SCROLL)
+                            delay(
+                                (INTRO_LOAD_SECOND_CUE_MS - INTRO_LOAD_FIRST_CUE_MS).toLong(),
+                            )
+                            feedback.play(FeedbackCue.SCROLL)
+                        }
+                        introProgress.animateTo(
+                            targetValue = INTRO_LOADED,
+                            animationSpec = tween(
+                                durationMillis = INTRO_LOAD_MS,
+                                easing = LinearEasing,
+                            ),
+                        )
+                        loadingFeedback.cancel()
+                        feedback.play(FeedbackCue.SUCCESS)
+                        delay(INTRO_READY_HOLD_MS.toLong())
+                        introProgress.animateTo(
+                            targetValue = INTRO_REVEAL_START,
+                            animationSpec = tween(
+                                durationMillis = INTRO_READY_SETTLE_MS,
+                                easing = FastOutSlowInEasing,
+                            ),
+                        )
+                        feedback.play(FeedbackCue.HOME)
+                        introProgress.animateTo(
+                            targetValue = 1f,
+                            animationSpec = tween(
+                                durationMillis = INTRO_REVEAL_MS,
+                                easing = LinearOutSlowInEasing,
+                            ),
+                        )
+                    } else {
+                        introProgress.animateTo(
+                            targetValue = 1f,
+                            animationSpec = tween(
+                                durationMillis = INTRO_REDUCED_MS,
+                                easing = LinearOutSlowInEasing,
+                            ),
+                        )
+                    }
+                    viewModel.finishIntro()
+                } finally {
+                    openingSound.cancel()
+                    // ui_boot is 1.5 seconds long. A quick skip must not leave it
+                    // playing over the launcher after the overlay has gone.
+                    feedback.stopSound(openingStream)
+                }
             }
         }
 
@@ -874,6 +973,24 @@ fun ThorApp(
             }
         }
 
+        /*
+         * The stream window opens once the host has agreed to a session.
+         *
+         * Started from here rather than from the section, because starting an
+         * activity needs a context and a section is a composable that draws into
+         * two windows. The session itself is already held in the process — this
+         * intent carries nothing but the instruction to show it.
+         */
+        LaunchedEffect(streamViewModel) {
+            streamViewModel.effects.collect { effect ->
+                when (effect) {
+                    StreamEffect.OpenSession -> context.startActivity(
+                        Intent(context, StreamSessionActivity::class.java),
+                    )
+                }
+            }
+        }
+
         // ---- One-shot effects ------------------------------------------------
         LaunchedEffect(viewModel) {
             viewModel.effectFlow.collect { effect ->
@@ -908,6 +1025,19 @@ fun ThorApp(
                         if (LauncherFocus.launchYieldsPresentationFocus(effect.onSecondaryPanel)) {
                             focusYieldedToApp = true
                         }
+
+                    /*
+                     * The claim comes back with the panel.
+                     *
+                     * The view model has established that nothing ever took the
+                     * display it stood the presentation down for. Restoring the
+                     * window without restoring this leaves the grid on screen and
+                     * deaf — see [LauncherEffect.LaunchAbandoned].
+                     */
+                    LauncherEffect.LaunchAbandoned -> {
+                        focusYieldedToApp = false
+                        touchedSurface = InputSurface.BOTTOM
+                    }
 
                     /*
                      * The dock has offered this since the beginning and it did
@@ -1006,10 +1136,6 @@ fun ThorApp(
             ) {
                 when (overlay) {
                     Overlay.SETTINGS -> SettingsScreen(
-                        onDismiss = {
-                            overlay = Overlay.NONE
-                            settingsViewModel.resetFocus()
-                        },
                         onRowCountChanged = { settingsRowCount = it },
                         viewModel = settingsViewModel,
                     )
@@ -1041,12 +1167,46 @@ fun ThorApp(
                  * would put two unrelated pictures on one screen.
                  */
                 if (selectedTab == LauncherTab.MOVIES) {
+                    /*
+                     * Collected here, inside the panel, rather than once at the
+                     * top of the shell.
+                     *
+                     * A value collected in the activity's composition and handed
+                     * to the other window is one the other window stops seeing
+                     * the moment the activity's composition pauses — which it
+                     * does whenever an app covers that display. Each panel
+                     * collects the player's status in its own composition, so
+                     * each keeps up with it for as long as its own window exists.
+                     */
+                    val moviesStatus by moviesViewModel.playerStatus.collectAsState()
+
                     MoviesTopPanel(
                         mode = moviesSection.mode,
                         state = moviesState,
                         playback = moviesPlayback,
-                        onStatus = moviesSection::onStatus,
-                        onCommands = moviesSection::onCommands,
+                        player = moviesViewModel.player,
+                        status = moviesStatus,
+                        onTypeSelected = moviesViewModel::switchType,
+                    )
+                    infoOverlays()
+                    if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay()
+                    return@Box
+                }
+
+                /*
+                 * Stream owns this panel outright while its tab is open, for the
+                 * same reason Movies does: the section is a list of machines, not
+                 * an overlay on a game's detail view, and showing both would put
+                 * two unrelated subjects on one screen.
+                 */
+                if (selectedTab == LauncherTab.STREAM) {
+                    // In this panel's own composition; see the note above.
+                    val streamState by streamViewModel.uiState.collectAsState()
+
+                    StreamTopPanel(
+                        state = streamState,
+                        onHostSelected = streamViewModel::selectHost,
+                        modifier = Modifier.fillMaxSize(),
                     )
                     infoOverlays()
                     if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay()
@@ -1059,9 +1219,24 @@ fun ThorApp(
                     wallpaper = settings.personalization.animatedWallpaper,
                     wallpaperUri = settings.personalization.topScreenWallpaperUri
                         ?: settings.personalization.wallpaperUri,
-                    folderChildren = state.openFolderContents,
+                    /*
+                     * The *highlighted* folder's contents, not the open one's.
+                     *
+                     * `openFolderContents` is populated only while a folder has
+                     * been entered, and the platform panel is shown when a
+                     * folder is merely rested on — so it was always empty there
+                     * and every system reported nothing in it. "0 games" was
+                     * literally true of the list it was counting.
+                     */
+                    folderChildren = state.openFolderContents.ifEmpty {
+                        (state.selection as? FolderEntry)
+                            ?.childIds
+                            ?.mapNotNull(state.entriesById::get)
+                            .orEmpty()
+                    },
                     clockStyle = settings.personalization.clockStyle,
                     showStatusBar = settings.personalization.showStatusBar,
+                    notificationsOpen = notificationsOpen,
                     // Trailer playback is an explicit user preference. Performance
                     // mode reduces interface effects, but must not silently replace
                     // a successfully fetched trailer with screenshots.
@@ -1158,18 +1333,44 @@ fun ThorApp(
                  */
                 sectionContent = { tab ->
                     if (tab == LauncherTab.MOVIES) {
+                        // In this panel's own composition; see the note beside the
+                        // matching collection in the info panel above.
+                        val moviesStatus by moviesViewModel.playerStatus.collectAsState()
+
                         MoviesBottomPanel(
                             mode = moviesSection.mode,
                             detail = moviesDetail,
                             sources = moviesSources,
                             playback = moviesPlayback,
-                            status = moviesSection.status,
+                            status = moviesStatus,
                             focusedSource = moviesSection.focusedSource,
                             focusedAction = moviesSection.focusedAction,
                             hasNextEpisode = moviesViewModel.nextEpisode() != null,
                             onPlayerAction = moviesSection::perform,
                             onSeek = moviesSection::seekTo,
                             onSourcePicked = moviesSection::pickSource,
+                            onSeasonSelected = moviesSection::pickSeason,
+                            onEpisodeSelected = moviesSection::pickEpisode,
+                            query = moviesState.query,
+                            onQueryChanged = moviesViewModel::onQueryChanged,
+                            searchRequested = moviesSection.searchRequested,
+                            onSearchFocused = moviesSection::onSearchFocused,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else if (tab == LauncherTab.STREAM) {
+                        val streamState by streamViewModel.uiState.collectAsState()
+                        val clientName by streamViewModel.clientName.collectAsState()
+
+                        StreamBottomPanel(
+                            state = streamState,
+                            clientName = clientName,
+                            onAddressChanged = streamViewModel::onAddressChanged,
+                            onAddHost = streamViewModel::addTypedHost,
+                            onRefreshHost = streamViewModel::refresh,
+                            onStartStream = streamViewModel::shareScreen,
+                            onPairHost = streamViewModel::pair,
+                            onCancelPairing = streamViewModel::cancelPairing,
+                            onStopStream = streamViewModel::stopHostSession,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
@@ -1232,7 +1433,7 @@ fun ThorApp(
             // Above everything on this panel, including the keyboard: at cold start
             // nothing else is open, and if anything were, the intro is what the user
             // is looking at.
-            introOverlay()
+            if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay()
             }
         }
 
@@ -1529,24 +1730,28 @@ fun ThorApp(
 
             DualScreenMode.SPLIT_SINGLE -> {
                 val topWeight = settings.display.splitRatio.coerceIn(0.2f, 0.8f)
-                Column(modifier = Modifier.fillMaxSize()) {
-                    val first: @Composable () -> Unit = {
-                        Box(modifier = Modifier.fillMaxWidth().weight(topWeight)) {
-                            topContent()
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        val first: @Composable () -> Unit = {
+                            Box(modifier = Modifier.fillMaxWidth().weight(topWeight)) {
+                                topContent()
+                            }
+                        }
+                        val second: @Composable () -> Unit = {
+                            Box(modifier = Modifier.fillMaxWidth().weight(1f - topWeight)) {
+                                bottomContent(Modifier.fillMaxSize())
+                            }
+                        }
+                        if (settings.display.swapScreens) {
+                            second()
+                            first()
+                        } else {
+                            first()
+                            second()
                         }
                     }
-                    val second: @Composable () -> Unit = {
-                        Box(modifier = Modifier.fillMaxWidth().weight(1f - topWeight)) {
-                            bottomContent(Modifier.fillMaxSize())
-                        }
-                    }
-                    if (settings.display.swapScreens) {
-                        second()
-                        first()
-                    } else {
-                        first()
-                        second()
-                    }
+                    // One overlay for the shared window, covering both halves.
+                    introOverlay()
                 }
             }
 
@@ -1559,6 +1764,7 @@ fun ThorApp(
                 Box(modifier = Modifier.fillMaxSize()) {
                     bottomContent(Modifier.fillMaxSize())
                     infoOverlays()
+                    introOverlay()
                 }
             }
         }
@@ -1701,21 +1907,22 @@ private fun ControllerCommand.toCue(): FeedbackCue = when (this) {
     else -> FeedbackCue.NAVIGATE
 }
 
-/**
- * The intro's two segments, in milliseconds.
- *
- * The first ends where the chime in `ui_boot` lands, so the mark and the sound
- * arrive together; the second is the reveal. Short on purpose — this is a launcher,
- * and the second time you see an intro is the first time it is too long.
- */
-private const val INTRO_RISE_MS = 900
-private const val INTRO_SETTLE_MS = 700
+/** Mark arrival, uninterrupted slow loader, ready hold, and final reveal. */
+private const val INTRO_MARK_MS = 700
+private const val INTRO_LOAD_MS = 3_200
+private const val INTRO_LOAD_FIRST_CUE_MS = 1_100
+private const val INTRO_LOAD_SECOND_CUE_MS = 2_200
+private const val INTRO_READY_HOLD_MS = 300
+private const val INTRO_READY_SETTLE_MS = 200
+private const val INTRO_REVEAL_MS = 600
 
-/** Where the first segment stops: the beat the mark lands on. */
-private const val INTRO_LAND = 0.62f
+/** Shared timeline positions consumed by the stateless intro on both panels. */
+private const val INTRO_LOAD_START = 0.20f
+private const val INTRO_LOADED = 0.90f
+private const val INTRO_REVEAL_START = 0.94f
 
-/** Under reduced motion the whole thing is a brief fade instead. */
-private const val INTRO_REDUCED_MS = 220
+/** Reduced motion uses a short fade and the short success cue. */
+private const val INTRO_REDUCED_MS = 300
 
 /** The shape a panel is assumed to be before the displays have reported in. */
 private const val DEFAULT_PANEL_ASPECT = 16f / 10f

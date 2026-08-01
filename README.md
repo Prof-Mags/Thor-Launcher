@@ -112,10 +112,14 @@ Left and Right, commits with A, and leaves upward with Up or B. Moving is not
 selecting — you cross the bar to look before you press, the same as in the theme
 gallery — so holding Right does not tear down and rebuild three sections on the way.
 
-**Stream and Movies have no content source yet, and say so.** The sections are real:
-themed, navigable, focus-managed, and treated by the bar exactly as Home is. Only
-what fills them is undecided, and each says that plainly rather than rendering an
-empty grid — a blank page is indistinguishable from one whose content failed to load.
+**Both sections are real.** Movies browses, resolves sources and plays them.
+Stream finds PCs on the network, pairs with Sunshine by PIN, lists what each one
+can stream with its box art, and plays it — video, audio and controller — on
+[the vendored Moonlight core](core/moonlight/).
+
+Both are themed, navigable, focus-managed, and treated by the bar exactly as Home
+is. Where something is missing, the screen names it — a blank page is
+indistinguishable from one whose content failed to load.
 
 The **dock** it replaces is hidden rather than deleted. Its five assignable action
 slots, their placements, and its settings page all still work behind
@@ -373,6 +377,15 @@ sonification, because the sonification stream is muted on this device.
 | Kotlin | 2.1.20 |
 | compileSdk / targetSdk | 35 |
 | minSdk | 29 |
+| NDK | 27.0.12077973 |
+| CMake | 3.22.1 |
+
+The NDK and CMake are for [`core:moonlight`](core/moonlight/), the vendored
+GameStream core the Stream section is built on. Install them with:
+
+```
+sdkmanager "ndk;27.0.12077973" "cmake;3.22.1"
+```
 
 ### `local.properties`
 
@@ -627,6 +640,14 @@ no button looks exactly like one that is working.
 Stated plainly, because the original specification is far larger than what is
 here. Nothing below is stubbed or faked — it is simply absent.
 
+- **Mouse and keyboard input while streaming.** The controller is wired; the
+  pointer and text paths the protocol also carries are not, so a streamed desktop
+  can be watched but not driven.
+- **Stream quality settings UI.** Resolution, frame rate and bitrate are modelled
+  and used, but can only be changed in code — there is no screen for them.
+- **HDR while streaming.** Announced by hosts that support it and accepted, but
+  the metadata is not applied, so it stays off rather than producing a washed-out
+  picture.
 - **Controller remapping UI.** The profile model supports custom bindings and ships
   two profiles (default, swapped A/B), and they are applied live from settings —
   but there is no screen to edit them or to switch between them. The button tester
@@ -667,4 +688,22 @@ here. Nothing below is stubbed or faked — it is simply absent.
 
 ## Licence
 
-Not yet chosen.
+**GNU General Public License v3.0** — see [LICENSE](LICENSE).
+
+Chosen rather than defaulted to. The Stream section is built on
+[Moonlight](https://github.com/moonlight-stream/moonlight-android), whose client
+and its `moonlight-common-c` core are both GPL-3.0, and GPL is copyleft: linking
+it in makes the combined work GPL-3.0 too. That is the whole of the reasoning,
+and it was a decision rather than an accident, because it is not reversible once
+a build has been shared.
+
+What it means in practice:
+
+- Anyone given a THOR build is entitled to its complete source, under the same
+  licence, and may modify and redistribute it.
+- THOR cannot later be relicensed as closed source while it contains GPL code.
+- Building it for yourself and never distributing it carries no obligation at
+  all; the terms attach to distribution.
+
+The rest of the dependency tree — AndroidX, Compose, OkHttp, Coil, Media3 — is
+Apache 2.0, which is permissive and imposes nothing beyond keeping the notices.

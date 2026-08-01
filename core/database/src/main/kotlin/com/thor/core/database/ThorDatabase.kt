@@ -11,6 +11,7 @@ import com.thor.core.database.dao.GameDao
 import com.thor.core.database.dao.GridDao
 import com.thor.core.database.dao.PlatformDao
 import com.thor.core.database.dao.PlayHistoryDao
+import com.thor.core.database.dao.WatchProgressDao
 import com.thor.core.database.model.AchievementEntity
 import com.thor.core.database.model.AppEntity
 import com.thor.core.database.model.CollectionEntity
@@ -22,6 +23,7 @@ import com.thor.core.database.model.PageEntity
 import com.thor.core.database.model.PlacementEntity
 import com.thor.core.database.model.PlatformEntity
 import com.thor.core.database.model.PlaySessionEntity
+import com.thor.core.database.model.WatchProgressEntity
 
 /**
  * The launcher's local library.
@@ -43,6 +45,7 @@ import com.thor.core.database.model.PlaySessionEntity
         CollectionEntryCrossRef::class,
         PlaySessionEntity::class,
         AchievementEntity::class,
+        WatchProgressEntity::class,
     ],
     version = ThorDatabase.VERSION,
     exportSchema = true,
@@ -59,8 +62,10 @@ abstract class ThorDatabase : RoomDatabase() {
     abstract fun playHistoryDao(): PlayHistoryDao
     abstract fun achievementDao(): AchievementDao
 
+    abstract fun watchProgressDao(): WatchProgressDao
+
     companion object {
-        const val VERSION = 3
+        const val VERSION = 4
         const val NAME = "thor-library.db"
     }
 }

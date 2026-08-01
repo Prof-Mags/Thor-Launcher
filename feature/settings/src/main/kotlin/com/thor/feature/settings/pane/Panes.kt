@@ -2,10 +2,12 @@ package com.thor.feature.settings.pane
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.unit.dp
 import com.thor.core.input.RawKeyPress
 import com.thor.core.model.AnimatedWallpaper
 import com.thor.core.model.ClockStyle
@@ -83,10 +85,20 @@ fun SettingsPageContent(
     iconPackStatus: IconPackStatus,
     pointerServiceEnabled: Boolean,
     pointerRunning: Boolean,
+    notificationAccessGranted: Boolean,
+    notificationServiceConnected: Boolean,
     /** What Real-Debrid said when last asked, or null if it has not been. */
     debridStatus: String?,
+    /** What the last grid clear did, or null if it has not been used. */
+    gridClearResult: String?,
+    indexerStatus: Map<Int, String>,
+    addonStatus: Map<Int, String>,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 12.dp),
+    ) {
         when (page) {
             SettingsPage.THEME -> ThemePage(settings, focusedRow, viewModel)
             SettingsPage.WALLPAPER -> WallpaperPage(settings, focusedRow, viewModel)
@@ -99,7 +111,8 @@ fun SettingsPageContent(
                 settings, focusedRow, viewModel, platformOptions, availablePlatforms, scanState,
             )
             SettingsPage.ROM_FOLDERS -> RomFoldersPage(settings, focusedRow, viewModel)
-            SettingsPage.SCANNING -> ScanningPage(settings, focusedRow, viewModel)
+            SettingsPage.SCANNING ->
+                ScanningPage(settings, focusedRow, viewModel, gridClearResult)
             SettingsPage.ICON_PACKS -> IconPacksPage(
                 focusedRow, viewModel, iconPacks, iconPackStatus,
             )
@@ -110,10 +123,17 @@ fun SettingsPageContent(
             SettingsPage.SORTING -> SortingPage(settings, focusedRow, viewModel)
 
             SettingsPage.MOVIES_CATALOGUE ->
-                MoviesCataloguePage(settings, focusedRow, viewModel, debridStatus)
+                MoviesCataloguePage(
+                    settings, focusedRow, viewModel, debridStatus, indexerStatus,
+                    addonStatus,
+                )
 
             SettingsPage.MOVIES_PLAYBACK ->
                 MoviesPlaybackPage(settings, focusedRow, viewModel)
+
+            SettingsPage.STREAM_QUALITY -> StreamQualityPage(settings, focusedRow, viewModel)
+            SettingsPage.STREAM_CONTROLS -> StreamControlsPage(settings, focusedRow, viewModel)
+            SettingsPage.STREAM_HOSTS -> StreamHostsPage(settings, focusedRow, viewModel)
 
             SettingsPage.NAVIGATION -> NavigationPage(settings, focusedRow, viewModel)
             SettingsPage.POINTER -> PointerPage(
@@ -124,6 +144,9 @@ fun SettingsPageContent(
             SettingsPage.DUAL_SCREEN -> DualScreenPage(settings, focusedRow, viewModel)
             SettingsPage.PERFORMANCE -> PerformancePage(settings, focusedRow, viewModel)
 
+            SettingsPage.NOTIFICATIONS -> NotificationsPage(
+                notificationAccessGranted, notificationServiceConnected, focusedRow, viewModel,
+            )
             SettingsPage.ACCESSIBILITY -> AccessibilityPage(settings, focusedRow, viewModel)
             SettingsPage.DIAGNOSTICS -> DiagnosticsPage(
                 settings, focusedRow, viewModel, isDefaultLauncher,
@@ -145,17 +168,19 @@ fun rowCountFor(
     iconPackCount: Int = 0,
     /** The whole group, because its page's row count depends on two lists. */
     mediaSettings: MediaSettings = MediaSettings(),
+    wallpaperClearRows: Int = 0,
+    extraRomFolderCount: Int = 0,
 ): Int = when (page) {
     SettingsPage.THEME -> 5
-    SettingsPage.WALLPAPER -> 3
+    SettingsPage.WALLPAPER -> 3 + wallpaperClearRows
     SettingsPage.GRID -> 5
     SettingsPage.DOCK -> 6
     SettingsPage.CURSOR -> 3
-    SettingsPage.INTERFACE -> 6
-    // One row per platform plus the add button.
-    SettingsPage.PLATFORMS -> platformCount + 1
-    SettingsPage.ROM_FOLDERS -> 1
-    SettingsPage.SCANNING -> 7
+    SettingsPage.INTERFACE -> 7
+    // One card per platform, Add, then Scan when there is something to scan.
+    SettingsPage.PLATFORMS -> platformCount + 1 + if (platformCount > 0) 1 else 0
+    SettingsPage.ROM_FOLDERS -> extraRomFolderCount + 1
+    SettingsPage.SCANNING -> 8
     // Two import rows, then one row per installed pack.
     SettingsPage.ICON_PACKS -> 2 + iconPackCount
     // Scrape, only-missing, trailers, check, one per provider, then four credentials.
@@ -165,12 +190,16 @@ fun rowCountFor(
     // add button and the summary.
     SettingsPage.MOVIES_CATALOGUE -> moviesCatalogueRows(mediaSettings)
     SettingsPage.MOVIES_PLAYBACK -> MOVIES_PLAYBACK_ROWS
+    SettingsPage.STREAM_QUALITY -> STREAM_QUALITY_ROWS
+    SettingsPage.STREAM_CONTROLS -> STREAM_CONTROLS_ROWS
+    SettingsPage.STREAM_HOSTS -> STREAM_HOSTS_ROWS
     SettingsPage.NAVIGATION -> 4
     // Enable, permission, speed, span, then one row per bindable button.
     SettingsPage.POINTER -> 4 + MouseButton.entries.size
     SettingsPage.FEEDBACK -> 5
     SettingsPage.DUAL_SCREEN -> 4
     SettingsPage.PERFORMANCE -> 3
+    SettingsPage.NOTIFICATIONS -> NOTIFICATIONS_ROWS
     SettingsPage.ACCESSIBILITY -> 5
     SettingsPage.DIAGNOSTICS -> 4
 }
@@ -441,6 +470,9 @@ private val SPEED_RANGE = 400..3_000
 @Composable
 private fun WallpaperPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
     val personalization = settings.personalization
+    val gridClearRow = 2
+    val infoPickerRow = 2 + if (personalization.wallpaperUri != null) 1 else 0
+    val infoClearRow = infoPickerRow + 1
 
     ChoiceRow(
         title = "Background effect",
@@ -459,6 +491,7 @@ private fun WallpaperPage(settings: ThorSettings, focusedRow: Int, viewModel: Se
         subtitle = "Image for the grid screen",
         currentUri = personalization.wallpaperUri,
         focused = focusedRow == 1,
+        clearFocused = personalization.wallpaperUri != null && focusedRow == gridClearRow,
         onPicked = { uri -> viewModel.updatePersonalization { it.copy(wallpaperUri = uri) } },
     )
     RowDivider()
@@ -466,7 +499,8 @@ private fun WallpaperPage(settings: ThorSettings, focusedRow: Int, viewModel: Se
         title = "Info screen wallpaper",
         subtitle = "Shown when nothing is highlighted",
         currentUri = personalization.topScreenWallpaperUri,
-        focused = focusedRow == 2,
+        focused = focusedRow == infoPickerRow,
+        clearFocused = personalization.topScreenWallpaperUri != null && focusedRow == infoClearRow,
         onPicked = { uri ->
             viewModel.updatePersonalization { it.copy(topScreenWallpaperUri = uri) }
         },
@@ -688,6 +722,7 @@ private fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: Se
     SwitchRow(
         title = "Page indicators",
         checked = personalization.showPageIndicators,
+        focused = focusedRow == 6,
         onCheckedChange = { on ->
             viewModel.updatePersonalization { it.copy(showPageIndicators = on) }
         },
@@ -717,6 +752,7 @@ private fun PlatformsPage(
             onToggleEmulator = { packageName ->
                 viewModel.togglePlatformEmulator(option.platform.id, packageName)
             },
+            onScrape = { viewModel.scrapePlatform(option.platform.id) },
             onRemove = { viewModel.removePlatform(option.platform.id) },
         )
     }
@@ -741,6 +777,7 @@ private fun PlatformsPage(
                 is SyncState.Failed -> scanState.message
                 SyncState.Idle -> "Re-read every configured folder"
             },
+            focused = focusedRow == platformOptions.size + 1,
             trailingLabel = if (scanState is SyncState.Scanning) "Running" else "Scan",
             onClick = viewModel::scanLibrary,
         )
@@ -764,10 +801,11 @@ private fun RomFoldersPage(
         RowDivider()
     }
 
-    extras.forEach { directory ->
+    extras.forEachIndexed { index, directory ->
         ActionRow(
             title = directory.displayName,
             subtitle = "Mixed folder — platform detected per file",
+            focused = focusedRow == index,
             trailingLabel = "Remove",
             onClick = {
                 viewModel.updateLibrary { current ->
@@ -781,7 +819,7 @@ private fun RomFoldersPage(
     DirectoryPickerRow(
         title = "Add folder",
         subtitle = "For collections spanning several systems",
-        focused = focusedRow == 0,
+        focused = focusedRow == extras.size,
         onPicked = { uri, name ->
             viewModel.updateLibrary { current ->
                 // Re-adding a folder must not create a duplicate that would then
@@ -800,7 +838,12 @@ private fun RomFoldersPage(
 }
 
 @Composable
-private fun ScanningPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+private fun ScanningPage(
+    settings: ThorSettings,
+    focusedRow: Int,
+    viewModel: SettingsViewModel,
+    gridClearResult: String?,
+) {
     val library = settings.library
 
     SwitchRow(
@@ -858,6 +901,26 @@ private fun ScanningPage(settings: ThorSettings, focusedRow: Int, viewModel: Set
         focused = focusedRow == 6,
         trailingLabel = "Scan",
         onClick = viewModel::scanLibrary,
+    )
+    RowDivider()
+    /*
+     * Clearing the grid, not the library.
+     *
+     * Marked destructive because it undoes arranging that may have taken a
+     * while, but it is recoverable in a way deleting is not: the games stay
+     * scanned, stay searchable and stay inside their platform folders, so a
+     * rescan files them back. Says how many it took, because everything it does
+     * happens on a screen the user is not currently looking at.
+     */
+    ActionRow(
+        title = "Remove all games from the grid",
+        subtitle = gridClearResult
+            ?: "Clears every game's cell. The games stay in your library and in " +
+            "their platform folders — only the grid is emptied.",
+        focused = focusedRow == 7,
+        trailingLabel = "Remove",
+        destructive = true,
+        onClick = viewModel::clearGamesFromGrid,
     )
 }
 
@@ -1322,6 +1385,7 @@ private fun DiagnosticsPage(
         subtitle = "Restores every option to its default. Library data is untouched.",
         focused = focusedRow == 3,
         destructive = true,
+        trailingLabel = "RESET",
         onClick = viewModel::resetToDefaults,
     )
 }

@@ -10,6 +10,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -178,19 +180,38 @@ fun GridCell(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        // Square slot: takes the height left over after the label, then matches
-        // its width to that height. If the slot is narrower than it is tall,
-        // aspectRatio falls back to sizing from the width, so the icon fits
-        // either way.
-        Box(
+        /*
+         * Square slot, sized from whichever edge is shorter.
+         *
+         * This was an `aspectRatio(1f, matchHeightConstraintsFirst = true)`, on
+         * the understanding that it would fall back to the width when a cell was
+         * taller than it was wide. There is nothing to fall back into: the cell's
+         * width is fixed by its `weight` in the row and its height by
+         * `fillMaxHeight`, so both constraints are exact and a square can satisfy
+         * them only when the cell happens to be square.
+         *
+         * Where it was not, the slot took the height and became *wider than its
+         * own cell*, so neighbouring icons met in the middle of the gutter and
+         * the row looked as though it had no spacing at all. It depended entirely
+         * on the matrix — at 16:9 a 4×2 or 6×3 page produces cells taller than
+         * they are wide and showed the fault, while 5×3 and 8×5 do not and looked
+         * correct — which is why it appeared at some pinch presets and not
+         * others.
+         *
+         * Taking the smaller edge cannot overflow either way.
+         */
+        BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
-                .aspectRatio(ratio = 1f, matchHeightConstraintsFirst = true),
+                .fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
+            val slot = minOf(maxWidth, maxHeight)
             Box(
                 modifier = Modifier
-                    .fillMaxSize(iconFraction)
+                    // A share of the square slot rather than of the cell, so the
+                    // icon stays square whatever shape the cell is.
+                    .size(slot * iconFraction)
                     // Before the scale, so the hover target is the cell's resting
                     // box. Measured inside it, the box grows when the highlight
                     // appears and shrinks when it goes, which makes the element's

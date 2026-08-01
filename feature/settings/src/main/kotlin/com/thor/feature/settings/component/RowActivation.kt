@@ -1,6 +1,7 @@
 package com.thor.feature.settings.component
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.getValue
@@ -49,6 +50,26 @@ fun ActivateOnConfirm(focused: Boolean, onActivate: () -> Unit) {
  * else.
  */
 val LocalRowStep: ProvidableCompositionLocal<Int> = staticCompositionLocalOf { 0 }
+
+/** Registers the currently focused row as a consumer of Left/Right commands. */
+val LocalHorizontalRowRegistration: ProvidableCompositionLocal<(Boolean) -> Unit> =
+    staticCompositionLocalOf { { } }
+
+/**
+ * Claims horizontal controller input only while this control owns the settings
+ * cursor. The captured registration callback remembers the row index, so losing
+ * focus reliably releases the same row even after the cursor has moved.
+ */
+@Composable
+fun RegisterForHorizontalSteps(focused: Boolean) {
+    val register = LocalHorizontalRowRegistration.current
+    DisposableEffect(focused, register) {
+        if (focused) register(true)
+        onDispose {
+            if (focused) register(false)
+        }
+    }
+}
 
 /**
  * Runs [onStep] with the direction each time Left or Right is pressed while this row

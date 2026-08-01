@@ -9,6 +9,15 @@ android {
 dependencies {
     implementation(projects.data)
     implementation(libs.androidx.compose.material.icons.extended)
+
     // The player. Video on the top panel, controls on the bottom.
     implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.exoplayer.hls)
+    implementation(libs.androidx.media3.exoplayer.dash)
+    implementation(libs.androidx.media3.datasource.okhttp)
+
+    // Declared rather than leant on transitively: the player builds its data
+    // source from the injected client, so OkHttp is part of this module's own
+    // compile surface.
+    implementation(libs.okhttp)
 }

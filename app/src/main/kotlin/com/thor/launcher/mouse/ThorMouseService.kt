@@ -14,6 +14,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityEvent
 import com.thor.core.common.log.ThorLog
+import com.thor.data.stream.StreamPresence
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.display.DisplayTopology
 import com.thor.core.input.MouseController
@@ -210,6 +211,22 @@ class ThorMouseService : AccessibilityService() {
          * is connected, and `dispatchGesture` reaches THOR's own windows just as
          * well as anyone else's.
          */
+        /*
+         * Hands the controller over entirely while a stream is on screen.
+         *
+         * The handheld is a screen for another machine at that point, and every
+         * button belongs to whatever is running on it. This service seeing keys
+         * first means it can take them, and both things it does with them are
+         * wrong here: the Start+Select chord swallows the two buttons the
+         * stream's own quit combination needs, and a pointer that comes up
+         * claims the D-pad and face buttons to move a cursor — taking the
+         * controller away from the game with no indication of why.
+         *
+         * Checked before `settings.enabled` so it holds regardless of how the
+         * pointer is configured.
+         */
+        if (StreamPresence.streaming) return false
+
         if (!settings.enabled) return false
 
         // The chord is checked first and always, so the pointer can be dismissed

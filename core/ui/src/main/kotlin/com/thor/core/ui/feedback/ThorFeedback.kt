@@ -17,6 +17,8 @@ import com.thor.core.model.AudioSettings
 import com.thor.core.model.ControlSettings
 import com.thor.core.ui.R
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
 
 /**
@@ -163,6 +165,44 @@ class ThorFeedback(
         if (shouldPlaySound(cue)) playSound(cue)
     }
 
+    /**
+     * Plays an important one-shot once SoundPool has decoded it.
+     *
+     * Ordinary cursor sounds are correctly dropped when they are not ready: a
+     * delayed click is worse than no click. The cold-start cue is different. It
+     * fires exactly once and is requested immediately after SoundPool is created,
+     * so dropping it made the intro randomly silent. Waiting here is bounded and
+     * cancellable; dismissing the intro cancels the wait before a late cue can play.
+     *
+     * @return SoundPool's stream id, which lets the intro stop a long boot cue if
+     * it is skipped before the sample finishes.
+     */
+    suspend fun playWhenReady(
+        cue: FeedbackCue,
+        timeoutMillis: Long = IMPORTANT_SOUND_TIMEOUT_MS,
+    ): Int? {
+        if (controls.hapticsEnabled) vibrate(cue)
+        if (!shouldPlaySound(cue)) return null
+
+        val soundId = loadedSounds[cue] ?: return null
+        if (soundId !in readySounds) {
+            val becameReady = withTimeoutOrNull(timeoutMillis) {
+                while (soundId !in readySounds) delay(SOUND_READY_POLL_MS)
+                true
+            } ?: false
+            if (!becameReady) return null
+        }
+
+        // Settings can change while the sample is decoding.
+        if (!shouldPlaySound(cue)) return null
+        return playSound(cue)
+    }
+
+    /** Stops a cue returned by [playWhenReady]; null and dropped streams are safe. */
+    fun stopSound(streamId: Int?) {
+        if (streamId != null && streamId > 0) soundPool.stop(streamId)
+    }
+
     private fun shouldPlaySound(cue: FeedbackCue): Boolean {
         if (!audio.soundEffectsEnabled) return false
         return when (cue) {
@@ -215,14 +255,14 @@ class ThorFeedback(
         }
     }
 
-    private fun playSound(cue: FeedbackCue) {
-        val soundId = loadedSounds[cue] ?: return
+    private fun playSound(cue: FeedbackCue): Int? {
+        val soundId = loadedSounds[cue] ?: return null
         // Skipped rather than queued while still decoding: a cursor tick that
         // arrives late is worse than one that never arrives.
-        if (soundId !in readySounds) return
+        if (soundId !in readySounds) return null
         val volume = audio.uiVolume.coerceIn(0f, 1f)
-        if (volume <= 0f) return
-        soundPool.play(soundId, volume, volume, 1, 0, 1f)
+        if (volume <= 0f) return null
+        return soundPool.play(soundId, volume, volume, 1, 0, 1f)
     }
 
     /** Loads a sound pack from raw resource ids. */
@@ -255,6 +295,8 @@ class ThorFeedback(
          * the shorter, more frequent cue was the one being silenced.
          */
         const val MAX_STREAMS = 8
+        const val IMPORTANT_SOUND_TIMEOUT_MS = 600L
+        const val SOUND_READY_POLL_MS = 8L
 
         /**
          * The bundled interface sounds.

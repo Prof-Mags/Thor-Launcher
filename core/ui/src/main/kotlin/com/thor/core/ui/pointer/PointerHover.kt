@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -52,25 +53,48 @@ val LocalPointerHoverFeedback = staticCompositionLocalOf<(() -> Unit)?> { null }
  * surface already does correctly is lay itself out.
  */
 @Stable
-class PointerHoverState internal constructor() {
+class PointerHoverState internal constructor(position: State<Offset?>) {
     internal var bounds by mutableStateOf(Rect.Zero)
 
     /**
      * True while the cursor is inside this element.
      *
-     * A plain state written by one collector rather than a value derived at each
-     * read, and that is deliberate. When the highlight was derived and the haptic
-     * came off a `snapshotFlow`, the two were separate observations of the same
-     * fact and could disagree — which is exactly what happened: the cue fired on
-     * every cell the cursor crossed while none of them ever lit up. Both now read
-     * this one field, so a buzz without a highlight is no longer expressible.
+     * **Derived, not collected**, and the difference is most of the launcher's
+     * frame budget. Every hoverable thing on screen has one of these — every grid
+     * cell, every poster on every shelf, every source row, every button — and
+     * this used to be a plain field written by a `snapshotFlow` collector, which
+     * meant one coroutine per element and a full re-evaluation of *all* of them
+     * every time the cursor moved a pixel. On a dense grid beside a dozen shelves
+     * that is hundreds of coroutines woken per frame to conclude that all but one
+     * of them are still not hovered.
+     *
+     * `derivedStateOf` is what the pointer position was documented as relying on
+     * all along: it recomputes lazily, and notifies a reader only when the
+     * *answer* changes — so a cursor crossing a grid invalidates two cells rather
+     * than every cell.
+     *
+     * The haptic reads this same value, so a buzz without a highlight remains
+     * inexpressible — which was the reason the collector existed.
      *
      * False whenever the pointer is down, because the position is null then — so
      * nothing has to remember to switch the highlight off when the pointer is put
      * away, and no element can be left lit by a cursor that no longer exists.
      */
-    var isHovered: Boolean by mutableStateOf(false)
-        internal set
+    private val hovered = derivedStateOf {
+        val point = position.value
+        point != null && !bounds.isEmpty && bounds.contains(point)
+    }
+
+    val isHovered: Boolean get() = hovered.value
+
+    /**
+     * Whether this element has seen its first hover answer yet.
+     *
+     * Plain, not snapshot state: it is read and written only by the effect that
+     * fires the haptic, and making it observable would invalidate that effect's
+     * own caller every time it was set.
+     */
+    internal var settled = false
 }
 
 /**
@@ -90,28 +114,28 @@ class PointerHoverState internal constructor() {
 @Composable
 fun rememberPointerHover(): PointerHoverState {
     val position = LocalPointerPosition.current
-    val state = remember { PointerHoverState() }
+    val state = remember(position) { PointerHoverState(position) }
 
     // Keyed on the element, never on the callback. A caller that rebuilds its
-    // lambda each recomposition would otherwise restart this collector.
+    // lambda each recomposition would otherwise restart this effect.
     val feedback = rememberUpdatedState(LocalPointerHoverFeedback.current)
 
-    LaunchedEffect(state, position) {
-        var firstValue = true
-        snapshotFlow {
-            val point = position.value
-            point != null && !state.bounds.isEmpty && state.bounds.contains(point)
-        }
-            .distinctUntilChanged()
-            .collect { hovered ->
-                val changed = state.isHovered != hovered
-                state.isHovered = hovered
-                // The initial value still has to update the visible highlight. It
-                // merely is not an arrival, so it should not vibrate just because a
-                // new page or folder happened to compose beneath a resting pointer.
-                if (!firstValue && changed && hovered) feedback.value?.invoke()
-                firstValue = false
-            }
+    /*
+     * Keyed on the answer, so this coroutine is created only when the element is
+     * actually entered or left — not once per element for the whole time it is on
+     * screen, waking on every pixel the cursor moves.
+     *
+     * Reading `isHovered` here also means the caller recomposes exactly when its
+     * own highlight changes, which is the recomposition that has to happen
+     * anyway.
+     */
+    val hovered = state.isHovered
+    LaunchedEffect(state, hovered) {
+        // The first value still has to light the highlight. It merely is not an
+        // arrival, so it should not vibrate just because a new page or folder
+        // composed beneath a resting pointer.
+        if (hovered && !state.settled) feedback.value?.invoke()
+        state.settled = true
     }
 
     return state

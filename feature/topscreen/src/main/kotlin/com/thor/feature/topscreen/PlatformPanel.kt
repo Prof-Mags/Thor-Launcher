@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -65,26 +66,11 @@ fun PlatformDetailPanel(
     val logoUri = platform.artwork.logoUri
 
     Row(modifier = modifier.fillMaxSize()) {
-        Column(
+        PanelCard(
             modifier = Modifier
                 .weight(PANEL_WEIGHT)
                 .fillMaxHeight()
-                .padding(dimens.spacing)
-                .clip(RoundedCornerShape(dimens.cornerRadius))
-                // Translucent, with a hairline edge, so the backdrop still reads
-                // through without the text losing its footing on a bright image.
-                .background(colors.background.copy(alpha = PANEL_ALPHA))
-                .border(
-                    width = 1.dp,
-                    color = colors.outline.copy(alpha = 0.35f),
-                    shape = RoundedCornerShape(dimens.cornerRadius),
-                )
-                .padding(dimens.spacing)
-                // The description is the longest thing here and its length varies
-                // by system; scrolling is what keeps a wordy one from pushing the
-                // shelf off the bottom of a short panel.
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+                .padding(dimens.spacing),
         ) {
             /*
              * The wordmark decorates the title; it does not replace it.
@@ -96,50 +82,79 @@ fun PlatformDetailPanel(
              * system it never named. Drawn above the name instead, so the heading
              * is always there and the logo is a bonus when it loads.
              */
-            if (logoUri != null) {
-                ArtworkImage(
-                    model = logoUri,
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(LOGO_HEIGHT.dp)
-                        .widthIn(max = LOGO_MAX_WIDTH.dp),
-                )
-            }
-
-            // Centred and large: it is the heading of the panel rather than one
-            // more field in it, and a system's name is short enough to carry it.
-            Text(
-                text = platform.name.ifBlank { folderTitle },
-                style = MaterialTheme.typography.displaySmall,
-                color = colors.onBackground,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            /*
+             * The masthead: logo, name and subtitle as one centred block.
+             *
+             * Grouped in a column of its own with a tight internal gutter,
+             * because these three are one thing said three ways and were
+             * previously spaced as widely from each other as from unrelated
+             * facts — which left the heading looking like three separate lines
+             * that happened to be near each other.
+             */
+            Section {
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-            )
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+            ) {
+                if (logoUri != null) {
+                    ArtworkImage(
+                        model = logoUri,
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(LOGO_HEIGHT.dp)
+                            .widthIn(max = LOGO_MAX_WIDTH.dp),
+                    )
+                }
 
-            if (platform.subtitle.isNotBlank()) {
+                /*
+                 * Smaller when a logo is above it, larger when it stands alone.
+                 *
+                 * With a wordmark present the name is a caption to it, and
+                 * setting both at display size stacked a tall image on a tall
+                 * heading — which pushed the title far enough down the panel to
+                 * look like it had been left there by mistake. Without a logo the
+                 * name *is* the masthead and keeps its full size.
+                 */
                 Text(
-                    text = platform.subtitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = colors.onSurfaceVariant,
+                    text = platform.name.ifBlank { folderTitle },
+                    style = if (logoUri != null) {
+                        MaterialTheme.typography.headlineSmall
+                    } else {
+                        MaterialTheme.typography.displaySmall
+                    },
+                    color = colors.onBackground,
                     textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
                 )
+
+                if (platform.subtitle.isNotBlank()) {
+                    Text(
+                        text = platform.subtitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = colors.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
-            if (platform.description.isNotBlank()) {
-                Text(
-                    text = platform.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                    // Wrapped to the column rather than clipped to a line count:
-                    // the panel scrolls, so there is no reason to cut the last
-                    // sentence off mid-word.
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (platform.description.isNotBlank()) {
+                    Text(
+                        text = platform.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                        // Centred with the masthead above it, so the top of the
+                        // card is one symmetrical block rather than a centred
+                        // heading sitting on a left-ragged paragraph.
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
             /*
@@ -155,47 +170,75 @@ fun PlatformDetailPanel(
             val totalMillis = games.sumOf { it.stats.totalPlayMillis }
             val favourites = games.count { it.isFavorite }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(dimens.spacingLarge)) {
-                PlatformStat("Games", games.size.toString())
-                if (played > 0) PlatformStat("Played", "$played")
-                if (favourites > 0) PlatformStat("Favourites", "$favourites")
-                if (totalMillis > 0L) PlatformStat("Time", totalMillis.asPlaytime())
+            /*
+             * Four cells of equal width, always all four.
+             *
+             * They used to be spaced from the left and appear only when non-zero,
+             * so the row was ragged and a different shape on every platform — one
+             * system showed one figure, the next showed four, and the block
+             * shifted as the cursor moved along the grid. Equal weights with a
+             * dash for nothing keeps the row symmetrical and keeps each figure in
+             * the same place whichever folder is highlighted.
+             */
+            Section(label = "THIS LIBRARY") {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                PlatformStat("Games", games.size.toString(), Modifier.weight(1f))
+                PlatformStat("Played", played.orDash(), Modifier.weight(1f))
+                PlatformStat("Favourites", favourites.orDash(), Modifier.weight(1f))
+                PlatformStat(
+                    label = "Time",
+                    value = if (totalMillis > 0L) totalMillis.asPlaytime() else UNKNOWN,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             }
 
             val mostPlayed = games
                 .filter { it.stats.totalPlayMillis > 0L }
                 .maxByOrNull { it.stats.totalPlayMillis }
 
-            if (mostPlayed != null) {
-                DetailLine("MOST PLAYED", mostPlayed.title)
-            }
-
             val newest = games.maxByOrNull { it.stats.lastPlayedEpochMs ?: 0L }
                 ?.takeIf { it.stats.hasBeenPlayed }
-            if (newest != null && newest.id != mostPlayed?.id) {
-                DetailLine("LAST PLAYED", newest.title)
-            }
 
             /*
-             * The practical half: what the scanner accepts for this system, and
-             * what will actually open a file.
+             * The same two-column table the game panel uses, with the same
+             * always-present slots.
              *
-             * Both are questions a user asks of a platform folder and nothing
-             * else in the launcher answers — "why has nothing appeared here"
-             * usually turns out to be one of these two.
+             * These were a run of full-width lines whose label and value were
+             * spaced apart as far as two unrelated facts, so nothing grouped and
+             * the column read as a list of loose sentences. Paired into an even
+             * grid, the two panels now have the same shape — which matters
+             * because the cursor alternates between them.
              */
-            if (platform.romExtensions.isNotEmpty()) {
-                DetailLine(
-                    "FILE TYPES",
-                    platform.romExtensions.sorted().joinToString(" ") { ".$it" },
-                )
-            }
+            val emulator = platform.defaultEmulatorPackage?.let { rememberEmulatorName(it) }
 
-            DetailLine(
-                "EMULATOR",
-                platform.defaultEmulatorPackage?.let { rememberEmulatorName(it) }
-                    ?: "None set — games here will not launch",
+            val facts = listOf(
+                "Most played" to mostPlayed?.title,
+                "Last played" to newest?.title,
+                "File types" to platform.romExtensions
+                    .takeIf(Set<String>::isNotEmpty)
+                    ?.sorted()
+                    ?.joinToString(" ") { ".$it" },
+                // Named rather than left blank: "why has nothing launched here"
+                // is nearly always this, and a dash would not say so.
+                "Emulator" to (emulator ?: "None set — games will not launch"),
             )
+
+            Section(label = "DETAILS") {
+            Column(verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall)) {
+                facts.chunked(2).forEach { pair ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        pair.forEach { (label, value) ->
+                            Fact(label = label, value = value, modifier = Modifier.weight(1f))
+                        }
+                        if (pair.size == 1) Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+            }
 
             val recent = games
                 .filter { it.stats.hasBeenPlayed }
@@ -203,22 +246,21 @@ fun PlatformDetailPanel(
                 .take(RECENT_COUNT)
 
             if (recent.isNotEmpty()) {
-                Text(
-                    text = "RECENTLY PLAYED",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
-                )
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall)) {
-                    items(recent, key = GameEntry::id) { game ->
-                        ArtworkImage(
-                            model = game.metadata.artwork.cellImage,
-                            contentDescription = game.title,
-                            fallbackText = game.title,
-                            modifier = Modifier
-                                .height(SHELF_HEIGHT.dp)
-                                .aspectRatio(3f / 4f)
-                                .clip(ThorTheme.shapes.small),
-                        )
+                Section(label = "RECENTLY PLAYED") {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+                    ) {
+                        items(recent, key = GameEntry::id) { game ->
+                            ArtworkImage(
+                                model = game.metadata.artwork.cellImage,
+                                contentDescription = game.title,
+                                fallbackText = game.title,
+                                modifier = Modifier
+                                    .height(SHELF_HEIGHT.dp)
+                                    .aspectRatio(3f / 4f)
+                                    .clip(ThorTheme.shapes.small),
+                            )
+                        }
                     }
                 }
             }
@@ -251,23 +293,15 @@ private fun rememberEmulatorName(packageName: String): String {
     }
 }
 
-/** A labelled fact, in the same shape the game panel uses. */
-@Composable
-private fun DetailLine(label: String, value: String) {
-    val colors = ThorTheme.colors
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelSmall,
-        color = colors.onSurfaceVariant,
-    )
-    Text(
-        text = value,
-        style = MaterialTheme.typography.bodySmall,
-        color = colors.onSurfaceVariant,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-    )
-}
+/*
+ * `DetailLine` used to live here.
+ *
+ * It emitted two `Text`s with no wrapper, so the enclosing column's arrangement
+ * put exactly as much space between a label and its own value as between two
+ * unrelated facts — nothing grouped, and the panel read as a list of loose lines.
+ * The game panel's `Fact` already solved this and is shared now, which also means
+ * the two panels cannot drift apart again.
+ */
 
 /** "12h 40m", or "45m" under an hour. Zero never reaches here. */
 private fun Long.asPlaytime(): String {
@@ -276,22 +310,42 @@ private fun Long.asPlaytime(): String {
     return if (hours > 0) "${hours}h ${minutes % 60}m" else "${minutes}m"
 }
 
+/**
+ * One figure in the statistics row.
+ *
+ * Centred inside its own equal share of the width, which is what makes the row
+ * symmetrical however wide the values happen to be — a left-aligned "1" beside a
+ * left-aligned "12h 40m" left the row visibly lopsided.
+ */
 @Composable
-private fun PlatformStat(label: String, value: String) {
+private fun PlatformStat(label: String, value: String, modifier: Modifier = Modifier) {
     val colors = ThorTheme.colors
-    Column {
-        Text(
-            text = label.uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.onSurfaceVariant,
-        )
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Text(
             text = value,
             style = MaterialTheme.typography.titleMedium,
             color = colors.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = label.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            // Value above label, dimmed: the number is what is being looked for
+            // and the caption only says which number it is.
+            color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+            maxLines = 1,
         )
     }
 }
+
+/** Nothing shows as a dash, so a cell never collapses and the row stays even. */
+private fun Int.orDash(): String = if (this > 0) toString() else UNKNOWN
+
+private const val UNKNOWN = "—"
 
 /**
  * A game whose artwork can stand for the whole platform.
@@ -345,7 +399,8 @@ private const val FLAGSHIP_MISS = Int.MAX_VALUE
 
 private const val PANEL_WEIGHT = 0.40f
 private const val PANEL_ALPHA = 0.82f
-private const val LOGO_HEIGHT = 56
+/** Tightened so the name sits close under the wordmark rather than adrift. */
+private const val LOGO_HEIGHT = 44
 private const val LOGO_MAX_WIDTH = 320
 private const val RECENT_COUNT = 6
 private const val SHELF_HEIGHT = 110

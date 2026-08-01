@@ -9,37 +9,40 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.thor.core.designsystem.component.GlassSurface
+import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.feature.settings.component.AddPlatformDialog
 import com.thor.feature.settings.component.LocalRowActivation
+import com.thor.feature.settings.component.LocalHorizontalRowRegistration
 import com.thor.feature.settings.component.LocalRowStep
 import com.thor.feature.settings.component.revealWhenFocused
 import com.thor.feature.settings.pane.AboutPane
@@ -56,7 +59,6 @@ import com.thor.feature.settings.pane.rowCountFor
  */
 @Composable
 fun SettingsScreen(
-    onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     /**
      * Reports how many focusable rows the visible surface has, so the host can
@@ -87,58 +89,128 @@ fun SettingsScreen(
     val iconPackStatus by viewModel.iconPackStatus.collectAsStateWithLifecycle()
     val pointerServiceEnabled by viewModel.pointerServiceEnabled.collectAsStateWithLifecycle()
     val pointerRunning by viewModel.pointerRunning.collectAsStateWithLifecycle()
+    val notificationGranted by viewModel.notificationAccessGranted.collectAsStateWithLifecycle()
+    val notificationConnected by
+        viewModel.notificationServiceConnected.collectAsStateWithLifecycle()
     val debridStatus by viewModel.debridStatus.collectAsStateWithLifecycle()
+    val gridClearResult by viewModel.gridClearResult.collectAsStateWithLifecycle()
+    val indexerStatus by viewModel.indexerStatus.collectAsStateWithLifecycle()
+    val addonStatus by viewModel.addonStatus.collectAsStateWithLifecycle()
+    val pendingPlatformEmulators = pendingPlatform
+        ?.let(viewModel::installedEmulatorsFor)
+        .orEmpty()
 
     val pages = SettingsPage.forCategory(category)
+    val horizontalRowRegistration: (Boolean) -> Unit = remember(viewModel, focusedRow, openPage) {
+        { takesHorizontal ->
+            if (openPage != null) {
+                viewModel.setRowTakesHorizontal(focusedRow, takesHorizontal)
+            }
+        }
+    }
 
     // Re-read on entering the Diagnostics page: the user changes this in the
     // system chooser, so the answer can only have changed while we were paused.
     LaunchedEffect(openPage) {
         if (openPage == SettingsPage.DIAGNOSTICS) viewModel.refreshDefaultLauncher()
+        // The grant can only change while THOR is away, so it is re-read on open.
+        if (openPage == SettingsPage.NOTIFICATIONS) viewModel.refreshNotificationAccess()
     }
 
-    // The focusable row count depends on which level is showing: a category
-    // shows one row per page, a page shows its own controls.
-    LaunchedEffect(category, openPage, platformOptions.size, iconPacks.size) {
-        onRowCountChanged(
-            when {
-                openPage != null -> rowCountFor(
-                    page = openPage!!,
-                    platformCount = platformOptions.size,
-                    iconPackCount = iconPacks.size,
-                    mediaSettings = settings.media,
-                )
-                category == SettingsCategory.ABOUT -> 0
-                else -> pages.size
+    // Derived as one value so dynamic pages update their controller bounds as
+    // soon as a platform, folder, wallpaper, addon, indexer, or icon pack changes.
+    val visibleRowCount = when {
+        pendingPlatform != null -> if (pendingPlatformEmulators.isEmpty()) 4 else 5
+        openPage != null -> rowCountFor(
+            page = openPage!!,
+            platformCount = platformOptions.size,
+            iconPackCount = iconPacks.size,
+            mediaSettings = settings.media,
+            wallpaperClearRows = listOfNotNull(
+                settings.personalization.wallpaperUri,
+                settings.personalization.topScreenWallpaperUri,
+            ).size,
+            extraRomFolderCount = settings.library.romDirectoryUris.count {
+                it.platformId == null
             },
         )
+        category == SettingsCategory.ABOUT -> 0
+        else -> pages.size
+    }
+    LaunchedEffect(visibleRowCount) {
+        viewModel.clampFocusedRow(visibleRowCount)
+        onRowCountChanged(visibleRowCount)
     }
 
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
 
     Box(modifier = modifier.fillMaxSize()) {
-        Row(modifier = Modifier.fillMaxSize().background(colors.background)) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(colors.surfaceElevated, colors.background),
+                    ),
+                )
+                .padding(dimens.spacingSmall),
+            horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+        ) {
             // ---- Category rail ---------------------------------------------
-            Column(
+            GlassSurface(
                 modifier = Modifier
                     .width(RAIL_WIDTH.dp)
-                    .fillMaxHeight()
-                    // A faint tint rather than a filled panel: the rail should
-                    // read as part of the same surface, not a second window.
-                    .background(colors.surface.copy(alpha = 0.35f))
-                    .padding(vertical = dimens.spacingLarge),
+                    .fillMaxHeight(),
+                shape = ThorTheme.shapes.large,
+                color = colors.surface,
+                alphaOverride = 0.92f,
+                level = SurfaceLevel.RAISED,
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                    /*
+                     * Scrollable so every consolidated category remains reachable
+                     * at larger accessibility scales.
+                     *
+                     * `revealWhenFocused` on each row asks its nearest scrollable
+                     * ancestor to bring it into view — so without one here, the
+                     * categories past the fold would be selectable and invisible,
+                     * which is the fault that made half of Settings unreachable
+                     * in the first place.
+                     */
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = dimens.spacing),
+                ) {
+                Text(
+                    text = "THOR",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.cursor,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = dimens.spacingLarge),
+                )
                 Text(
                     text = "Settings",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.headlineSmall,
                     color = colors.onBackground,
                     modifier = Modifier.padding(
                         start = dimens.spacingLarge,
-                        bottom = dimens.spacingLarge,
+                        end = dimens.spacingLarge,
+                        bottom = 2.dp,
                     ),
                 )
-                SettingsCategory.entries.forEach { entry ->
+                Text(
+                    text = "Shape your launcher",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(
+                        start = dimens.spacingLarge,
+                        end = dimens.spacingLarge,
+                        bottom = dimens.spacing,
+                    ),
+                )
+                SettingsCategory.navigationEntries.forEach { entry ->
                     CategoryRow(
                         category = entry,
                         selected = entry == category,
@@ -148,25 +220,36 @@ fun SettingsScreen(
                         onClick = { viewModel.selectCategory(entry) },
                     )
                 }
+                }
             }
 
             // ---- Detail ----------------------------------------------------
-            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(ThorTheme.shapes.large)
+                    .background(colors.surface.copy(alpha = 0.38f)),
+            ) {
                 DetailHeader(
                     title = openPage?.title ?: category.title,
                     subtitle = openPage?.summary ?: category.summary,
                     showBack = openPage != null,
-                    onBack = viewModel::closePage,
-                    onDismiss = onDismiss,
                 )
 
                 Column(
                     // Capped width: settings rows read badly when a label sits a
                     // full panel-width away from the control it belongs to.
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = dimens.spacingLarge)
                         .widthIn(max = CONTENT_MAX_WIDTH.dp)
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .align(Alignment.CenterHorizontally)
+                        .padding(
+                            start = dimens.spacingLarge,
+                            end = dimens.spacingLarge,
+                            bottom = dimens.spacingLarge,
+                        )
                         .verticalScroll(rememberScrollState()),
                 ) {
                     when {
@@ -175,11 +258,12 @@ fun SettingsScreen(
                         openPage != null -> CompositionLocalProvider(
                             LocalRowActivation provides activationTick,
                             LocalRowStep provides horizontalStep,
+                            LocalHorizontalRowRegistration provides horizontalRowRegistration,
                         ) {
                             SettingsPageContent(
                                 page = openPage!!,
                                 settings = settings,
-                                focusedRow = focusedRow,
+                                focusedRow = focusedRow.takeIf { pendingPlatform == null } ?: -1,
                                 viewModel = viewModel,
                                 platformOptions = platformOptions,
                                 availablePlatforms = availablePlatforms,
@@ -195,7 +279,12 @@ fun SettingsScreen(
                                 iconPackStatus = iconPackStatus,
                                 pointerServiceEnabled = pointerServiceEnabled,
                                 pointerRunning = pointerRunning,
+                                notificationAccessGranted = notificationGranted,
+                                notificationServiceConnected = notificationConnected,
                                 debridStatus = debridStatus,
+                                gridClearResult = gridClearResult,
+                                indexerStatus = indexerStatus,
+                                addonStatus = addonStatus,
                             )
                         }
 
@@ -213,20 +302,27 @@ fun SettingsScreen(
 
         // Above everything so it is not clipped by the detail scroll container.
         pendingPlatform?.let { platform ->
-            AddPlatformDialog(
-                platform = platform,
-                installedEmulators = viewModel.installedEmulatorsFor(platform),
-                onConfirm = { setup ->
-                    viewModel.confirmAddPlatform(
-                        platform = platform,
-                        romDirectoryUri = setup.romDirectoryUri,
-                        romDirectoryName = setup.romDirectoryName,
-                        emulatorPackage = setup.emulatorPackage,
-                        scanSubfolders = setup.scanSubfolders,
-                    )
-                },
-                onDismiss = viewModel::cancelAddPlatform,
-            )
+            CompositionLocalProvider(
+                LocalRowActivation provides activationTick,
+                LocalRowStep provides horizontalStep,
+                LocalHorizontalRowRegistration provides horizontalRowRegistration,
+            ) {
+                AddPlatformDialog(
+                    platform = platform,
+                    installedEmulators = pendingPlatformEmulators,
+                    focusedRow = focusedRow,
+                    onConfirm = { setup ->
+                        viewModel.confirmAddPlatform(
+                            platform = platform,
+                            romDirectoryUri = setup.romDirectoryUri,
+                            romDirectoryName = setup.romDirectoryName,
+                            emulatorPackage = setup.emulatorPackage,
+                            scanSubfolders = setup.scanSubfolders,
+                        )
+                    },
+                    onDismiss = viewModel::cancelAddPlatform,
+                )
+            }
         }
     }
 }
@@ -236,8 +332,6 @@ private fun DetailHeader(
     title: String,
     subtitle: String,
     showBack: Boolean,
-    onBack: () -> Unit,
-    onDismiss: () -> Unit,
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
@@ -245,27 +339,33 @@ private fun DetailHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(colors.surface.copy(alpha = 0.48f))
             .padding(
-                start = if (showBack) dimens.spacingSmall else dimens.spacingLarge,
-                end = dimens.spacingSmall,
+                start = dimens.spacingLarge,
+                end = dimens.spacingLarge,
                 top = dimens.spacing,
                 bottom = dimens.spacingSmall,
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (showBack) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Back",
-                    tint = colors.onSurface,
-                )
-            }
-        }
+        Box(
+            modifier = Modifier
+                .padding(end = dimens.spacingSmall)
+                .width(4.dp)
+                .height(42.dp)
+                .clip(ThorTheme.shapes.pill)
+                .background(Brush.verticalGradient(colors.accentStops)),
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(
+                text = if (showBack) "SETTING PAGE" else "SETTINGS CATEGORY",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.cursor,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
                 text = title,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.headlineMedium,
                 color = colors.onBackground,
             )
             Text(
@@ -274,13 +374,6 @@ private fun DetailHeader(
                 color = colors.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-            )
-        }
-        IconButton(onClick = onDismiss) {
-            Icon(
-                imageVector = Icons.Rounded.Close,
-                contentDescription = "Close settings",
-                tint = colors.onSurface,
             )
         }
     }
@@ -299,13 +392,32 @@ private fun PageNavRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
+            .padding(vertical = 5.dp)
             .revealWhenFocused(focused)
+            .clip(ThorTheme.shapes.panel)
+            .background(
+                if (focused) colors.surfaceHighest else colors.surface.copy(alpha = 0.58f),
+            )
             .thorCursor(focused = focused, cornerRadius = dimens.cornerRadiusSmall)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 16.dp),
+            .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
     ) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(ThorTheme.shapes.small)
+                .background(colors.cursor.copy(alpha = if (focused) 0.22f else 0.10f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = page.category.icon,
+                contentDescription = null,
+                tint = colors.cursor,
+                modifier = Modifier.size(21.dp),
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = page.title,
@@ -320,6 +432,12 @@ private fun PageNavRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        Text(
+            text = "OPEN",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (focused) colors.cursor else colors.onSurfaceVariant,
+            fontWeight = FontWeight.Bold,
+        )
         Icon(
             imageVector = Icons.Rounded.ChevronRight,
             contentDescription = null,
@@ -349,28 +467,61 @@ private fun CategoryRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = dimens.spacingSmall, vertical = 2.dp)
-            .clip(RoundedCornerShape(dimens.cornerRadius))
-            .background(if (selected) colors.cursor.copy(alpha = 0.16f) else Color.Transparent)
+            .padding(horizontal = dimens.spacingSmall, vertical = 3.dp)
+            .revealWhenFocused(cursorHere)
+            .clip(ThorTheme.shapes.panel)
+            .background(
+                if (selected) colors.surfaceHighest else Color.Transparent,
+            )
             .thorCursor(focused = cursorHere, cornerRadius = dimens.cornerRadius)
             .clickable(onClick = onClick)
-            .padding(horizontal = dimens.spacingSmall, vertical = 12.dp),
+            .padding(horizontal = dimens.spacingSmall, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
     ) {
-        Icon(
-            imageVector = category.icon,
-            contentDescription = null,
-            tint = if (selected) colors.cursor else colors.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
-        Text(
-            text = category.title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (selected) colors.onSurface else colors.onSurfaceVariant,
-        )
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(30.dp)
+                    .clip(ThorTheme.shapes.pill)
+                    .background(Brush.verticalGradient(colors.accentStops)),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(ThorTheme.shapes.small)
+                .background(
+                    if (selected) colors.cursor.copy(alpha = 0.16f) else colors.surfaceElevated,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = category.icon,
+                contentDescription = null,
+                tint = if (selected) colors.cursor else colors.onSurfaceVariant,
+                modifier = Modifier.size(19.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = category.title,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (selected) colors.onSurface else colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = category.summary,
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant.copy(alpha = 0.72f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
-private const val RAIL_WIDTH = 220
-private const val CONTENT_MAX_WIDTH = 720
+private const val RAIL_WIDTH = 256
+private const val CONTENT_MAX_WIDTH = 820

@@ -108,5 +108,47 @@ object ThorMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    /**
+     * Resume points for films and episodes.
+     *
+     * A new table rather than a column anywhere: what it records belongs to a
+     * title the library has never heard of — the Movies section browses a
+     * catalogue rather than a scanned folder, so there is no existing row to
+     * hang a position on.
+     *
+     * Written out rather than left to a destructive fallback, like every
+     * migration here, because the alternative is a grid that empties itself the
+     * first time someone updates the launcher.
+     */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `watch_progress` (
+                    `id` TEXT NOT NULL,
+                    `media_key` TEXT NOT NULL,
+                    `season_number` INTEGER,
+                    `episode_number` INTEGER,
+                    `position_millis` INTEGER NOT NULL,
+                    `duration_millis` INTEGER NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `poster_url` TEXT,
+                    `backdrop_url` TEXT,
+                    `updated_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_watch_progress_updated_at` " +
+                    "ON `watch_progress` (`updated_at`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_watch_progress_media_key` " +
+                    "ON `watch_progress` (`media_key`)",
+            )
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 }

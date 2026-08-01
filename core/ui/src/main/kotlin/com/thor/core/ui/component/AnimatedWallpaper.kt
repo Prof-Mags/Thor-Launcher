@@ -63,35 +63,55 @@ fun AnimatedWallpaperBackground(
     val spec = ThorTheme.spec
     val animate = ThorTheme.materials.animationsEnabled
 
-    val transition = rememberInfiniteTransition(label = "wallpaper")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = if (animate) 1f else 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = wallpaper.periodMillis,
-                easing = LinearEasing,
+    /*
+     * The transition exists only while it has somewhere to go.
+     *
+     * These were created unconditionally and animated from 0f to 0f when motion
+     * was off — which is not the same as not animating. An infinite transition
+     * with a running animation asks for a frame callback forever, so the
+     * launcher never went idle: performance mode and reduce-motion switched off
+     * the *appearance* of movement while leaving the frame loop that drove it,
+     * behind every panel, for as long as the launcher was on screen.
+     *
+     * Composed conditionally instead. Both phases are zero when motion is off,
+     * which is exactly what they evaluated to before, so nothing looks different.
+     */
+    val phase: Float
+    val drift: Float
+    if (animate) {
+        val transition = rememberInfiniteTransition(label = "wallpaper")
+        phase = transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = wallpaper.periodMillis,
+                    easing = LinearEasing,
+                ),
+                repeatMode = if (wallpaper.pingPongs) RepeatMode.Reverse else RepeatMode.Restart,
             ),
-            repeatMode = if (wallpaper.pingPongs) RepeatMode.Reverse else RepeatMode.Restart,
-        ),
-        label = "wallpaperPhase",
-    )
+            label = "wallpaperPhase",
+        ).value
 
-    // A second, slower phase on a co-prime period. One phase makes every layer
-    // return to the same arrangement at the same instant, which reads as a loop;
-    // two make the composition drift for minutes before repeating.
-    val drift by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = if (animate) 1f else 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = (wallpaper.periodMillis * DRIFT_PERIOD_RATIO).toInt(),
-                easing = LinearEasing,
+        // A second, slower phase on a co-prime period. One phase makes every
+        // layer return to the same arrangement at the same instant, which reads
+        // as a loop; two make the composition drift for minutes before repeating.
+        drift = transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = (wallpaper.periodMillis * DRIFT_PERIOD_RATIO).toInt(),
+                    easing = LinearEasing,
+                ),
+                repeatMode = RepeatMode.Reverse,
             ),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "wallpaperDrift",
-    )
+            label = "wallpaperDrift",
+        ).value
+    } else {
+        phase = 0f
+        drift = 0f
+    }
 
     // Cross-faded rather than switched, so moving the cursor between systems in
     // ADAPTIVE mode is a wash of colour rather than a hard cut.

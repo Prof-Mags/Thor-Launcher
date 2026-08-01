@@ -17,21 +17,37 @@ enum class MediaType { MOVIE, SERIES }
 /**
  * A title's identity.
  *
- * TMDb's id plus the type, because those ids are only unique *within* a type —
- * movie 1399 and series 1399 are unrelated. Carrying the pair everywhere removes
- * a whole class of lookup that returns the wrong title and cannot be debugged
- * from the symptom.
+ * **The IMDb id, plus the type.** Not TMDb's, and the difference is the whole
+ * reason this section works without an API key: every stream source THOR can ask
+ * — Stremio addons and Torznab indexers alike — is indexed by IMDb id, and so is
+ * the Stremio catalogue protocol the browse rows come from. Keying identity on
+ * the same thing means a title found in a catalogue can be handed straight to a
+ * source search with nothing in between.
+ *
+ * Keying it on TMDb's id instead meant every title needed a second lookup to
+ * find its IMDb id before it could be searched for at all — a lookup that needs
+ * a credential, that TMDb's list endpoints do not answer, and whose failure
+ * showed up as a title that simply had no sources.
+ *
+ * The type is carried because ids are only unique *within* a type, and TMDb's id
+ * is kept when it is known so the optional enrichment has something to ask about.
  */
 @Serializable
-data class MediaId(val type: MediaType, val tmdbId: Int) {
+data class MediaId(
+    val type: MediaType,
+    /** "tt0133093". */
+    val imdbId: String,
+    /** TMDb's own id, when the title has been matched to it. Never identity. */
+    val tmdbId: Int? = null,
+) {
     /** Stable string form, for database keys and caches. */
-    val key: String get() = "${type.name.lowercase()}:$tmdbId"
+    val key: String get() = "${type.name.lowercase()}:$imdbId"
 
     companion object {
         fun parse(key: String): MediaId? {
             val (type, id) = key.split(':', limit = 2).takeIf { it.size == 2 } ?: return null
             val mediaType = MediaType.entries.firstOrNull { it.name.equals(type, true) } ?: return null
-            return MediaId(mediaType, id.toIntOrNull() ?: return null)
+            return MediaId(mediaType, id.takeIf(String::isNotBlank) ?: return null)
         }
     }
 }
@@ -127,10 +143,19 @@ data class MediaItem(
     val trailerUrl: String? = null,
     /** Empty for films, and for series whose seasons have not been loaded yet. */
     val seasons: List<Season> = emptyList(),
-    /** "tt0133093" — what every stream source is keyed by, not TMDb's id. */
-    val imdbId: String? = null,
 ) {
     val isSeries: Boolean get() = id.type == MediaType.SERIES
+
+    /**
+     * What every stream source is keyed by.
+     *
+     * Read from the identity rather than stored beside it. It used to be a
+     * separate nullable field, which meant a title could be carrying an id its
+     * own identity disagreed with — and when it was null, which it was for every
+     * title that came from a list endpoint rather than a details one, the source
+     * search refused it as unsearchable.
+     */
+    val imdbId: String get() = id.imdbId
 
     /** Seasons a viewer would call seasons, specials last. */
     val orderedSeasons: List<Season>
@@ -156,7 +181,28 @@ data class MediaRow(
     val items: List<MediaItem> = emptyList(),
     /** Landscape stills instead of posters — for continue watching and episodes. */
     val landscape: Boolean = false,
-)
+    /**
+     * Resume metadata aligned by index with [items].
+     *
+     * Most shelves leave this empty. Continue-watching keeps the progress next
+     * to the item it describes so two unfinished episodes of the same series do
+     * not collapse into an indistinguishable pair of [MediaItem]s.
+     */
+    val progress: List<WatchProgress?> = emptyList(),
+) {
+    fun progressAt(index: Int): WatchProgress? = progress.getOrNull(index)
+
+    /** Stable inside a shelf, including the episode represented by a resume card. */
+    fun entryKeyAt(index: Int): String? {
+        val item = items.getOrNull(index) ?: return null
+        val resume = progressAt(index)
+        return buildString {
+            append(item.id.key)
+            resume?.seasonNumber?.let { append(":s").append(it) }
+            resume?.episodeNumber?.let { append(":e").append(it) }
+        }
+    }
+}
 
 /**
  * How far through something the viewer got.

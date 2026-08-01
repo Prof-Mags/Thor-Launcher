@@ -1,5 +1,6 @@
 package com.thor.data.sync
 
+import com.thor.core.model.Platform
 import com.thor.core.common.coroutines.launchSafely
 import com.thor.core.common.dispatchers.ApplicationScope
 import com.thor.core.common.dispatchers.Dispatcher
@@ -140,6 +141,7 @@ class LibrarySyncManager @Inject constructor(
      */
     private suspend fun fileGamesByPlatform() {
         val platforms = platformDao.getAll().map { it.toDomain() }
+        val added = platforms.filter(Platform::isAdded).map(Platform::id).toSet()
 
         val titles = platforms.associate { platform ->
             // The short label: it is a grid cell, and "SNES" fits where "Super
@@ -149,6 +151,17 @@ class LibrarySyncManager @Inject constructor(
         // So a folder created by this scan is already wearing its platform's icon,
         // rather than appearing blank until something else dresses it.
         val icons = platforms.associate { it.id to it.artwork.iconUri }
+
+        /*
+         * Games whose system is no longer added go, before anything is filed.
+         *
+         * Without this the filing below re-creates the folder on every scan out
+         * of games that should not still be there — a deleted system reappearing
+         * on the grid by itself, indefinitely. See [pruneRemovedPlatforms].
+         */
+        libraryRepository.pruneRemovedPlatforms().forEach { platformId ->
+            ThorLog.i(TAG, "Removed $platformId: no longer an added platform")
+        }
 
         val gamesByPlatform = gameDao.getVisible().groupBy(
             keySelector = { it.platformId },
@@ -160,6 +173,11 @@ class LibrarySyncManager @Inject constructor(
             titleFor = { platformId -> titles[platformId] ?: platformId },
             artworkFor = { platformId -> icons[platformId] },
         )
+
+        // Last, because everything above can empty pages: a scan that finds a
+        // system gone leaves behind however many pages its games occupied.
+        val pruned = gridRepository.pruneEmptyPages()
+        if (pruned > 0) ThorLog.i(TAG, "Removed $pruned empty page(s) from the grid")
     }
 
     fun cancelScan() {
@@ -185,8 +203,25 @@ class LibrarySyncManager @Inject constructor(
         // worse than losing their placement.
         appDao.deleteByIds((knownAppIds - scannedAppIds).toList())
 
-        // --- ROMs ---------------------------------------------------------
-        val platforms = platformDao.getAll().map { it.toDomain() }
+        /*
+         * --- ROMs ---------------------------------------------------------
+         *
+         * Only the systems the user has actually added.
+         *
+         * This passed *every* built-in platform, so the extension index matched
+         * `.nes` to the NES whether or not the NES had been added — which meant
+         * removing a system did nothing to scanning. The row was marked
+         * not-added, the Platforms page stopped listing it, and the very next
+         * scan imported all of its games again and filed them into a folder on
+         * the grid. From the front that is a system you deleted coming back
+         * while the settings insist you never had it.
+         *
+         * `isAdded` is the user saying which systems they own. Recognition was
+         * never the thing that should ignore it.
+         */
+        val platforms = platformDao.getAll()
+            .map { it.toDomain() }
+            .filter(Platform::isAdded)
         var gamesFound = 0
 
         if (librarySettings.romDirectoryUris.isNotEmpty()) {

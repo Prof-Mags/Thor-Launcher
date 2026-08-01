@@ -209,6 +209,80 @@ class GridLayoutRepository @Inject constructor(
         gridDao.deleteByEntryId(entryId)
     }
 
+    /**
+     * Clears every game off the grid in one go, leaving apps and folders alone.
+     *
+     * The library itself is untouched — the games stay scanned, stay searchable
+     * and stay inside their platform folders. Only the cells go, which is the
+     * difference between clearing the grid and losing the library, and the reason
+     * this is a placement operation rather than a delete.
+     *
+     * Folders are deliberately spared. A platform folder holds its games by id
+     * rather than by placement, so removing the folder's own cell would strand
+     * every game inside it with no way back to the grid.
+     *
+     * @return how many cells were cleared, so the caller can say so rather than
+     *   leaving the user to guess whether anything happened.
+     */
+    suspend fun clearGamePlacements(): Int = withContext(defaultDispatcher) {
+        val games = gridDao.observeAllPlacements().first().filter { placement ->
+            // `game:<platform>:<title>` — the id form scanned games are given.
+            !placement.isDock && placement.entryId.startsWith(GAME_ID_PREFIX)
+        }
+
+        games.forEach { placement -> gridDao.deleteByEntryId(placement.entryId) }
+
+        // Clearing hundreds of cells is the case that leaves the most pages
+        // behind, so it is the last thing this does rather than something the
+        // next scan gets around to.
+        pruneEmptyPages()
+        games.size
+    }
+
+    /**
+     * Drops empty pages off the end of the grid.
+     *
+     * Pages are created on demand as entries are placed, and nothing ever took
+     * them away again — so a library that once held four hundred games left
+     * behind the dozen pages it had spread across, every one of them blank, and
+     * the only way past them was to keep pressing. Deleting the games is
+     * supposed to leave the grid empty, not leave a grid of emptiness.
+     *
+     * **Only from the end, and never page one.** A blank page in the middle is
+     * as likely to be deliberate — a gap someone left between two groups of
+     * icons — and removing it would renumber everything after it, which moves
+     * arrangements the user made on purpose. Trailing blanks are the ones that
+     * are unambiguously nothing.
+     *
+     * A page carrying a title or a wallpaper is kept whatever else is true of
+     * it: those are things the user set, and an empty page they named is a page
+     * they meant.
+     *
+     * @return how many were removed.
+     */
+    suspend fun pruneEmptyPages(): Int = withContext(defaultDispatcher) {
+        val pages = gridDao.getPages().sortedBy(PageEntity::pageIndex)
+        if (pages.size <= 1) return@withContext 0
+
+        // Folder contents and dock slots do not hold a page open: neither is
+        // drawn on one.
+        val occupied = gridDao.getAllPlacements()
+            .filterNot { it.isDock || it.parentFolderId != null }
+            .mapTo(mutableSetOf(), PlacementEntity::pageIndex)
+
+        val removable = pages
+            .asReversed()
+            .takeWhile { page ->
+                page.pageIndex > 0 &&
+                    page.pageIndex !in occupied &&
+                    page.title.isBlank() &&
+                    page.wallpaperUri.isNullOrBlank()
+            }
+
+        removable.forEach { gridDao.deletePage(it.id) }
+        removable.size
+    }
+
     /** Assigns an entry to a dock slot, evicting whatever held it. */
     suspend fun setDockSlot(entryId: String, slot: Int) = withContext(defaultDispatcher) {
         val current = gridDao.observeDock().first()
@@ -654,4 +728,16 @@ class GridLayoutRepository @Inject constructor(
     }
 
     private fun PlacementEntity.cellIndex(columns: Int): Int = row * columns + column
+
+    private companion object {
+        /**
+         * How a scanned game's id begins: `game:<platform>:<normalised-title>`.
+         *
+         * Matched on the id rather than by joining the games table, because a
+         * placement deliberately carries no foreign key — it can point at an app,
+         * a game, a folder or a shortcut — and the id is the only thing that says
+         * which without a second query per cell.
+         */
+        const val GAME_ID_PREFIX = "game:"
+    }
 }

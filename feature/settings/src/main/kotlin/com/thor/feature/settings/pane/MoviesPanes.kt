@@ -20,11 +20,13 @@ import com.thor.feature.settings.component.TextFieldRow
 /**
  * Where the Movies section gets its content.
  *
- * Three independent things, and the page keeps them visibly separate because
- * they fail independently: without a catalogue key nothing can be browsed,
- * without an indexer nothing can be found, and without a debrid token what is
- * found cannot be played. Collapsing them into "set up streaming" would make a
- * single missing field look like the whole feature being broken.
+ * Two independent things, and the page keeps them visibly separate because they
+ * fail independently: without a source nothing can be found, and without a
+ * debrid token what is found cannot be opened. Collapsing them into "set up
+ * streaming" would make one missing field look like the whole feature being
+ * broken.
+ *
+ * Browsing is on neither list, because it needs nothing at all.
  */
 @Composable
 internal fun MoviesCataloguePage(
@@ -32,22 +34,20 @@ internal fun MoviesCataloguePage(
     focusedRow: Int,
     viewModel: SettingsViewModel,
     debridStatus: String?,
+    indexerStatus: Map<Int, String>,
+    addonStatus: Map<Int, String>,
 ) {
     val media = settings.media
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        TextFieldRow(
-            title = "TMDb API key",
-            subtitle = "Posters, synopses, cast, seasons and episodes. Free from " +
-                "themoviedb.org.",
-            value = media.tmdbApiKey,
-            placeholder = "Required to browse",
-            isSecret = true,
-            focused = focusedRow == 0,
-            onValueChange = { key -> viewModel.updateMedia { it.copy(tmdbApiKey = key) } },
-        )
-        RowDivider()
-
+        /*
+         * The TMDb key row used to be first, and is gone rather than disabled.
+         *
+         * Browsing needs no credential: the catalogue is the Stremio protocol,
+         * keyless, and keyed by the same IMDb ids the source addons use. A field
+         * asking for a key nothing reads is worse than no field — it is the
+         * launcher asking for something and then ignoring the answer.
+         */
         TextFieldRow(
             title = "Real-Debrid token",
             subtitle = "Turns a torrent into an instant stream. Without it, sources " +
@@ -55,7 +55,7 @@ internal fun MoviesCataloguePage(
             value = media.realDebridToken,
             placeholder = "API token",
             isSecret = true,
-            focused = focusedRow == 1,
+            focused = focusedRow == 0,
             onValueChange = { token ->
                 viewModel.updateMedia { it.copy(realDebridToken = token) }
             },
@@ -72,7 +72,7 @@ internal fun MoviesCataloguePage(
         ActionRow(
             title = "Check Real-Debrid",
             subtitle = debridStatus ?: "Confirms the token works and the account is active.",
-            focused = focusedRow == 2,
+            focused = focusedRow == 1,
             trailingLabel = "Check",
             onClick = viewModel::checkDebrid,
         )
@@ -112,24 +112,32 @@ internal fun MoviesCataloguePage(
             )
             RowDivider()
 
+            /*
+             * Testing and removing are separate rows, and were one.
+             *
+             * The single row turned into "Remove" as soon as a name was known,
+             * so an addon that had worked once could never be tested again —
+             * exactly when testing matters, which is when it has stopped
+             * working. Sharing a row also made the destructive action sit where
+             * the harmless one had been.
+             */
             ActionRow(
-                title = if (addon.name.isNotBlank()) addon.name else "Check this addon",
-                subtitle = if (addon.name.isNotBlank()) {
-                    "Answering. Remove it if you no longer want it searched."
-                } else {
-                    "Asks the addon what it is called, which is the only way to " +
-                        "tell a working URL from a mistyped one."
-                },
+                title = "Test this addon",
+                subtitle = addonStatus[index]
+                    ?: "Asks it for a stream it certainly has, which is the only " +
+                    "way to tell a working addon from a URL that merely looks right.",
                 focused = focusedRow == base + 1,
-                trailingLabel = if (addon.name.isNotBlank()) "Remove" else "Check",
-                destructive = addon.name.isNotBlank(),
-                onClick = {
-                    if (addon.name.isNotBlank()) {
-                        viewModel.removeAddon(index)
-                    } else {
-                        viewModel.checkAddon(index)
-                    }
-                },
+                trailingLabel = "Test",
+                onClick = { viewModel.checkAddon(index) },
+            )
+            RowDivider()
+
+            ActionRow(
+                title = "Remove this addon",
+                focused = focusedRow == base + 2,
+                trailingLabel = "Remove",
+                destructive = true,
+                onClick = { viewModel.removeAddon(index) },
             )
             RowDivider()
         }
@@ -186,9 +194,30 @@ internal fun MoviesCataloguePage(
             )
             RowDivider()
 
+            /*
+             * Asked of the indexer, not inferred from the fields.
+             *
+             * The row above this one can only say whether a URL and a key are
+             * present, which is true of a mistyped host, a revoked key and a
+             * Jackett that is not running alike. Each of those shows up much
+             * later as a title with no sources, and nothing on that screen can
+             * say which — so the question is worth asking here, where the answer
+             * is actionable.
+             */
+            ActionRow(
+                title = "Test this indexer",
+                subtitle = indexerStatus[index]
+                    ?: "Asks it directly, which is the only way to tell a working " +
+                    "endpoint from a filled-in one.",
+                focused = focusedRow == base + 3,
+                trailingLabel = "Test",
+                onClick = { viewModel.checkIndexer(index) },
+            )
+            RowDivider()
+
             ActionRow(
                 title = "Remove this indexer",
-                focused = focusedRow == base + 3,
+                focused = focusedRow == base + 4,
                 destructive = true,
                 trailingLabel = "Remove",
                 onClick = { viewModel.removeIndexer(index) },
@@ -341,14 +370,21 @@ internal fun MoviesPlaybackPage(
     }
 }
 
-/** Rows above the addon list: the two keys and the debrid check. */
-internal const val ADDON_FIRST_ROW = 3
+/**
+ * Rows above the addon list: the debrid token and its connection check.
+ *
+ * Was three, when a TMDb API key sat above them. Derived indices like this are
+ * why that row could not simply be deleted — every row below it is placed
+ * relative to this number, and leaving it at three would have left row zero
+ * focusable and pointing at nothing.
+ */
+internal const val ADDON_FIRST_ROW = 2
 
-/** A URL and a check/remove button, per addon. */
-internal const val ROWS_PER_ADDON = 2
+/** A URL, a test button and a remove button, per addon. */
+internal const val ROWS_PER_ADDON = 3
 
-/** Name, URL, key and a remove button, per indexer. */
-internal const val ROWS_PER_INDEXER = 4
+/** Name, URL, key, a test button and a remove button, per indexer. */
+internal const val ROWS_PER_INDEXER = 5
 
 /** Where the indexer list starts, after the addons and their Add button. */
 internal fun indexerFirstRow(media: MediaSettings): Int =
@@ -362,7 +398,12 @@ internal fun indexerFirstRow(media: MediaSettings): Int =
  * that appear to do nothing, with nothing to point at.
  */
 internal fun moviesCatalogueRows(media: MediaSettings): Int =
-    indexerFirstRow(media) + media.indexers.size * ROWS_PER_INDEXER + 2
+    // The "Add a torrent indexer" button, and nothing after it. This said `+ 2`,
+    // counting the summary line below it — but that is an `InfoRow`, which takes
+    // no `focused` parameter and so can neither highlight nor be pressed. The
+    // cursor moved onto it, the haptic fired, and the screen did not change:
+    // a row that exists to the controller and not to the eye.
+    indexerFirstRow(media) + media.indexers.size * ROWS_PER_INDEXER + 1
 
 internal const val MOVIES_PLAYBACK_ROWS = 9
 

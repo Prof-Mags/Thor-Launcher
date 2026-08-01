@@ -80,6 +80,8 @@ data class GameEntry(
     /** Emulator override; falls back to the platform default when null. */
     val emulatorPackage: String? = null,
     val tags: Set<String> = emptySet(),
+    /** The last library scan could no longer reach this ROM. */
+    val isMissing: Boolean = false,
     override val isFavorite: Boolean = false,
     override val isHidden: Boolean = false,
 ) : GridEntry {

@@ -259,10 +259,192 @@ object BuiltInPlatforms {
             screenscraper = "1", igdb = "29",
             about = "Sega's 16-bit answer to Nintendo, sold on attitude and arcade conversions. Blast processing was marketing; the Yamaha sound chip and a genuinely fast library were not."
         ),
+        // ---- Sega, before and around the Mega Drive ------------------------
+        platform(
+            id = "mastersystem", name = "Sega Master System", short = "SMS",
+            maker = "Sega", year = 1985, argb = 0xFF1565C0,
+            ext = setOf("sms", "bin"),
+            screenscraper = "2", igdb = "64",
+            about = "Sega's 8-bit machine, outsold at home by the NES and enormously popular in Brazil and Europe. Its library leans on arcade ports and is the reason several Sonic-adjacent games exist at all."
+        ),
+        platform(
+            id = "gamegear", name = "Sega Game Gear", short = "GG",
+            maker = "Sega", year = 1990, argb = 0xFF283593,
+            ext = setOf("gg", "bin"),
+            screenscraper = "21", igdb = "35",
+            about = "A backlit colour handheld built on Master System hardware, which is why so much of its library is a port. Six AA batteries bought roughly three hours."
+        ),
+        platform(
+            id = "segacd", name = "Sega CD / Mega CD", short = "SCD",
+            maker = "Sega", year = 1991, argb = 0xFF0277BD,
+            ext = setOf("cue", "chd", "iso", "bin"),
+            screenscraper = "20", igdb = "78",
+            about = "A CD add-on for the Mega Drive, remembered for full-motion video and for costing as much as the console it sat under. The good games are the ones that used the disc for audio rather than for footage."
+        ),
+        platform(
+            id = "sega32x", name = "Sega 32X", short = "32X",
+            maker = "Sega", year = 1994, argb = 0xFF01579B,
+            ext = setOf("32x", "bin"),
+            screenscraper = "19", igdb = "30",
+            about = "A stopgap 32-bit add-on released a year before the Saturn, which is exactly how it was received. Around forty games exist and a handful are genuinely good."
+        ),
+        platform(
+            id = "sg1000", name = "Sega SG-1000", short = "SG",
+            maker = "Sega", year = 1983, argb = 0xFF37474F,
+            ext = setOf("sg", "bin"),
+            screenscraper = "109", igdb = "84",
+            about = "Sega's first console, released in Japan on the same day as the Famicom and comprehensively beaten by it. Of interest mainly as the ancestor of the Master System."
+        ),
+
+        // ---- NEC ------------------------------------------------------------
+        platform(
+            id = "pcengine", name = "PC Engine / TurboGrafx-16", short = "PCE",
+            maker = "NEC", year = 1987, argb = 0xFFE64A19,
+            ext = setOf("pce", "sgx", "bin"),
+            screenscraper = "31", igdb = "86",
+            about = "An 8-bit CPU with a 16-bit graphics chip, tiny by the standards of its rivals, and dominant in Japan for years. Its shooters are the reason people still import the hardware."
+        ),
+        platform(
+            id = "pcenginecd", name = "PC Engine CD", short = "PCE-CD",
+            maker = "NEC", year = 1988, argb = 0xFFBF360C,
+            ext = setOf("cue", "chd", "iso"),
+            screenscraper = "114", igdb = "150",
+            about = "The first CD add-on for any console, two years ahead of everyone else. Needs a system card image as well as the game."
+        ),
+
+        // ---- SNK ------------------------------------------------------------
+        platform(
+            id = "neogeo", name = "Neo Geo", short = "NG",
+            maker = "SNK", year = 1990, argb = 0xFFB71C1C,
+            ext = setOf("zip", "7z", "neo"),
+            screenscraper = "142", igdb = "80",
+            about = "Arcade hardware sold for the home at arcade prices — a single cartridge cost more than some consoles. The fighting and run-and-gun libraries are why the hardware is remembered rather than the price."
+        ),
+        platform(
+            id = "ngpc", name = "Neo Geo Pocket Color", short = "NGPC",
+            maker = "SNK", year = 1999, argb = 0xFFC62828,
+            ext = setOf("ngp", "ngc", "npc"),
+            screenscraper = "82", igdb = "119",
+            about = "A handheld with a genuinely excellent microswitched stick, released into a market the Game Boy Color already owned. Its fighting games are far better than a system this obscure has any right to."
+        ),
+
+        // ---- Atari ----------------------------------------------------------
+        platform(
+            id = "atari2600", name = "Atari 2600", short = "2600",
+            maker = "Atari", year = 1977, argb = 0xFF6D4C41,
+            ext = setOf("a26", "bin"),
+            screenscraper = "26", igdb = "59",
+            about = "The console that established the idea of swapping cartridges, and the one whose flood of unsold stock helped crash the industry in 1983. 128 bytes of RAM."
+        ),
+        platform(
+            id = "atari7800", name = "Atari 7800", short = "7800",
+            maker = "Atari", year = 1986, argb = 0xFF5D4037,
+            ext = setOf("a78", "bin"),
+            screenscraper = "41", igdb = "60",
+            about = "Backwards compatible with the 2600 and released two years late, into a market the NES had already taken. Strong arcade conversions, thin everywhere else."
+        ),
+        platform(
+            id = "lynx", name = "Atari Lynx", short = "Lynx",
+            maker = "Atari", year = 1989, argb = 0xFFF9A825,
+            ext = setOf("lnx", "o"),
+            screenscraper = "28", igdb = "61",
+            about = "The first colour backlit handheld, and the first that could be held either way up for left-handed players. Far ahead of the Game Boy technically and nowhere near it commercially."
+        ),
+        platform(
+            id = "jaguar", name = "Atari Jaguar", short = "Jaguar",
+            maker = "Atari", year = 1993, argb = 0xFF424242,
+            ext = setOf("j64", "jag", "rom"),
+            screenscraper = "27", igdb = "62",
+            about = "Marketed as 64-bit on arithmetic nobody has ever satisfactorily explained, and Atari's last console. Its small library contains two or three things worth the trouble."
+        ),
+
+        // ---- Home computers --------------------------------------------------
+        platform(
+            id = "c64", name = "Commodore 64", short = "C64",
+            maker = "Commodore", year = 1982, argb = 0xFF6A1B9A,
+            ext = setOf("d64", "t64", "prg", "crt", "tap"),
+            screenscraper = "66", igdb = "15",
+            about = "The best-selling computer model ever made, and a games machine by accident of price. The SID chip is the reason its music is still covered."
+        ),
+        platform(
+            id = "amiga", name = "Commodore Amiga", short = "Amiga",
+            maker = "Commodore", year = 1985, argb = 0xFF4527A0,
+            ext = setOf("adf", "adz", "dms", "ipf", "lha"),
+            screenscraper = "64", igdb = "16",
+            about = "Custom chips for graphics and sound years before anyone else bothered, which is why European development moved there wholesale. Needs a Kickstart ROM as well as the disks."
+        ),
+        platform(
+            id = "zxspectrum", name = "ZX Spectrum", short = "Speccy",
+            maker = "Sinclair", year = 1982, argb = 0xFFAD1457,
+            ext = setOf("z80", "tap", "tzx", "sna", "dsk"),
+            screenscraper = "76", igdb = "26",
+            about = "Cheap, rubber-keyed and everywhere in Britain, with a colour system that fought itself at every attribute boundary. An entire industry grew out of bedrooms because of it."
+        ),
+        platform(
+            id = "amstradcpc", name = "Amstrad CPC", short = "CPC",
+            maker = "Amstrad", year = 1984, argb = 0xFF00695C,
+            ext = setOf("dsk", "cdt", "sna"),
+            screenscraper = "65", igdb = "25",
+            about = "Sold as a complete system with its own monitor, which made it the sensible choice in French and Spanish households. Shares much of its library with the Spectrum, usually in better colour."
+        ),
+        platform(
+            id = "msx", name = "MSX", short = "MSX",
+            maker = "ASCII / Microsoft", year = 1983, argb = 0xFF00838F,
+            ext = setOf("rom", "mx1", "mx2", "dsk", "cas"),
+            screenscraper = "113", igdb = "27",
+            about = "A standard rather than a machine, built by a dozen manufacturers to one specification. Metal Gear and Castlevania both started here."
+        ),
+
+        // ---- The rest --------------------------------------------------------
+        platform(
+            id = "colecovision", name = "ColecoVision", short = "CV",
+            maker = "Coleco", year = 1982, argb = 0xFF37474F,
+            ext = setOf("col", "rom", "bin"),
+            screenscraper = "48", igdb = "68",
+            about = "Sold on the strength of its arcade conversions, which were closer to the originals than anything else at home. Killed along with everything else in 1983."
+        ),
+        platform(
+            id = "intellivision", name = "Intellivision", short = "INTV",
+            maker = "Mattel", year = 1979, argb = 0xFF4E342E,
+            ext = setOf("int", "bin", "rom"),
+            screenscraper = "115", igdb = "67",
+            about = "The 2600's serious rival, with a numeric keypad controller and a genuine claim to better sports games. Its adverts spent their entire budget insulting Atari."
+        ),
+        platform(
+            id = "wonderswan", name = "WonderSwan Color", short = "WS",
+            maker = "Bandai", year = 2000, argb = 0xFF00897B,
+            ext = setOf("ws", "wsc"),
+            screenscraper = "45", igdb = "57",
+            about = "Designed by the creator of the Game Boy after he left Nintendo, sold only in Japan, and held either way up depending on the game. Its Final Fantasy remakes are the usual reason to visit."
+        ),
+        platform(
+            id = "3do", name = "3DO", short = "3DO",
+            maker = "Panasonic", year = 1993, argb = 0xFF37474F,
+            ext = setOf("cue", "chd", "iso"),
+            screenscraper = "29", igdb = "50",
+            about = "A standard licensed to any manufacturer that wanted it, launched at 699 dollars. The price is the whole story, though the library is stranger and better than its reputation."
+        ),
+        platform(
+            id = "dos", name = "MS-DOS", short = "DOS",
+            maker = "Microsoft", year = 1981, argb = 0xFF455A64,
+            ext = setOf("exe", "com", "bat", "conf"),
+            screenscraper = "135", igdb = "13",
+            about = "Two decades of PC gaming before Windows took over, run here through DOSBox. Configuration is part of the experience in a way no console platform is."
+        ),
+        platform(
+            id = "scummvm", name = "ScummVM", short = "SCUMM",
+            maker = "Various", year = null, argb = 0xFF00838F,
+            ext = setOf("scummvm", "svm"),
+            screenscraper = "123", igdb = "13",
+            about = "Not hardware — an engine reimplementation that runs point-and-click adventures without the machines they were written for. Games are added as folders rather than as single files."
+        ),
+
         platform(
             id = ID_PC, name = "PC", short = "PC",
             maker = "Various", year = null, argb = 0xFF546E7A,
-            ext = setOf("exe", "lnk", "sh"),
+            // `desktop` is Winlator's own shortcut file, which is what it
+            // launches by — see the Winlator entry in EmulatorRegistry.
+            ext = setOf("exe", "lnk", "sh", "desktop"),
             screenscraper = "135", igdb = "6",
             about = "Not a console at all, and the only platform here nobody designed. Everything from storefront launchers to loose executables, held together by whatever the user points THOR at."
         ),

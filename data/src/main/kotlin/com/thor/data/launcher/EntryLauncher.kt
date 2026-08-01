@@ -1,11 +1,12 @@
 ﻿package com.thor.data.launcher
 
-import android.app.ActivityManager
 import android.app.ActivityOptions
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.hardware.display.DisplayManager
@@ -21,7 +22,11 @@ import com.thor.core.common.log.ThorLog
 import com.thor.core.model.AppEntry
 import com.thor.core.model.GameEntry
 import com.thor.data.scanner.EmulatorRegistry
+import com.thor.data.scanner.RomLaunchContract
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,6 +34,8 @@ import javax.inject.Singleton
 sealed interface LaunchFailure {
     data class EmulatorMissing(val platformId: String) : LaunchFailure
     data class EmulatorNotInstalled(val packageName: String) : LaunchFailure
+    data object RomUnavailable : LaunchFailure
+    data class UnsupportedEmulatorLaunch(val message: String) : LaunchFailure
     data class NoHandler(val detail: String) : LaunchFailure
     data class Unknown(val cause: Throwable) : LaunchFailure
 }
@@ -143,18 +150,18 @@ class EntryLauncher @Inject constructor(
             launcherApps.startMainActivity(component, user, null, options)
             true
         } catch (e: ActivityNotFoundException) {
-            ThorLog.w("Launcher", "No activity $component", e)
+            ThorLog.w(TAG, "No activity $component", e)
             failure = LaunchFailure.NoHandler(app.packageName)
             false
         } catch (e: SecurityException) {
-            ThorLog.w("Launcher", "Not permitted to launch $component", e)
+            ThorLog.w(TAG, "Not permitted to launch $component", e)
             failure = LaunchFailure.Unknown(e)
             false
         } catch (e: IllegalStateException) {
             // Some ROMs report a refused display placement this way rather than
             // as a SecurityException. Uncaught it escaped the whole launch path
             // and left the panel handed over to an app that never started.
-            ThorLog.w("Launcher", "Refused to start $component", e)
+            ThorLog.w(TAG, "Refused to start $component", e)
             failure = LaunchFailure.Unknown(e)
             false
         }
@@ -220,19 +227,13 @@ class EntryLauncher @Inject constructor(
                 .addCategory(Intent.CATEGORY_LAUNCHER)
                 .setComponent(component)
 
-            val direct = startIntent(intent, target)
+            // This falls back off the pinned display itself, so there is no
+            // second call to make here.
+            val direct = startFirstThatOpens(target, listOf(intent), app.packageName)
             if (direct is LaunchResult.Success) {
-                ThorLog.i("Launcher", "${app.packageName} started by intent")
-                return direct
+                ThorLog.i(TAG, "${app.packageName} started by intent")
             }
-
-            // Once more with no display preference, in case that was the refusal.
-            if (options != null) {
-                val anywhere = startIntent(intent, LaunchTarget.DEFAULT)
-                if (anywhere is LaunchResult.Success) {
-                    return LaunchResult.Success(onRequestedTarget = false)
-                }
-            }
+            return direct
         }
 
         return LaunchResult.Failed(failure ?: LaunchFailure.NoHandler(app.packageName))
@@ -257,7 +258,7 @@ class EntryLauncher @Inject constructor(
      * @param contentUriOverride launches a specific alternate version instead of
      *   the primary file
      */
-    fun launchGame(
+    suspend fun launchGame(
         game: GameEntry,
         platformDefaultEmulator: String?,
         contentUriOverride: String? = null,
@@ -274,61 +275,188 @@ class EntryLauncher @Inject constructor(
 
         val uri = (contentUriOverride ?: game.contentUri).toUri()
         val spec = EmulatorRegistry.specFor(emulatorPackage)
+        if ((contentUriOverride == null && game.isMissing) || !canReadRom(uri)) {
+            ThorLog.w(TAG, "ROM is unavailable: $uri")
+            return LaunchResult.Failed(LaunchFailure.RomUnavailable)
+        }
 
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, MIME_ANY)
+        val contract = spec?.launchContract ?: RomLaunchContract.ContentUriView
+        if (contract is RomLaunchContract.Unsupported) {
+            return LaunchResult.Failed(LaunchFailure.UnsupportedEmulatorLaunch(contract.reason))
+        }
+        val filePath = when (contract) {
+            is RomLaunchContract.PathExtra,
+            RomLaunchContract.RetroArch,
+            -> uri.toFilePathOrNull()
+                ?: return LaunchResult.Failed(
+                    LaunchFailure.UnsupportedEmulatorLaunch(
+                        "This emulator needs a shared-storage ROM path. Re-add the ROM folder.",
+                    ),
+                )
+
+            else -> null
+        }
+
+        fun romIntent(withComponent: Boolean) = Intent(
+            if (contract == RomLaunchContract.RetroArch) Intent.ACTION_MAIN else Intent.ACTION_VIEW,
+        ).apply {
             setPackage(emulatorPackage)
-            spec?.activityName?.let { setClassName(emulatorPackage, it) }
+            if (withComponent) spec?.activityName?.let { setClassName(emulatorPackage, it) }
 
-            // Emulators that predate scoped storage want a plain path in an
-            // extra rather than a content URI in the intent data.
-            spec?.pathExtraKey?.let { key ->
-                putExtra(key, uri.toFilePathOrString())
+            when (contract) {
+                RomLaunchContract.ContentUriView -> {
+                    setDataAndType(uri, MIME_ANY)
+                    clipData = ClipData.newRawUri("ROM", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+
+                is RomLaunchContract.PathExtra -> {
+                    type = MIME_ANY
+                    putExtra(contract.key, filePath)
+                }
+
+                RomLaunchContract.RetroArch -> {
+                    putExtra(RETROARCH_ROM_EXTRA, filePath)
+                }
+
+                is RomLaunchContract.Unsupported -> error("Unsupported contract was rejected above")
             }
 
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-            )
+            /*
+             * Read only, because read is all THOR has to give.
+             *
+             * This asked to pass on write access as well, and that single flag is
+             * why no game would start on any screen. A grant is not a request:
+             * `startActivity` checks that the caller actually holds every
+             * permission it is handing on, and throws `SecurityException` before
+             * it has looked at the intent's target — let alone at which display
+             * was asked for. THOR takes its ROM directories with
+             * `FLAG_GRANT_READ_URI_PERMISSION` alone (see the storage pickers),
+             * so the write it was offering was never its to offer.
+             *
+             * The failure was invisible in the worst way. It presents as
+             * "Android would not let THOR open that app on this screen", which
+             * is a true sentence about the wrong thing entirely, and it survived
+             * being retried on every display because every retry carried the same
+             * flag. Applications were unaffected throughout — their intents carry
+             * no URI — which is what made the grid look display-related when it
+             * was not.
+             *
+             * Emulators that want to write save data beside the ROM cannot be
+             * given that from here regardless; they ask for their own folder.
+             */
+        }
+
+        val intent = romIntent(withComponent = true)
+        val reuseRisk = target == LaunchTarget.SECOND_SCREEN && (
+            spec?.mayReuseExistingTask == true || activityMayReuseExistingTask(intent)
+        )
+        val launchTarget = if (reuseRisk) LaunchTarget.MAIN_SCREEN else target
+        if (reuseRisk) {
+            ThorLog.i(TAG, "$emulatorPackage can reuse an existing task; launching on main screen")
         }
 
         // The second panel goes through THOR's activity there for the same reason
         // an app does; see the note in [launchApp].
-        if (target == LaunchTarget.SECOND_SCREEN && secondaryHomeHost.start(intent)) {
+        if (launchTarget == LaunchTarget.SECOND_SCREEN && secondaryHomeHost.start(intent)) {
             return LaunchResult.Success()
         }
 
-        return try {
-            context.startActivity(intent, optionsFor(target))
-            LaunchResult.Success()
-        } catch (e: ActivityNotFoundException) {
-            // An explicit component can be wrong if the emulator was updated and
-            // renamed its activity; retry letting the system resolve it.
-            ThorLog.w("Launcher", "Explicit component failed for $emulatorPackage; retrying", e)
-            retryWithoutComponent(uri, emulatorPackage, target)
-        } catch (e: SecurityException) {
-            LaunchResult.Failed(LaunchFailure.Unknown(e))
+        /*
+         * Games get the same treatment applications got, and for the same reason.
+         *
+         * This used to be one `startActivity` with the display pinned, and the two
+         * ways it fails were handled unequally: a missing component was retried
+         * without one, and a refused *display* was reported as a failure and
+         * nothing else. On this hardware that refusal is the ordinary case rather
+         * than the exceptional one — `setLaunchDisplayId` onto a built-in second
+         * panel is not something an unprivileged app is granted, and the route
+         * that does work needs THOR to have an activity on that panel already. So
+         * pressing A on a game on the grid's own screen answered "Android would
+         * not let THOR open that app on this screen" for a game that runs
+         * perfectly well the moment the pin is dropped.
+         *
+         * An emulator opening on the near panel is a worse outcome than opening
+         * on the far one, and a far better one than not opening at all.
+         */
+        val candidates = listOfNotNull(
+            intent,
+            romIntent(withComponent = false).takeIf { spec?.activityName != null },
+        )
+        val result = startFirstThatOpens(launchTarget, candidates, emulatorPackage)
+        return if (reuseRisk && result is LaunchResult.Success) {
+            result.copy(onRequestedTarget = false)
+        } else {
+            result
         }
     }
 
-    private fun retryWithoutComponent(
-        uri: Uri,
-        emulatorPackage: String,
+    /**
+     * Starts the first of [candidates] that opens, on [target]'s panel if it can.
+     *
+     * Two axes, tried in that order of preference: which way of naming the
+     * activity works, and whether the requested panel will take it. Every caller
+     * needs both, and each of them used to implement some part of it — which is
+     * how a refused display placement came to be a fatal error for games and a
+     * recoverable one for applications.
+     *
+     * @param handlerName what to name in the failure when nothing opened
+     */
+    private fun startFirstThatOpens(
         target: LaunchTarget,
-    ): LaunchResult = try {
-        val fallback = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, MIME_ANY)
-            setPackage(emulatorPackage)
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
+        candidates: List<Intent>,
+        handlerName: String,
+    ): LaunchResult {
+        val options = optionsFor(target)
+        var failure: LaunchFailure? = null
+
+        for (intent in candidates) {
+            val error = startActivityOrNull(intent, options) ?: return LaunchResult.Success()
+            failure = error
         }
-        context.startActivity(fallback, optionsFor(target))
-        LaunchResult.Success()
-    } catch (e: ActivityNotFoundException) {
-        LaunchResult.Failed(LaunchFailure.NoHandler(emulatorPackage))
+
+        /*
+         * Then anywhere the system will have it.
+         *
+         * Only worth doing when a panel was actually asked for — with no options
+         * this is the same call a second time — and reported as *not* on the
+         * requested target, because the caller may have stood a panel down for an
+         * app that is now arriving somewhere else entirely.
+         */
+        if (options != null) {
+            for (intent in candidates) {
+                if (startActivityOrNull(intent, null) == null) {
+                    ThorLog.i(TAG, "$handlerName refused the target panel; opened on the default one")
+                    return LaunchResult.Success(onRequestedTarget = false)
+                }
+            }
+        }
+
+        return LaunchResult.Failed(failure ?: LaunchFailure.NoHandler(handlerName))
     }
+
+    /** Starts [intent], returning why it did not start, or null when it did. */
+    private fun startActivityOrNull(intent: Intent, options: Bundle?): LaunchFailure? = try {
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), options)
+        null
+    } catch (e: ActivityNotFoundException) {
+        ThorLog.w(TAG, "Nothing handles ${intent.describe()}", e)
+        LaunchFailure.NoHandler(intent.`package` ?: intent.action ?: "unknown")
+    } catch (e: SecurityException) {
+        // Some ROMs guard their own settings activities, and every ROM guards a
+        // display it will not place a third-party activity on. Both are refusals
+        // to report and recover from, not crashes.
+        ThorLog.w(TAG, "Not permitted to start ${intent.describe()}", e)
+        LaunchFailure.Unknown(e)
+    } catch (e: IllegalStateException) {
+        // The other way a refused display placement arrives. Uncaught it escaped
+        // the whole launch path and left a panel handed to an app that never came.
+        ThorLog.w(TAG, "Refused to start ${intent.describe()}", e)
+        LaunchFailure.Unknown(e)
+    }
+
+    private fun Intent.describe(): String =
+        component?.flattenToShortString() ?: `package` ?: action ?: "unknown"
 
     /**
      * Builds the launch options that pin an activity to a display.
@@ -348,38 +476,6 @@ class EntryLauncher @Inject constructor(
         return ActivityOptions.makeBasic()
             .setLaunchDisplayId(displayId)
             .toBundle()
-    }
-
-    /**
-     * Whether Android will accept a launch onto [target]'s display at all.
-     *
-     * Asked rather than discovered by exception. An app may place an activity on
-     * a secondary display only when that display is public, or when it already
-     * has a window there — so the answer depends on what THOR happens to have on
-     * the panel at that moment, and it changes as the launcher hands the panel
-     * over. Asking first turns a refusal into a decision the launcher can act on,
-     * instead of a `SecurityException` surfaced to someone who pressed A.
-     *
-     * A false answer is not a failure; it means "open it on the near panel".
-     */
-    fun canLaunchOn(target: LaunchTarget): Boolean {
-        val displayId = when (target) {
-            LaunchTarget.DEFAULT -> return true
-            LaunchTarget.MAIN_SCREEN -> Display.DEFAULT_DISPLAY
-            LaunchTarget.SECOND_SCREEN -> secondaryDisplayId() ?: return false
-        }
-        if (displayId == Display.DEFAULT_DISPLAY) return true
-
-        val activityManager = context.getSystemService(ActivityManager::class.java)
-            ?: return true
-
-        return runCatching {
-            activityManager.isActivityStartAllowedOnDisplay(
-                context,
-                displayId,
-                Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),
-            )
-        }.getOrDefault(true)
     }
 
     /**
@@ -404,6 +500,30 @@ class EntryLauncher @Inject constructor(
 
     /** True when a second panel is attached and can host an activity. */
     fun hasSecondaryDisplay(): Boolean = secondaryDisplayId() != null
+
+    /**
+     * Whether a launch onto the second panel can be started from THOR's own
+     * activity there rather than pinned to the display.
+     *
+     * The distinction decides *ordering*, which is why the caller needs it. The
+     * direct route's claim on that display is `SecondaryHomeActivity`, which is
+     * unaffected by the presentation coming down — so the panel can be handed
+     * over before the app starts, and the app arrives on top of an empty display
+     * rather than underneath a window that has not gone yet. A pinned launch has
+     * no such claim: the presentation is the claim, and taking it away first is
+     * what gets the launch refused.
+     */
+    fun canStartOnSecondPanelDirectly(): Boolean = secondaryHomeHost.isAvailable
+
+    /**
+     * Waits for THOR's activity on the second panel to exist.
+     *
+     * Meaningful only just after the presentation has stood down, which is what
+     * uncovers that activity and has the system recreate it if it had been
+     * reclaimed. See [SecondaryHomeHost.awaitAvailable].
+     */
+    suspend fun awaitSecondPanelHost(timeoutMs: Long): Boolean =
+        secondaryHomeHost.awaitAvailable(timeoutMs)
 
     /**
      * Opens the system's application details page.
@@ -435,24 +555,21 @@ class EntryLauncher @Inject constructor(
         Intent(Intent.ACTION_DELETE, Uri.fromParts("package", packageName, null)),
     )
 
-    /** Starts an arbitrary intent, used by launcher actions and shortcuts. */
+    /**
+     * Starts an arbitrary intent, used by launcher actions and shortcuts.
+     *
+     * Falls back off the requested panel like every other launch: a settings
+     * screen that opens on the near panel is still a settings screen, and the
+     * refusal is not something the person who pressed the tile can act on.
+     */
     fun startIntent(
         intent: Intent,
         target: LaunchTarget = LaunchTarget.DEFAULT,
-    ): LaunchResult = try {
-        context.startActivity(
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            optionsFor(target),
-        )
-        LaunchResult.Success()
-    } catch (e: ActivityNotFoundException) {
-        LaunchResult.Failed(LaunchFailure.NoHandler(intent.action ?: "unknown"))
-    } catch (e: SecurityException) {
-        // Some ROMs guard their own settings activities; that is a refusal to
-        // report, not a crash.
-        ThorLog.w("Launcher", "Not permitted to start ${intent.action}", e)
-        LaunchResult.Failed(LaunchFailure.Unknown(e))
-    }
+    ): LaunchResult = startFirstThatOpens(
+        target = target,
+        candidates = listOf(intent),
+        handlerName = intent.action ?: "unknown",
+    )
 
     /**
      * Opens a system settings surface.
@@ -490,21 +607,50 @@ class EntryLauncher @Inject constructor(
         installedEmulatorsFor(platformId).firstOrNull()
 
     /**
-     * Best-effort conversion of a document URI to a filesystem path.
-     *
-     * Emulators requiring a real path can only open ROMs on primary shared
-     * storage; when the URI does not decode to such a path the original string
-     * is passed through so the emulator can report the problem itself rather
-     * than being handed something silently wrong.
+     * A single-task/single-instance activity can receive a new intent in an
+     * existing task on another display. Its start call succeeds, but it has not
+     * taken the requested panel, so that panel must stay owned by THOR.
      */
-    private fun Uri.toFilePathOrString(): String {
-        if (scheme == "file") return path ?: toString()
+    private fun activityMayReuseExistingTask(intent: Intent): Boolean {
+        val info = runCatching {
+            intent.component?.let { packageManager.getActivityInfo(it, 0) }
+                ?: packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo
+        }.getOrNull() ?: return false
+
+        return info.launchMode == ActivityInfo.LAUNCH_SINGLE_TASK ||
+            info.launchMode == ActivityInfo.LAUNCH_SINGLE_INSTANCE ||
+            info.launchMode == LAUNCH_SINGLE_INSTANCE_PER_TASK
+    }
+
+    /** Check the exact persisted ROM URI before handing the panel to an emulator. */
+    private suspend fun canReadRom(uri: Uri): Boolean = withContext(Dispatchers.IO) {
+        when (uri.scheme?.lowercase()) {
+            "content" -> runCatching {
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { true } == true
+            }.getOrDefault(false)
+
+            "file" -> uri.path?.let(::File)?.canRead() == true
+            null -> File(uri.path ?: uri.toString()).canRead()
+            else -> false
+        }
+    }
+
+    /**
+     * Converts only document URIs that have a real shared-storage path.
+     *
+     * Passing a content URI as a fake raw path makes a path-only emulator accept
+     * the activity launch yet ignore the ROM. Returning null lets the launcher
+     * keep its grid alive and show a useful fix instead.
+     */
+    private fun Uri.toFilePathOrNull(): String? {
+        if (scheme == "file") return path?.takeIf(String::isNotBlank)
+        if (scheme == null) return path?.takeIf(String::isNotBlank)
         val documentId = runCatching {
             android.provider.DocumentsContract.getDocumentId(this)
-        }.getOrNull() ?: return toString()
+        }.getOrNull() ?: return null
 
         val parts = documentId.split(':', limit = 2)
-        if (parts.size != 2) return toString()
+        if (parts.size != 2) return null
         val (volume, relativePath) = parts
         return if (volume.equals("primary", ignoreCase = true)) {
             "${android.os.Environment.getExternalStorageDirectory()}/$relativePath"
@@ -514,10 +660,19 @@ class EntryLauncher @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "Launcher"
+
         /**
          * ROMs have no registered MIME types, and emulators match on a wildcard
          * rather than on any specific type.
          */
         const val MIME_ANY = "*/*"
+
+        /** RetroArch's public Android activity reads the ROM from this extra. */
+        const val RETROARCH_ROM_EXTRA = "ROM"
+
+        // ActivityInfo's singleInstancePerTask mode is API-gated in older Android
+        // stubs; its stable framework value is 4.
+        const val LAUNCH_SINGLE_INSTANCE_PER_TASK = 4
     }
 }

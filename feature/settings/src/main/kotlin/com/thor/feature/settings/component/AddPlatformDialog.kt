@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,11 +16,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,10 +28,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.thor.core.common.log.ThorLog
 import com.thor.core.designsystem.component.GlassSurface
+import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.model.Platform
 
 /** The configuration collected when a platform is added. */
@@ -57,6 +58,7 @@ data class PlatformSetup(
 fun AddPlatformDialog(
     platform: Platform,
     installedEmulators: List<Pair<String, String>>,
+    focusedRow: Int = 0,
     onConfirm: (PlatformSetup) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -73,6 +75,8 @@ fun AddPlatformDialog(
         mutableStateOf(installedEmulators.singleOrNull()?.first)
     }
     var scanSubfolders by remember { mutableStateOf(true) }
+    val cancelRow = if (installedEmulators.isEmpty()) 2 else 3
+    val confirmRow = cancelRow + 1
 
     val directoryPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -98,7 +102,7 @@ fun AddPlatformDialog(
         contentAlignment = Alignment.Center,
     ) {
         GlassSurface(
-            shape = RoundedCornerShape(dimens.cornerRadius),
+            shape = ThorTheme.shapes.large,
             // Highest surface: this sits over the settings pane, which is itself
             // already an elevated panel.
             color = ThorTheme.colors.surfaceHighest,
@@ -109,19 +113,40 @@ fun AddPlatformDialog(
             Column(modifier = Modifier.padding(dimens.spacingLarge)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+                    horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(Color(platform.accentArgb)),
-                    )
-                    Text(
-                        text = platform.name,
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = colors.onSurface,
-                    )
+                            .size(48.dp)
+                            .clip(ThorTheme.shapes.small)
+                            .background(Color(platform.accentArgb).copy(alpha = 0.18f))
+                            .border(
+                                1.dp,
+                                Color(platform.accentArgb).copy(alpha = 0.55f),
+                                ThorTheme.shapes.small,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = platform.name.take(2).uppercase(),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color(platform.accentArgb),
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "NEW PLATFORM",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.cursor,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = platform.name,
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = colors.onSurface,
+                        )
+                    }
                 }
                 Text(
                     text = "Set up where the games are and what runs them.",
@@ -135,6 +160,7 @@ fun AddPlatformDialog(
                     subtitle = romUri?.let { romName }
                         ?: "Not set — no games will be found",
                     trailingLabel = if (romUri == null) "Choose" else "Change",
+                    focused = focusedRow == 0,
                     onClick = { directoryPicker.launch(null) },
                 )
                 RowDivider()
@@ -143,6 +169,7 @@ fun AddPlatformDialog(
                     title = "Include subfolders",
                     subtitle = "Search folders inside the one chosen above",
                     checked = scanSubfolders,
+                    focused = focusedRow == 1,
                     onCheckedChange = { scanSubfolders = it },
                 )
                 RowDivider()
@@ -153,6 +180,7 @@ fun AddPlatformDialog(
                         value = "None installed",
                     )
                 } else {
+                    val emulatorOptions = listOf("") + installedEmulators.map { it.first }
                     ChoiceRow(
                         title = "Emulator",
                         subtitle = if (emulator == null) {
@@ -160,13 +188,18 @@ fun AddPlatformDialog(
                         } else {
                             null
                         },
-                        options = installedEmulators.map { it.first },
-                        selected = emulator ?: installedEmulators.first().first,
+                        options = emulatorOptions,
+                        selected = emulator.orEmpty(),
+                        focused = focusedRow == 2,
                         label = { packageName ->
-                            installedEmulators.firstOrNull { it.first == packageName }?.second
-                                ?: packageName
+                            if (packageName.isEmpty()) {
+                                "Not set"
+                            } else {
+                                installedEmulators.firstOrNull { it.first == packageName }?.second
+                                    ?: packageName
+                            }
                         },
-                        onSelected = { emulator = it },
+                        onSelected = { packageName -> emulator = packageName.ifEmpty { null } },
                     )
                 }
 
@@ -174,12 +207,18 @@ fun AddPlatformDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = dimens.spacing),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cancel", color = colors.onSurfaceVariant)
-                    }
-                    TextButton(
+                    DialogAction(
+                        label = "CANCEL",
+                        primary = false,
+                        focused = focusedRow == cancelRow,
+                        onClick = onDismiss,
+                    )
+                    DialogAction(
+                        label = "ADD PLATFORM",
+                        primary = true,
+                        focused = focusedRow == confirmRow,
                         onClick = {
                             onConfirm(
                                 PlatformSetup(
@@ -190,13 +229,39 @@ fun AddPlatformDialog(
                                 ),
                             )
                         },
-                    ) {
-                        Text("Add platform", color = colors.cursor)
-                    }
+                    )
                 }
             }
         }
     }
 }
 
-private const val DIALOG_WIDTH = 440
+@Composable
+private fun DialogAction(
+    label: String,
+    primary: Boolean,
+    focused: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = ThorTheme.colors
+    ActivateOnConfirm(focused, onClick)
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelLarge,
+        color = if (primary) contrastingContentColor(colors.cursor) else colors.onSurface,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .clip(ThorTheme.shapes.pill)
+            .background(if (primary) colors.cursor else colors.surfaceElevated)
+            .border(
+                1.dp,
+                if (primary) colors.cursor else colors.outline.copy(alpha = 0.36f),
+                ThorTheme.shapes.pill,
+            )
+            .thorCursor(focused = focused, shape = ThorTheme.shapes.pill)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    )
+}
+
+private const val DIALOG_WIDTH = 500

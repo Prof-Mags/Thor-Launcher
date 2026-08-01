@@ -26,6 +26,7 @@ data class ThorSettings(
     val developer: DeveloperSettings = DeveloperSettings(),
     val mouse: MouseSettings = MouseSettings(),
     val media: MediaSettings = MediaSettings(),
+    val stream: StreamSettings = StreamSettings(),
     /**
      * Installed platform icon packs, newest last.
      *
