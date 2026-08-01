@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -182,6 +183,84 @@ fun SettingsCard(
 }
 
 /**
+ * The single visual contract for text actions throughout Settings.
+ *
+ * Labels may grow wider, but every action shares one height, minimum width,
+ * type style and theme-controlled shape. This keeps ON/OFF, OPEN, REMOVE,
+ * CHOOSE and dialog actions from looking like unrelated control families.
+ */
+@Composable
+fun SettingsTextButton(
+    label: String,
+    modifier: Modifier = Modifier,
+    containerColor: Color? = null,
+    contentColor: Color? = null,
+    borderColor: Color? = null,
+    focused: Boolean = false,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+    trailingIcon: ImageVector? = null,
+    reactToHover: Boolean = false,
+    onClick: (() -> Unit)? = null,
+) {
+    val colors = ThorTheme.colors
+    val shape = ThorTheme.shapes.pill
+    val hover = rememberPointerHover()
+    val highlighted = focused || (reactToHover && hover.isHovered)
+    val actualContainer = containerColor ?: colors.surfaceHighest
+    val actualContent = contentColor ?: colors.onSurface
+    val actualBorder = borderColor ?: colors.outline.copy(alpha = 0.34f)
+
+    Row(
+        modifier = modifier
+            .height(SETTINGS_BUTTON_HEIGHT.dp)
+            .widthIn(min = SETTINGS_BUTTON_MIN_WIDTH.dp)
+            .let { button -> if (reactToHover) button.pointerHover(hover) else button }
+            .clip(shape)
+            .background(actualContainer)
+            .border(
+                width = if (highlighted) 2.dp else 1.dp,
+                color = if (highlighted) actualContent.copy(alpha = 0.78f) else actualBorder,
+                shape = shape,
+            )
+            .thorCursor(focused = highlighted, shape = shape)
+            .let { button ->
+                if (onClick != null) button.clickable(enabled = enabled, onClick = onClick)
+                else button
+            }
+            .padding(horizontal = SETTINGS_BUTTON_HORIZONTAL_PADDING.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
+    ) {
+        icon?.let {
+            Icon(
+                imageVector = it,
+                contentDescription = null,
+                tint = actualContent,
+                modifier = Modifier.size(SETTINGS_BUTTON_ICON_SIZE.dp),
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (enabled) actualContent else actualContent.copy(alpha = 0.46f),
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+        trailingIcon?.let {
+            Icon(
+                imageVector = it,
+                contentDescription = null,
+                tint = actualContent,
+                modifier = Modifier.size(SETTINGS_BUTTON_ICON_SIZE.dp),
+            )
+        }
+    }
+}
+
+/**
  * Shared row shell.
  *
  * Title and description on the left, one control on the right. Every settings
@@ -260,23 +339,12 @@ fun SwitchRow(
         focused = focused,
         onClick = { onCheckedChange(!checked) },
         trailing = {
-            Text(
-                text = if (checked) "ON" else "OFF",
-                style = MaterialTheme.typography.labelLarge,
-                color = contrastingContentColor(stateColor),
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .widthIn(min = TOGGLE_BUTTON_WIDTH.dp)
-                    .clip(ThorTheme.shapes.pill)
-                    .background(stateColor)
-                    .border(
-                        width = 1.dp,
-                        color = contrastingContentColor(stateColor).copy(alpha = 0.34f),
-                        shape = ThorTheme.shapes.pill,
-                    )
-                    .clickable { onCheckedChange(!checked) }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            SettingsTextButton(
+                label = if (checked) "ON" else "OFF",
+                containerColor = stateColor,
+                contentColor = contrastingContentColor(stateColor),
+                borderColor = contrastingContentColor(stateColor).copy(alpha = 0.34f),
+                onClick = { onCheckedChange(!checked) },
             )
         },
     )
@@ -301,7 +369,6 @@ fun <T> ChoiceRow(
     onSelected: (T) -> Unit,
 ) {
     val colors = ThorTheme.colors
-    val dimens = ThorTheme.dimens
     var expanded by remember { mutableStateOf(false) }
 
     // Confirm advances to the next option rather than opening the menu. The
@@ -327,33 +394,17 @@ fun <T> ChoiceRow(
             focused = focused,
             onClick = { expanded = true },
             trailing = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier
-                        .widthIn(max = VALUE_MAX_WIDTH.dp)
-                        .clip(ThorTheme.shapes.pill)
-                        .background(
-                            if (focused) colors.cursor.copy(alpha = 0.14f)
-                            else colors.surfaceHighest,
-                        )
-                        .padding(horizontal = 10.dp, vertical = 7.dp),
-                ) {
-                    Text(
-                        text = label(selected),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.cursor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.End,
-                    )
-                    Icon(
-                        imageVector = Icons.Rounded.ExpandMore,
-                        contentDescription = null,
-                        tint = if (focused) colors.cursor else colors.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
+                SettingsTextButton(
+                    label = label(selected),
+                    modifier = Modifier.widthIn(max = VALUE_MAX_WIDTH.dp),
+                    containerColor = if (focused) {
+                        colors.cursor.copy(alpha = 0.14f)
+                    } else {
+                        colors.surfaceHighest
+                    },
+                    contentColor = colors.cursor,
+                    trailingIcon = Icons.Rounded.ExpandMore,
+                )
             },
         )
 
@@ -735,19 +786,13 @@ fun TextFieldRow(
                 modifier = Modifier.weight(1f),
             )
             if (isSecret) {
-                Text(
-                    text = if (revealed) "Hide" else "Show",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.cursor,
-                    modifier = Modifier
-                        .clip(ThorTheme.shapes.pill)
-                        .background(colors.cursor.copy(alpha = 0.12f))
-                        .thorCursor(
-                            focused = focused && controllerAction == TEXT_ACTION_REVEAL,
-                            shape = ThorTheme.shapes.pill,
-                        )
-                        .clickable { revealed = !revealed }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                SettingsTextButton(
+                    label = if (revealed) "HIDE" else "SHOW",
+                    containerColor = colors.cursor.copy(alpha = 0.12f),
+                    contentColor = colors.cursor,
+                    focused = focused && controllerAction == TEXT_ACTION_REVEAL,
+                    reactToHover = true,
+                    onClick = { revealed = !revealed },
                 )
             }
         }
@@ -800,17 +845,12 @@ fun ActionRow(
         onClick = onClick,
         trailing = trailingLabel?.let {
             {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (destructive) colors.error else colors.cursor,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .clip(ThorTheme.shapes.pill)
-                        .background(
-                            (if (destructive) colors.error else colors.cursor).copy(alpha = 0.12f),
-                        )
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                val tint = if (destructive) colors.error else colors.cursor
+                SettingsTextButton(
+                    label = it.uppercase(),
+                    containerColor = tint.copy(alpha = 0.12f),
+                    contentColor = tint,
+                    borderColor = tint.copy(alpha = 0.34f),
                 )
             }
         },
@@ -857,6 +897,9 @@ private const val TARGET_STEPS = 10
 private const val EPSILON = 0.0001f
 private const val TEXT_ACTION_EDIT = 0
 private const val TEXT_ACTION_REVEAL = 1
-private const val TOGGLE_BUTTON_WIDTH = 54
 private val TOGGLE_ON_COLOR = Color(0xFF2E7D32)
 private val TOGGLE_OFF_COLOR = Color(0xFFC62828)
+private const val SETTINGS_BUTTON_HEIGHT = 36
+private const val SETTINGS_BUTTON_MIN_WIDTH = 76
+private const val SETTINGS_BUTTON_HORIZONTAL_PADDING = 12
+private const val SETTINGS_BUTTON_ICON_SIZE = 15

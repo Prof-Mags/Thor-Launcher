@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,12 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.SurfaceLevel
-import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
-import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.model.Platform
-import com.thor.core.ui.pointer.pointerHover
-import com.thor.core.ui.pointer.rememberPointerHover
 
 /**
  * A dropdown that adds a system to the user's setup.
@@ -135,27 +130,12 @@ fun AddSystemRow(
                     )
                 }
                 controllerChoice?.let { platform ->
-                    Row(
-                        modifier = Modifier
-                            .clip(ThorTheme.shapes.pill)
-                            .background(colors.cursor.copy(alpha = 0.12f))
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(ThorTheme.shapes.pill)
-                                .background(Color(platform.accentArgb)),
-                        )
-                        Text(
-                            text = platform.name,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = colors.cursor,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
+                    SettingsTextButton(
+                        label = platform.name,
+                        containerColor = colors.cursor.copy(alpha = 0.12f),
+                        contentColor = colors.cursor,
+                        borderColor = Color(platform.accentArgb).copy(alpha = 0.52f),
+                    )
                 }
             }
         }
@@ -490,62 +470,20 @@ private fun PlatformEmulatorChip(
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
-    val hover = rememberPointerHover()
-    val highlighted = controllerFocused || hover.isHovered
-    val shape = ThorTheme.shapes.pill
-    val contentColor = when {
-        highlighted -> contrastingContentColor(colors.cursor)
-        isSelected -> colors.cursor
-        else -> colors.onSurface
-    }
-
-    Row(
-        modifier = Modifier
-            .clip(shape)
-            .background(
-                when {
-                    highlighted -> colors.cursor
-                    isSelected -> colors.cursor.copy(alpha = 0.16f)
-                    else -> colors.surfaceElevated
-                },
-            )
-            .border(
-                width = if (highlighted) 2.dp else 1.dp,
-                color = when {
-                    highlighted -> contrastingContentColor(colors.cursor).copy(alpha = 0.86f)
-                    isSelected -> colors.cursor.copy(alpha = 0.64f)
-                    else -> colors.outline
-                },
-                shape = shape,
-            )
-            .pointerHover(hover)
-            .thorCursor(focused = highlighted, shape = shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        if (isSelected) {
-            Icon(
-                imageVector = Icons.Rounded.Check,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(13.dp),
-            )
-        }
-        Text(
-            text = displayName,
-            style = MaterialTheme.typography.labelMedium,
-            color = contentColor,
-        )
-        if (isDefault) {
-            Text(
-                text = "· default",
-                style = MaterialTheme.typography.labelSmall,
-                color = contentColor.copy(alpha = 0.76f),
-            )
-        }
-    }
+    SettingsTextButton(
+        label = if (isDefault) "$displayName · DEFAULT" else displayName,
+        icon = Icons.Rounded.Check.takeIf { isSelected },
+        containerColor = if (isSelected) {
+            colors.cursor.copy(alpha = 0.16f)
+        } else {
+            colors.surfaceElevated
+        },
+        contentColor = if (isSelected) colors.cursor else colors.onSurface,
+        borderColor = if (isSelected) colors.cursor.copy(alpha = 0.64f) else colors.outline,
+        focused = controllerFocused,
+        reactToHover = true,
+        onClick = onClick,
+    )
 }
 
 @Composable
@@ -588,42 +526,16 @@ private fun PlatformAction(
 ) {
     val colors = ThorTheme.colors
     val tint = if (destructive) colors.error else colors.cursor
-    val hover = rememberPointerHover()
-    val highlighted = focused || hover.isHovered
-    val contentColor = if (highlighted) contrastingContentColor(tint) else tint
-    Row(
-        modifier = Modifier
-            .clip(ThorTheme.shapes.pill)
-            .background(if (highlighted) tint else tint.copy(alpha = 0.10f))
-            .border(
-                width = if (highlighted) 2.dp else 1.dp,
-                color = if (highlighted) {
-                    contrastingContentColor(tint).copy(alpha = 0.86f)
-                } else {
-                    tint.copy(alpha = 0.34f)
-                },
-                shape = ThorTheme.shapes.pill,
-            )
-            .pointerHover(hover)
-            .thorCursor(focused = highlighted, shape = ThorTheme.shapes.pill)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = contentColor,
-            modifier = Modifier.size(13.dp),
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = contentColor,
-            fontWeight = FontWeight.Bold,
-        )
-    }
+    SettingsTextButton(
+        label = label,
+        icon = icon,
+        containerColor = tint.copy(alpha = 0.12f),
+        contentColor = tint,
+        borderColor = tint.copy(alpha = 0.34f),
+        focused = focused,
+        reactToHover = true,
+        onClick = onClick,
+    )
 }
 
 private const val PLATFORM_ACTION_COUNT = 2

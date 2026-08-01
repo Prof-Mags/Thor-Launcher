@@ -44,6 +44,7 @@ import com.thor.feature.settings.component.AddPlatformDialog
 import com.thor.feature.settings.component.LocalRowActivation
 import com.thor.feature.settings.component.LocalHorizontalRowRegistration
 import com.thor.feature.settings.component.LocalRowStep
+import com.thor.feature.settings.component.SettingsTextButton
 import com.thor.feature.settings.component.revealWhenFocused
 import com.thor.feature.settings.pane.AboutPane
 import com.thor.feature.settings.pane.SettingsPageContent
@@ -432,17 +433,12 @@ private fun PageNavRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Text(
-            text = "OPEN",
-            style = MaterialTheme.typography.labelSmall,
-            color = if (focused) colors.cursor else colors.onSurfaceVariant,
-            fontWeight = FontWeight.Bold,
-        )
-        Icon(
-            imageVector = Icons.Rounded.ChevronRight,
-            contentDescription = null,
-            tint = colors.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
+        SettingsTextButton(
+            label = "OPEN",
+            containerColor = colors.cursor.copy(alpha = if (focused) 0.16f else 0.08f),
+            contentColor = if (focused) colors.cursor else colors.onSurfaceVariant,
+            borderColor = colors.cursor.copy(alpha = if (focused) 0.48f else 0.18f),
+            trailingIcon = Icons.Rounded.ChevronRight,
         )
     }
 }

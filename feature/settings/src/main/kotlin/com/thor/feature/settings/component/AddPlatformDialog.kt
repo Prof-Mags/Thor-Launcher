@@ -32,7 +32,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.thor.core.common.log.ThorLog
 import com.thor.core.designsystem.component.GlassSurface
-import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.model.Platform
@@ -245,22 +244,14 @@ private fun DialogAction(
 ) {
     val colors = ThorTheme.colors
     ActivateOnConfirm(focused, onClick)
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelLarge,
-        color = if (primary) contrastingContentColor(colors.cursor) else colors.onSurface,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier
-            .clip(ThorTheme.shapes.pill)
-            .background(if (primary) colors.cursor else colors.surfaceElevated)
-            .border(
-                1.dp,
-                if (primary) colors.cursor else colors.outline.copy(alpha = 0.36f),
-                ThorTheme.shapes.pill,
-            )
-            .thorCursor(focused = focused, shape = ThorTheme.shapes.pill)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+    SettingsTextButton(
+        label = label,
+        containerColor = if (primary) colors.cursor else colors.surfaceElevated,
+        contentColor = if (primary) contrastingContentColor(colors.cursor) else colors.onSurface,
+        borderColor = if (primary) colors.cursor else colors.outline.copy(alpha = 0.36f),
+        focused = focused,
+        reactToHover = true,
+        onClick = onClick,
     )
 }
 
