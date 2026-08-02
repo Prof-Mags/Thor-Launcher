@@ -19,8 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
@@ -42,9 +40,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.modifier.thorCursor
+import com.thor.core.designsystem.theme.ThorShapes
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.ThemeId
 import com.thor.core.model.ThemeSpec
@@ -166,13 +166,15 @@ fun ThemePreviewRow(
             ) {
                 Text(
                     text = "Theme gallery",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = if (focused) colors.cursor else colors.onSurface,
+                    fontWeight = FontWeight.Medium,
                 )
-                Text(
-                    text = "${selected.displayName}  ·  ${themes.size} themes",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
+                SettingsTextButton(
+                    label = selected.displayName.uppercase(),
+                    containerColor = colors.cursor.copy(alpha = 0.12f),
+                    contentColor = colors.cursor,
+                    borderColor = colors.cursor.copy(alpha = 0.34f),
                 )
             }
 
@@ -213,7 +215,13 @@ private fun ThemeCard(
     onClick: () -> Unit,
 ) {
     val activeColors = ThorTheme.colors
-    val radius = spec.cornerRadiusDp.coerceAtMost(MAX_PREVIEW_RADIUS).dp
+    // Preview the candidate theme through the user's active corner override.
+    // Square and Rounded are global choices; Theme Default uses this candidate's
+    // own radius instead of the currently applied theme's radius.
+    val previewShapes = ThorShapes.build(
+        style = ThorTheme.shapes.style,
+        themeRadius = spec.cornerRadiusDp.coerceAtMost(MAX_PREVIEW_RADIUS).dp,
+    )
 
     val background = Color(spec.backgroundArgb)
     val surface = Color(spec.surfaceArgb)
@@ -241,7 +249,7 @@ private fun ThemeCard(
                 .fillMaxWidth()
                 .height(CARD_HEIGHT.dp)
                 .scale(lift)
-                .clip(RoundedCornerShape(PREVIEW_CORNER.dp))
+                .clip(previewShapes.panel)
                 .background(background)
                 .border(
                     /*
@@ -267,13 +275,13 @@ private fun ThemeCard(
                         selected -> activeColors.onSurface.copy(alpha = 0.55f)
                         else -> activeColors.outline
                     },
-                    shape = RoundedCornerShape(PREVIEW_CORNER.dp),
+                    shape = previewShapes.panel,
                 )
                 // The launcher's own cursor, so a focused theme card is marked the
                 // same way a focused grid cell is.
                 .thorCursor(
                     focused = cursorOn,
-                    shape = RoundedCornerShape(PREVIEW_CORNER.dp),
+                    shape = previewShapes.panel,
                 )
                 .clickable(onClick = onClick),
         ) {
@@ -307,7 +315,7 @@ private fun ThemeCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(PANEL_HEIGHT.dp)
-                        .miniature(spec, RoundedCornerShape(radius / 2), surface),
+                        .miniature(spec, previewShapes.small, surface),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     Column(
@@ -319,14 +327,14 @@ private fun ThemeCard(
                         Box(
                             modifier = Modifier
                                 .size(width = 28.dp, height = 3.dp)
-                                .background(onSurface, CircleShape),
+                                .background(onSurface, previewShapes.pill),
                         )
                         Box(
                             modifier = Modifier
                                 .size(width = 18.dp, height = 2.dp)
                                 .background(
                                     Color(spec.onSurfaceVariantArgb),
-                                    CircleShape,
+                                    previewShapes.pill,
                                 ),
                         )
                     }
@@ -338,13 +346,13 @@ private fun ThemeCard(
                         Box(
                             modifier = Modifier
                                 .size(CELL_SIZE.dp)
-                                .miniature(spec, RoundedCornerShape(radius / 2), elevated)
+                                .miniature(spec, previewShapes.small, elevated)
                                 .then(
                                     if (index == 0) {
                                         Modifier.border(
                                             width = 1.5.dp,
                                             color = cursor,
-                                            shape = RoundedCornerShape(radius / 2),
+                                            shape = previewShapes.small,
                                         )
                                     } else {
                                         Modifier
@@ -361,7 +369,7 @@ private fun ThemeCard(
                     modifier = Modifier
                         .fillMaxWidth(0.72f)
                         .height(DOCK_HEIGHT.dp)
-                        .clip(CircleShape)
+                        .clip(previewShapes.pill)
                         .background(elevated.copy(alpha = spec.surfaceAlpha)),
                 )
             }
@@ -375,7 +383,7 @@ private fun ThemeCard(
                         .align(Alignment.TopEnd)
                         .padding(BADGE_INSET.dp)
                         .size(BADGE_SIZE.dp)
-                        .background(activeColors.cursor, CircleShape),
+                        .background(activeColors.cursor, previewShapes.pill),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -460,7 +468,6 @@ private const val MINIATURE_SHADOW_SCALE = 0.35f
 
 private const val CARD_WIDTH = 104
 private const val CARD_HEIGHT = 66
-private const val PREVIEW_CORNER = 10
 private const val PANEL_HEIGHT = 20
 private const val CELL_COUNT = 4
 private const val CELL_SIZE = 13

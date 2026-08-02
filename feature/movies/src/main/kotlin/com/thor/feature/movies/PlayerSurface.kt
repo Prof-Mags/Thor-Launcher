@@ -3,7 +3,20 @@ package com.thor.feature.movies
 import android.view.TextureView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.VolumeOff
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -13,7 +26,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.thor.core.designsystem.component.GlassSurface
+import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.component.ArtworkImage
 
 /** What the controls need to know, sampled from the player on a timer. */
 data class PlayerStatus(
@@ -64,8 +85,8 @@ data class PlayerStatus(
 @Composable
 fun PlayerSurface(
     player: ThorPlayer,
-    videoWidth: Int,
-    videoHeight: Int,
+    playback: Playback,
+    status: PlayerStatus,
     modifier: Modifier = Modifier,
 ) {
     var surface by remember { mutableStateOf<TextureView?>(null) }
@@ -73,9 +94,29 @@ fun PlayerSurface(
     // Recomputed as the stream reports its size, and applied on every layout
     // pass because the view can be laid out before the size is known.
     var videoAspect by remember { mutableFloatStateOf(0f) }
-    videoAspect = if (videoHeight > 0) videoWidth.toFloat() / videoHeight else 0f
+    videoAspect = if (status.videoHeight > 0) {
+        status.videoWidth.toFloat() / status.videoHeight
+    } else {
+        0f
+    }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
+        // Artwork gives letterbox bars a deliberate ambient treatment while the
+        // video itself remains uncropped and completely unobstructed when healthy.
+        playback.item.backdropUrl?.let { backdrop ->
+            ArtworkImage(
+                model = backdrop,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.72f)),
+            )
+        }
+
         AndroidView(
             factory = { viewContext ->
                 TextureView(viewContext).also { view ->
@@ -88,6 +129,22 @@ fun PlayerSurface(
             update = { view -> view.fitInside(videoAspect) },
             modifier = Modifier.fillMaxSize(),
         )
+
+        if (status.buffering) {
+            CircularProgressIndicator(
+                color = ThorTheme.colors.cursor,
+                strokeWidth = 3.dp,
+                modifier = Modifier.align(androidx.compose.ui.Alignment.Center).size(42.dp),
+            )
+        }
+
+        if (status.shouldShowOverlay()) {
+            PlaybackStateOverlay(
+                playback = playback,
+                status = status,
+                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomStart),
+            )
+        }
     }
 
     DisposableEffect(player, surface) {
@@ -96,6 +153,97 @@ fun PlayerSurface(
         // a released surface it still held would be one it tried to draw into.
         onDispose { player.attach(null) }
     }
+}
+
+/** Only appears when the viewer needs state information; normal playback stays clean. */
+@Composable
+private fun PlaybackStateOverlay(
+    playback: Playback,
+    status: PlayerStatus,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ThorTheme.colors
+    val state = status.displayState()
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.Transparent, Color.Black.copy(alpha = 0.88f)),
+                ),
+            )
+            .padding(start = 22.dp, end = 22.dp, top = 46.dp, bottom = 20.dp),
+    ) {
+        GlassSurface(
+            shape = ThorTheme.shapes.panel,
+            color = colors.surface,
+            alphaOverride = 0.88f,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+            ) {
+                when {
+                    status.buffering -> CircularProgressIndicator(
+                        color = colors.cursor,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    status.error != null -> Icon(
+                        imageVector = Icons.Rounded.ErrorOutline,
+                        contentDescription = null,
+                        tint = colors.error,
+                    )
+                    status.audioUnsupported -> Icon(
+                        imageVector = Icons.Rounded.VolumeOff,
+                        contentDescription = null,
+                        tint = colors.error,
+                    )
+                    else -> Icon(
+                        imageVector = Icons.Rounded.Pause,
+                        contentDescription = null,
+                        tint = colors.cursor,
+                    )
+                }
+                Column {
+                    Text(
+                        text = playback.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = colors.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = state,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (status.error != null || status.audioUnsupported) {
+                            colors.error
+                        } else {
+                            colors.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun PlayerStatus.shouldShowOverlay(): Boolean =
+    buffering || suppressed || ended || error != null || audioUnsupported || !playing
+
+private fun PlayerStatus.displayState(): String = when {
+    error != null -> error
+    audioUnsupported -> "This source has no supported audio track"
+    suppressed -> "Playback is being held by the system"
+    buffering -> "Buffering stream"
+    ended -> "Playback finished"
+    !playing -> "Paused"
+    else -> "Playing"
 }
 
 /**

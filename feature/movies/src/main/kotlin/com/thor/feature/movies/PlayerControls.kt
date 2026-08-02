@@ -1,15 +1,23 @@
 package com.thor.feature.movies
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Forward30
 import androidx.compose.material.icons.rounded.Pause
@@ -20,8 +28,6 @@ import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -30,13 +36,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.thor.core.designsystem.component.GlassSurface
+import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.model.CacheStatus
+import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 import java.util.concurrent.TimeUnit
@@ -45,13 +60,12 @@ import java.util.concurrent.TimeUnit
 enum class PlayerAction { REWIND, PLAY_PAUSE, FORWARD, NEXT_EPISODE, STOP }
 
 /**
- * Playback controls, on the bottom panel.
+ * The companion-screen playback deck.
  *
- * Every control lives here and none is drawn over the video. That is the whole
- * point of the arrangement: on a single screen, controls either cover the
- * picture or vanish and have to be summoned back, and both are compromises this
- * device does not have to make. Position, remaining time and total runtime are
- * always visible because there is no reason to hide them.
+ * The video remains clean on the other display. This screen carries the title,
+ * timeline, transport and stream health permanently, arranged over the title's
+ * artwork so playback feels like a deliberate destination instead of a debug
+ * panel attached to a video texture.
  */
 @Composable
 fun PlayerControls(
@@ -66,139 +80,221 @@ fun PlayerControls(
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(colors.background)
-            .padding(dimens.spacing),
-        verticalArrangement = Arrangement.spacedBy(dimens.spacing),
-    ) {
-        Text(
-            text = playback.title,
-            style = MaterialTheme.typography.titleMedium,
-            color = colors.onBackground,
-            maxLines = 2,
+    Box(modifier = modifier.fillMaxSize().background(colors.background)) {
+        playback.item.backdropUrl?.let { backdrop ->
+            ArtworkImage(
+                model = backdrop,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    0f to colors.background.copy(alpha = 0.96f),
+                    0.58f to colors.background.copy(alpha = 0.82f),
+                    1f to colors.background.copy(alpha = 0.68f),
+                ),
+            ),
+        )
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    listOf(
+                        colors.background.copy(alpha = 0.28f),
+                        colors.background.copy(alpha = 0.76f),
+                    ),
+                ),
+            ),
         )
 
-        Timeline(status = status, onSeek = onSeek)
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+        Column(
+            modifier = Modifier.fillMaxSize().padding(dimens.spacing),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                text = status.positionMs.asClock(),
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.onSurface,
+            NowPlayingHeader(playback = playback, status = status)
+            TimelinePanel(status = status, onSeek = onSeek)
+            TransportDeck(
+                status = status,
+                focusedAction = focusedAction,
+                hasNextEpisode = hasNextEpisode,
+                onAction = onAction,
             )
-            Text(
-                // Remaining rather than a second copy of the total, which the
-                // right-hand label already gives.
-                text = "-" + (status.durationMs - status.positionMs)
-                    .coerceAtLeast(0L)
-                    .asClock(),
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.onSurfaceVariant,
-            )
-            Text(
-                text = status.durationMs.asClock(),
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.onSurfaceVariant,
-            )
+            StreamFacts(playback = playback, status = status)
         }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TransportButton(
-                icon = Icons.Rounded.Replay10,
-                label = "Back",
-                action = PlayerAction.REWIND,
-                focused = focusedAction == PlayerAction.REWIND,
-                onAction = onAction,
-                modifier = Modifier.weight(1f),
-            )
-            TransportButton(
-                icon = if (status.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                label = if (status.playing) "Pause" else "Play",
-                action = PlayerAction.PLAY_PAUSE,
-                focused = focusedAction == PlayerAction.PLAY_PAUSE,
-                onAction = onAction,
-                modifier = Modifier.weight(1f),
-            )
-            TransportButton(
-                icon = Icons.Rounded.Forward30,
-                label = "Forward",
-                action = PlayerAction.FORWARD,
-                focused = focusedAction == PlayerAction.FORWARD,
-                onAction = onAction,
-                modifier = Modifier.weight(1f),
-            )
-            if (hasNextEpisode) {
-                TransportButton(
-                    icon = Icons.Rounded.SkipNext,
-                    label = "Next",
-                    action = PlayerAction.NEXT_EPISODE,
-                    focused = focusedAction == PlayerAction.NEXT_EPISODE,
-                    onAction = onAction,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            TransportButton(
-                icon = Icons.Rounded.Stop,
-                label = "Stop",
-                action = PlayerAction.STOP,
-                focused = focusedAction == PlayerAction.STOP,
-                onAction = onAction,
-                modifier = Modifier.weight(1f),
-            )
-        }
-
-        StreamFacts(playback = playback, status = status)
     }
 }
 
-/**
- * The scrubber, with the buffered extent behind the played one.
- *
- * Buffering is drawn rather than described because it answers the question the
- * viewer actually has during a stall — is more coming, or has it stopped — and
- * a spinner cannot distinguish those.
- */
+@Composable
+private fun NowPlayingHeader(playback: Playback, status: PlayerStatus) {
+    val colors = ThorTheme.colors
+    val item = playback.item
+    val episode = if (playback.seasonNumber != null && playback.episodeNumber != null) {
+        item.episode(playback.seasonNumber, playback.episodeNumber)
+    } else {
+        null
+    }
+    val context = listOfNotNull(
+        playback.seasonNumber?.let { season ->
+            playback.episodeNumber?.let { episodeNumber ->
+                "S%02dE%02d".format(season, episodeNumber)
+            }
+        },
+        episode?.title,
+        item.releaseYear?.toString(),
+        item.contentRating,
+        item.genres.take(2).joinToString(" / ").takeIf(String::isNotBlank),
+    ).joinToString("  ·  ")
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(48.dp)
+                .clip(ThorTheme.shapes.pill)
+                .background(Brush.verticalGradient(colors.accentStops)),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "NOW PLAYING",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.cursor,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.headlineSmall,
+                color = colors.onBackground,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (context.isNotBlank()) {
+                Text(
+                    text = context,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        PlaybackStateBadge(status)
+    }
+}
+
+@Composable
+private fun PlaybackStateBadge(status: PlayerStatus) {
+    val colors = ThorTheme.colors
+    val alert = status.error != null || status.audioUnsupported
+    val tint = when {
+        alert -> colors.error
+        status.buffering || status.suppressed -> colors.primary
+        else -> colors.cursor
+    }
+
+    Row(
+        modifier = Modifier
+            .clip(ThorTheme.shapes.pill)
+            .background(tint.copy(alpha = 0.14f))
+            .border(1.dp, tint.copy(alpha = 0.46f), ThorTheme.shapes.pill)
+            .padding(horizontal = 11.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(ThorTheme.shapes.pill)
+                .background(tint),
+        )
+        Text(
+            text = status.stateLabel().uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+/** Progress, buffering and clocks live together as one readable instrument. */
+@Composable
+private fun TimelinePanel(status: PlayerStatus, onSeek: (Long) -> Unit) {
+    val colors = ThorTheme.colors
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = ThorTheme.shapes.panel,
+        color = colors.surface,
+        alphaOverride = 0.90f,
+        level = SurfaceLevel.RAISED,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = status.positionMs.asClock(),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "-" + (status.durationMs - status.positionMs)
+                        .coerceAtLeast(0L)
+                        .asClock(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+            Timeline(status = status, onSeek = onSeek)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = if (status.buffering) "BUFFERING" else "PROGRESS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (status.buffering) colors.cursor else colors.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = status.durationMs.asClock(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** Tappable and draggable scrubber with buffered range and a visible playhead. */
 @Composable
 private fun Timeline(status: PlayerStatus, onSeek: (Long) -> Unit) {
     val colors = ThorTheme.colors
     val duration = status.durationMs.coerceAtLeast(1L)
     val playedFraction = (status.positionMs.toFloat() / duration).coerceIn(0f, 1f)
     val bufferedFraction = (status.bufferedMs.toFloat() / duration).coerceIn(0f, 1f)
-    val shape = RoundedCornerShape(TRACK_HEIGHT.dp / 2)
-
-    /*
-     * Tapped and dragged directly.
-     *
-     * The whole point of putting the controls on their own screen is that this
-     * bar is a real, permanently visible object rather than something summoned
-     * over the picture — so it should behave like one. Seeking by holding a skip
-     * button when the target is visible on screen is the sort of thing that makes
-     * a remote feel like a remote.
-     *
-     * Width is captured from layout because the gesture reports a position in
-     * pixels and the seek needs a fraction; there is nothing else that knows how
-     * wide the track ended up.
-     */
+    val shape = ThorTheme.shapes.pill
     var trackWidth by remember { mutableFloatStateOf(0f) }
+
     fun seekTo(x: Float) {
         if (trackWidth <= 0f) return
         onSeek(((x / trackWidth).coerceIn(0f, 1f) * duration).toLong())
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            // A larger target than the bar is tall: an eight-pixel line is
-            // accurate to look at and impossible to hit.
             .height(TRACK_TOUCH_HEIGHT.dp)
             .onSizeChanged { trackWidth = it.width.toFloat() }
             .pointerInput(duration) {
@@ -209,26 +305,94 @@ private fun Timeline(status: PlayerStatus, onSeek: (Long) -> Unit) {
             },
         contentAlignment = Alignment.Center,
     ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(TRACK_HEIGHT.dp)
-            .clip(shape)
-            .background(colors.surfaceElevated),
-    ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(bufferedFraction)
-                .fillMaxSize()
-                .background(colors.onSurfaceVariant.copy(alpha = 0.35f)),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(playedFraction)
-                .fillMaxSize()
-                .background(colors.cursor),
-        )
+                .fillMaxWidth()
+                .height(TRACK_HEIGHT.dp)
+                .clip(shape)
+                .background(colors.surfaceHighest),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(bufferedFraction)
+                    .fillMaxSize()
+                    .background(colors.onSurfaceVariant.copy(alpha = 0.30f)),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(playedFraction)
+                    .fillMaxSize()
+                    .background(Brush.horizontalGradient(colors.accentStops)),
+            )
+        }
+        if (status.durationMs > 0L) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(x = (maxWidth - PLAYHEAD_SIZE.dp) * playedFraction)
+                    .size(PLAYHEAD_SIZE.dp)
+                    .clip(shape)
+                    .background(colors.cursor)
+                    .border(2.dp, colors.background, shape),
+            )
+        }
     }
+}
+
+@Composable
+private fun TransportDeck(
+    status: PlayerStatus,
+    focusedAction: PlayerAction,
+    hasNextEpisode: Boolean,
+    onAction: (PlayerAction) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TransportButton(
+            icon = Icons.Rounded.Replay10,
+            label = "-10s",
+            action = PlayerAction.REWIND,
+            focused = focusedAction == PlayerAction.REWIND,
+            onAction = onAction,
+            modifier = Modifier.weight(1f),
+        )
+        TransportButton(
+            icon = if (status.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+            label = if (status.playing) "Pause" else "Play",
+            action = PlayerAction.PLAY_PAUSE,
+            focused = focusedAction == PlayerAction.PLAY_PAUSE,
+            onAction = onAction,
+            modifier = Modifier.weight(1.18f),
+        )
+        TransportButton(
+            icon = Icons.Rounded.Forward30,
+            label = "+30s",
+            action = PlayerAction.FORWARD,
+            focused = focusedAction == PlayerAction.FORWARD,
+            onAction = onAction,
+            modifier = Modifier.weight(1f),
+        )
+        if (hasNextEpisode) {
+            TransportButton(
+                icon = Icons.Rounded.SkipNext,
+                label = "Next episode",
+                action = PlayerAction.NEXT_EPISODE,
+                focused = focusedAction == PlayerAction.NEXT_EPISODE,
+                onAction = onAction,
+                modifier = Modifier.weight(1.18f),
+            )
+        }
+        TransportButton(
+            icon = Icons.Rounded.Stop,
+            label = "Stop",
+            action = PlayerAction.STOP,
+            focused = focusedAction == PlayerAction.STOP,
+            onAction = onAction,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -245,129 +409,172 @@ private fun TransportButton(
     val shape = ThorTheme.shapes.small
     val hover = rememberPointerHover()
     val lit = focused || hover.isHovered
+    val primary = action == PlayerAction.PLAY_PAUSE
+    val intent = if (action == PlayerAction.STOP) colors.error else colors.cursor
+    val container = when {
+        lit -> intent
+        primary -> intent.copy(alpha = 0.18f)
+        else -> colors.surface.copy(alpha = 0.90f)
+    }
+    val content = when {
+        lit -> contrastingContentColor(intent)
+        primary || action == PlayerAction.STOP -> intent
+        else -> colors.onSurfaceVariant
+    }
 
     Column(
         modifier = modifier
+            .height(TRANSPORT_HEIGHT.dp)
             .pointerHover(hover)
-            .thorCursor(focused = lit, shape = shape)
             .clip(shape)
-            .background(colors.surface)
-            .padding(vertical = 10.dp),
+            .background(container)
+            .border(
+                width = if (lit) 2.dp else 1.dp,
+                color = if (lit) content.copy(alpha = 0.74f) else intent.copy(alpha = 0.24f),
+                shape = shape,
+            )
+            .thorCursor(focused = lit, shape = shape)
+            .clickable { onAction(action) },
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.Center,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = if (lit) colors.cursor else colors.onSurfaceVariant,
+            tint = content,
+            modifier = Modifier.size(24.dp),
         )
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = if (lit) colors.onSurface else colors.onSurfaceVariant,
+            color = content,
+            fontWeight = if (primary) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
-/**
- * What is actually being streamed.
- *
- * Shown during playback rather than only in the source list, because when a
- * stream misbehaves the first question is always which one is playing — and
- * hunting for that answer means leaving the film.
- */
+/** Source identity and health, kept compact but readable during a stall. */
 @Composable
 private fun StreamFacts(playback: Playback, status: PlayerStatus) {
     val colors = ThorTheme.colors
     val source = playback.source
-
-    /*
-     * How far ahead the buffer is, in seconds rather than as a percentage.
-     *
-     * A percentage of a two-hour film says nothing useful when playback stalls;
-     * "12s ahead" answers the only question that matters at that moment, which is
-     * whether it is about to recover on its own.
-     */
     val bufferAheadSeconds = ((status.bufferedMs - status.positionMs) / 1000L)
         .coerceAtLeast(0L)
-
     val facts = listOfNotNull(
         source.quality.summary.takeIf(String::isNotBlank),
         source.sizeLabel,
         status.videoWidth.takeIf { it > 0 }?.let { "${it}×${status.videoHeight}" },
         when (source.cached) {
-            CacheStatus.CACHED -> "Real-Debrid: cached"
-            CacheStatus.NOT_CACHED -> "Real-Debrid: fetching"
+            CacheStatus.CACHED -> "Real-Debrid cached"
+            CacheStatus.NOT_CACHED -> "Real-Debrid fetching"
             CacheStatus.UNKNOWN -> null
         },
         source.providerName,
         source.seeders?.let { "$it seeders" },
+        "${bufferAheadSeconds}s buffered",
+        status.audioTracks.size.takeIf { it > 1 }?.let { "$it audio tracks" },
     )
 
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = ThorTheme.shapes.panel,
+        color = colors.surface,
+        alphaOverride = 0.86f,
+        level = SurfaceLevel.RAISED,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "PLAYBACK DETAILS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = status.stateLabel(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (status.error != null || status.audioUnsupported) {
+                        colors.error
+                    } else {
+                        colors.cursor
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                facts.forEach { fact -> FactChip(fact) }
+            }
             Text(
-                text = "STREAM",
+                text = source.title,
                 style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant,
+                color = colors.onSurfaceVariant.copy(alpha = 0.72f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = when {
-                    status.error != null -> status.error
-                    status.suppressed -> "Held by the system"
-                    status.audioUnsupported -> "No playable audio"
-                    status.buffering -> "Buffering…"
-                    else -> "${bufferAheadSeconds}s buffered"
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = if (status.error != null || status.audioUnsupported) {
-                    colors.error
-                } else {
-                    colors.onSurfaceVariant
-                },
-            )
-        }
-        Text(
-            text = facts.joinToString(" · "),
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.onSurfaceVariant,
-        )
-        Text(
-            text = source.title,
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-            maxLines = 2,
-        )
 
-        /*
-         * Said out loud when it happens, because nothing else will say it.
-         *
-         * Silence has no error code and no visible symptom beyond itself, so a
-         * viewer's first assumption is that the player is broken. The remedy is
-         * not in any setting — it is to go back and choose a different release —
-         * and that is only obvious if someone says so.
-         */
-        if (status.audioUnsupported) {
-            Text(
-                text = "This release's audio (often DTS or TrueHD) cannot be decoded " +
-                    "on this device. Go back and pick another source — one listing " +
-                    "AAC, AC3 or EAC3 will have sound.",
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.error,
-            )
-        }
-
-        if (status.audioTracks.size > 1) {
-            Text(
-                text = "Audio tracks: " + status.audioTracks.joinToString(", "),
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-            )
+            status.problemDescription()?.let { problem ->
+                Text(
+                    text = problem,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.error,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(ThorTheme.shapes.small)
+                        .background(colors.error.copy(alpha = 0.10f))
+                        .border(1.dp, colors.error.copy(alpha = 0.30f), ThorTheme.shapes.small)
+                        .padding(horizontal = 9.dp, vertical = 6.dp),
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun FactChip(text: String) {
+    val colors = ThorTheme.colors
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = colors.onSurface,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(ThorTheme.shapes.pill)
+            .background(colors.surfaceHighest.copy(alpha = 0.86f))
+            .border(1.dp, colors.outline.copy(alpha = 0.26f), ThorTheme.shapes.pill)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
+}
+
+private fun PlayerStatus.stateLabel(): String = when {
+    error != null -> "Playback issue"
+    audioUnsupported -> "Audio unavailable"
+    suppressed -> "Held by system"
+    buffering -> "Buffering"
+    ended -> "Finished"
+    playing -> "Playing"
+    else -> "Paused"
+}
+
+private fun PlayerStatus.problemDescription(): String? = when {
+    error != null -> error
+    audioUnsupported -> "This release's audio cannot be decoded on this device. " +
+        "Stop playback and choose a source listing AAC, AC3 or EAC3."
+    suppressed -> "Android is temporarily holding playback because another app owns audio focus."
+    else -> null
 }
 
 /** "1:42:07", or "3:12" for anything under an hour. */
@@ -384,6 +591,6 @@ private fun Long.asClock(): String {
 }
 
 private const val TRACK_HEIGHT = 8
-
-/** The bar is thin to read accurately and would be impossible to hit at that size. */
-private const val TRACK_TOUCH_HEIGHT = 36
+private const val TRACK_TOUCH_HEIGHT = 32
+private const val PLAYHEAD_SIZE = 15
+private const val TRANSPORT_HEIGHT = 68

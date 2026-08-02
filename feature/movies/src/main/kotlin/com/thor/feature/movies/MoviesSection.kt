@@ -44,8 +44,8 @@ fun MoviesTopPanel(
         if (mode == MoviesMode.PLAYING && playback != null) {
             PlayerSurface(
                 player = player,
-                videoWidth = status.videoWidth,
-                videoHeight = status.videoHeight,
+                playback = playback,
+                status = status,
             )
         } else {
             MoviesBrowseScreen(
