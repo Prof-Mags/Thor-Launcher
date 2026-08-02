@@ -111,19 +111,36 @@ fun BottomScreen(
     val dimens = ThorTheme.dimens
 
     /*
+     * The sections the bar has to offer.
+     *
+     * Home alone until an extension is enabled, and a bar with one tab on it is a
+     * strip of screen spent saying where you already are — so it is not drawn.
+     * Resolved here rather than beside the bar because the grid's height depends
+     * on the same answer; see [bottomClearance].
+     */
+    val tabs = LauncherTab.visible(state.enabledExtensions)
+    val navBarVisible = tabs.size > 1
+
+    /*
      * Clearance for whatever owns the bottom edge.
      *
      * Taken from the bar itself rather than written as a number here, so the two
      * cannot drift apart and leave the bottom row of icons half-covered — the
      * same reason it was taken from the dock before. Only one of them is ever
      * shown; see [DOCK_ENABLED].
+     *
+     * Nothing is reserved when the bar is not there. It used to be reserved
+     * unconditionally, which on a stock install — no extensions, so no bar — left
+     * a bar's worth of empty panel below the grid and pushed every icon upward:
+     * the launcher making room for furniture it had decided not to draw.
      */
     val bottomClearance = when {
         DOCK_ENABLED && dockSettings.visible ->
             dockHeightFor(dockSettings) + dimens.spacingSmall
 
         DOCK_ENABLED -> 0.dp
-        else -> NAV_BAR_HEIGHT.dp
+        navBarVisible -> NAV_BAR_HEIGHT.dp
+        else -> 0.dp
     }
     // Named for what the drawer actually wants: room at the bottom, whichever
     // bar is putting it there.
@@ -290,14 +307,8 @@ fun BottomScreen(
 
         // Flush to the bottom edge, unlike the dock it replaces: a nav bar that
         // floats above the edge reads as a dialog, not as the frame of the app.
-        /*
-         * Drawn only when there is something to switch between.
-         *
-         * With no extensions enabled the bar holds Home alone, and a one-tab bar
-         * is a strip of screen spent saying where you already are.
-         */
-        val tabs = LauncherTab.visible(state.enabledExtensions)
-        if (tabs.size > 1) {
+        // Drawn only when there is something to switch between; see [navBarVisible].
+        if (navBarVisible) {
             BottomNavBar(
                 selectedTab = selectedTab,
                 focusedTab = navCursor,

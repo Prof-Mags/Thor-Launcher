@@ -218,8 +218,16 @@ Every key is a touch target too.
 
 **Settings → Games & artwork → Platforms**
 
-**47 systems** built in. **62 emulators** recognised, each handed a ROM the way
+**47 systems** built in. **73 emulators** recognised, each handed a ROM the way
 that emulator expects. Add the consoles you own and pick an emulator for each.
+
+Standalone emulators are preferred over RetroArch and Lemuroid — a DS game goes
+to melonDS or DraStic if you have one, and to a multi-core front-end only when
+you don't. Among them: Azahar, Citra, Panda3DS, melonDS, DraStic, NooDS,
+DuckStation, AetherSX2, Dolphin, PPSSPP, Vita3K, Flycast, Redream, Yaba Sanshiro,
+Strato, Eden, Citron, Sudachi, MAME4droid, Mupen64Plus FZ, the John and `.emu`
+families, Pizza Boy, My Boy!, and Winlator for Windows games. Pick a different
+one per system, or per game, whenever you disagree.
 
 <br>
 
@@ -412,16 +420,18 @@ settings category and no pages for either.
 
 Adding one is a small file, not a download.
 
-| File | Adds |
-|:--|:--|
-| [`movies.json`](extensions/movies.json) | Browse films and shows, find sources, play them |
-| [`stream.json`](extensions/stream.json) | Find PCs on your network and stream from them |
+| File | Adds | |
+|:--|:--|:--|
+| [`movies.json`](extensions/movies.json) | Browse films and shows, find sources, play them | [**Download**](https://github.com/Prof-Mags/Thor-Launcher/raw/HEAD/extensions/movies.json) |
+| [`stream.json`](extensions/stream.json) | Find PCs on your network and stream from them | [**Download**](https://github.com/Prof-Mags/Thor-Launcher/raw/HEAD/extensions/stream.json) |
 
-**Settings → System → Extensions → Import an extension**
+Save the file anywhere on the device — the Downloads folder is fine — then:
 
-The section appears at once — nothing is fetched, and it works offline. Remove it
-from the same page and everything it added disappears, with its settings kept in
-case you add it back.
+**Settings → System & accessibility → Extensions → Import an extension**
+
+The section appears at once — nothing is fetched, and it works offline. Loki plays
+a short walkthrough of whatever you just added. Remove it from the same page and
+everything it added disappears, with its settings kept in case you add it back.
 
 It is not a licence key. Anyone can write one in a text editor; it is a way of
 saying which parts of the launcher you want. More in

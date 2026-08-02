@@ -39,6 +39,21 @@ data class EmulatorSpec(
     val launchContract: RomLaunchContract = RomLaunchContract.ContentUriView,
     /** Its activity may be reused on another display instead of being re-created. */
     val mayReuseExistingTask: Boolean = false,
+    /**
+     * Many systems behind one application, rather than an emulator of one thing.
+     *
+     * Marks the multi-core front-ends — RetroArch, Lemuroid — which are offered
+     * last when nothing has been chosen explicitly. They can open almost any file
+     * in the table, and being both installed and first in the list meant they won
+     * every automatic pick: someone with RetroArch and melonDS both installed got
+     * RetroArch for a DS game, which is the wrong answer twice over. It needs a
+     * core downloaded and assigned for that system before it will run anything,
+     * where the dedicated emulator simply runs the file.
+     *
+     * Still listed, still pickable, and still the answer for the systems nothing
+     * else here covers.
+     */
+    val isFrontEnd: Boolean = false,
 )
 
 object EmulatorRegistry {
@@ -60,6 +75,7 @@ object EmulatorRegistry {
                 "genesis", "mastersystem", "gamegear", "segacd", "sega32x",
                 "atari2600", "atari7800", "lynx", "pcengine", "ngpc", "arcade",
             ),
+            isFrontEnd = true,
         ),
 
         // ---- PlayStation ----------------------------------------------------
@@ -278,8 +294,36 @@ object EmulatorRegistry {
             displayName = "Eden",
             platformIds = setOf("switch"),
         ),
+        EmulatorSpec(
+            packageName = "org.stratoemu.strato",
+            displayName = "Strato",
+            platformIds = setOf("switch"),
+        ),
 
-        // --- 3DS ------------------------------------------------------------
+        /*
+         * ---- 3DS ------------------------------------------------------------
+         *
+         * Citra was taken down, and what people run now are its descendants.
+         * Azahar is the merge of Lime3DS and PabloMK7's fork, and it ships under
+         * two ids: its own for the build from GitHub, and Lime3DS's inherited one
+         * for the Play Store build. Both are listed, because which one is
+         * installed is not something the launcher can infer.
+         */
+        EmulatorSpec(
+            packageName = "org.azahar_emu.azahar",
+            displayName = "Azahar",
+            platformIds = setOf("3ds"),
+        ),
+        EmulatorSpec(
+            packageName = "io.github.lime3ds.android",
+            displayName = "Azahar (Play Store build)",
+            platformIds = setOf("3ds"),
+        ),
+        EmulatorSpec(
+            packageName = "com.panda3ds.pandroid",
+            displayName = "Panda3DS",
+            platformIds = setOf("3ds"),
+        ),
         EmulatorSpec(
             packageName = "org.citra.citra_emu",
             displayName = "Citra",
@@ -288,11 +332,6 @@ object EmulatorRegistry {
         EmulatorSpec(
             packageName = "org.citra.citra_emu.canary",
             displayName = "Citra Canary",
-            platformIds = setOf("3ds"),
-        ),
-        EmulatorSpec(
-            packageName = "io.github.lime3ds.android",
-            displayName = "Lime3DS",
             platformIds = setOf("3ds"),
         ),
         EmulatorSpec(
@@ -356,6 +395,7 @@ object EmulatorRegistry {
             activityName = "com.retroarch.browser.retroactivity.RetroActivityFuture",
             launchContract = RomLaunchContract.RetroArch,
             mayReuseExistingTask = true,
+            isFrontEnd = true,
         ),
         EmulatorSpec(
             packageName = "com.retroarch.aarch64",
@@ -364,6 +404,7 @@ object EmulatorRegistry {
             activityName = "com.retroarch.browser.retroactivity.RetroActivityFuture",
             launchContract = RomLaunchContract.RetroArch,
             mayReuseExistingTask = true,
+            isFrontEnd = true,
         ),
         EmulatorSpec(
             packageName = "org.dolphinemu.dolphinemu.mmjr",
@@ -387,9 +428,60 @@ object EmulatorRegistry {
             platformIds = setOf("nds"),
         ),
         EmulatorSpec(
+            packageName = "com.hydra.noods",
+            displayName = "NooDS",
+            platformIds = setOf("nds", "gba"),
+        ),
+        EmulatorSpec(
             packageName = "us.rewrite.nds",
             displayName = "nds4droid",
             platformIds = setOf("nds"),
+        ),
+
+        /*
+         * The "John" family, which is what a great many people actually have
+         * installed — they have been on the Play Store for over a decade and were
+         * most people's first Android emulator.
+         *
+         * Listed individually because they are separate applications, and the
+         * paid and Lite editions are separate again: someone who owns John GBA
+         * does not necessarily have John GBC, and the registry's job is to say
+         * which of the installed ones can open a given file.
+         */
+        EmulatorSpec(
+            packageName = "com.johnemulators.johngba",
+            displayName = "John GBA",
+            platformIds = setOf("gba"),
+        ),
+        EmulatorSpec(
+            packageName = "com.johnemulators.johngbalite",
+            displayName = "John GBA Lite",
+            platformIds = setOf("gba"),
+        ),
+        EmulatorSpec(
+            packageName = "com.johnemulators.johngbc",
+            displayName = "John GBC",
+            platformIds = setOf("gb", "gbc"),
+        ),
+        EmulatorSpec(
+            packageName = "com.johnemulators.johngbclite",
+            displayName = "John GBC Lite",
+            platformIds = setOf("gb", "gbc"),
+        ),
+        EmulatorSpec(
+            packageName = "com.johnemulators.johngbac",
+            displayName = "John GBAC",
+            platformIds = setOf("gba", "gb", "gbc"),
+        ),
+        EmulatorSpec(
+            packageName = "com.johnemulators.johnness",
+            displayName = "John NESS",
+            platformIds = setOf("nes", "snes"),
+        ),
+        EmulatorSpec(
+            packageName = "com.explusalpha.GbcEmu",
+            displayName = "GBC.emu",
+            platformIds = setOf("gb", "gbc"),
         ),
         EmulatorSpec(
             packageName = "com.explusalpha.MdEmu.n64",
@@ -449,9 +541,21 @@ object EmulatorRegistry {
 
     fun isKnownEmulator(packageName: String): Boolean = packageName in byPackage
 
-    /** Every known emulator able to run [platformId]. */
+    /**
+     * Every known emulator able to run [platformId], best first.
+     *
+     * Dedicated emulators come before the many-core front-ends. The launcher
+     * picks the first *installed* candidate when the user has not chosen one, and
+     * ordering this list is the whole of that decision — so a DS game goes to
+     * melonDS or DraStic if either is installed, and to RetroArch only when
+     * neither is.
+     *
+     * Stable within each group, so the table's own order still decides between
+     * two emulators of the same kind.
+     */
     fun candidatesFor(platformId: String): List<EmulatorSpec> =
         KNOWN.filter { platformId in it.platformIds }
+            .sortedBy { it.isFrontEnd }
 
     /**
      * Heuristic for packages not in the table.
@@ -469,5 +573,9 @@ object EmulatorRegistry {
         "dolphin", "ppsspp", "citra", "yuzu", "ryujinx", "duckstation",
         "aethersx2", "pcsx", "epsxe", "mupen", "drastic", "melonds",
         "snes9x", "fceux", "nestopia", "mame", "flycast", "redream",
+        // The current generation, and the long-lived Play Store families.
+        "azahar", "lime3ds", "panda3ds", "pandroid", "stratoemu", "skyline",
+        "sudachi", "citron", "noods", "johnemulators", "lemuroid", "vita3k",
+        "winlator", "scummvm", "pizzaboy",
     )
 }
