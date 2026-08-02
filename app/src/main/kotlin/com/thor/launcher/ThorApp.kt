@@ -403,7 +403,22 @@ fun ThorApp(
      * ran again. Read through the snapshot holders instead and every consumer,
      * recomposing or not, sees the current answer.
      */
-    val gridInActivityWindowNow: () -> Boolean = { settings.display.swapScreens }
+    /**
+     * Couch mode: one window holds both surfaces, and the other panel stays dark.
+     *
+     * Named here, beside the focus rule, because that is the only place the
+     * difference actually matters — [LauncherFocus.windowHolding] answers with one
+     * window per panel and cannot say "both", so without this the presentation
+     * would be handed the controller the moment the info surface became active,
+     * and the controller would be driving a panel showing nothing.
+     */
+    val singleWindowNow: () -> Boolean = { mode == DualScreenMode.COUCH }
+
+    val gridInActivityWindowNow: () -> Boolean = {
+        // In couch mode the grid is in this window along with everything else,
+        // whatever `swapScreens` says about a pairing that is not in use.
+        singleWindowNow() || settings.display.swapScreens
+    }
     val appOnSecondaryPanelNow: () -> Boolean = { secondScreenOccupied }
 
     /**
@@ -468,6 +483,7 @@ fun ThorApp(
             gridInActivityWindow = gridInActivityWindowNow(),
             overlayOpen = overlayIsOpenNow(),
             focusYieldedToApp = focusYieldedToApp,
+            bothPanelsInActivityWindow = singleWindowNow(),
         )
     }
 
@@ -2125,7 +2141,7 @@ fun ThorApp(
                 }
             }
 
-            DualScreenMode.SPLIT_SINGLE -> {
+            DualScreenMode.SPLIT_SINGLE, DualScreenMode.COUCH -> {
                 val topWeight = settings.display.splitRatio.coerceIn(0.2f, 0.8f)
                 Box(modifier = Modifier.fillMaxSize()) {
                     Column(modifier = Modifier.fillMaxSize()) {
@@ -2139,7 +2155,15 @@ fun ThorApp(
                                 bottomContent(Modifier.fillMaxSize())
                             }
                         }
-                        if (settings.display.swapScreens) {
+                        /*
+                         * Not swapped in couch mode.
+                         *
+                         * `swapScreens` says which of the *two panels* holds the
+                         * grid, and couch mode is not using two panels — applying
+                         * it here would put the grid above the details for no
+                         * reason a user of this mode could act on.
+                         */
+                        if (settings.display.swapScreens && mode != DualScreenMode.COUCH) {
                             second()
                             first()
                         } else {
@@ -2149,6 +2173,35 @@ fun ThorApp(
                     }
                     // One overlay for the shared window, covering both halves.
                     introOverlay()
+                }
+
+                /*
+                 * The panel nobody is looking at, held dark.
+                 *
+                 * Only in couch mode, and only when there is a second panel to
+                 * darken — `SPLIT_SINGLE` is chosen precisely by people whose
+                 * device has one screen to give.
+                 *
+                 * A presentation showing black rather than no presentation at all:
+                 * dismissing it hands the panel back to whatever the system would
+                 * otherwise put there, which on this device is the wallpaper and
+                 * the previous app's leftovers. Holding it with something black is
+                 * how the panel stays off.
+                 *
+                 * It never takes focus — see `singleWindowNow` — so the controller
+                 * keeps driving the screen the user can actually see.
+                 */
+                if (mode == DualScreenMode.COUCH && secondary != null) {
+                    SecondaryDisplay(
+                        displayId = secondary.displayId,
+                        enabled = { !appOnSecondaryPanelNow() },
+                        takesFocus = { false },
+                        keyDispatcher = inputRouter::dispatchKeyEvent,
+                        motionDispatcher = inputRouter::onGenericMotionEvent,
+                        onFocusChanged = ::onPresentationFocusChanged,
+                        onVisibilityChanged = viewModel::setSecondaryPresentationVisible,
+                        content = { DarkPanel() },
+                    )
                 }
             }
 
@@ -2169,6 +2222,24 @@ fun ThorApp(
         }
         }
     }
+}
+
+/**
+ * The second panel while couch mode has it switched off.
+ *
+ * Black rather than the theme's background: the point is a panel that has stopped
+ * drawing attention to itself, and every theme's background is a colour chosen to
+ * be looked at. On the OLED panel this device ships, black is also the pixels
+ * being off rather than lit dark.
+ *
+ * Deliberately holds the display instead of releasing it. A dismissed presentation
+ * gives the panel back to the system, which fills it with the wallpaper and
+ * whatever was last there — brighter than the launcher, and not something the
+ * launcher can then turn off.
+ */
+@Composable
+private fun DarkPanel() {
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black))
 }
 
 /**
@@ -2248,6 +2319,17 @@ private fun resolveMode(requested: DualScreenMode, hasSecondary: Boolean): DualS
 
         DualScreenMode.SPLIT_SINGLE -> DualScreenMode.SPLIT_SINGLE
         DualScreenMode.SINGLE -> DualScreenMode.SINGLE
+
+        /*
+         * Asked for, so honoured, with or without a second panel.
+         *
+         * Couch mode is a statement about where the user is rather than about
+         * what the hardware has: they are across the room from a docked device.
+         * Falling back to a two-panel layout because a second panel exists would
+         * be answering a question nobody asked — the second panel existing is
+         * precisely the thing being turned off.
+         */
+        DualScreenMode.COUCH -> DualScreenMode.COUCH
     }
 
 /**

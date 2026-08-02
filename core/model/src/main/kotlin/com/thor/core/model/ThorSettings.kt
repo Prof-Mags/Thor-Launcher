@@ -408,6 +408,21 @@ enum class DualScreenMode(val label: String) {
     SPLIT_SINGLE("Split single display"),
     /** Bottom surface only; the info panel becomes an overlay sheet. */
     SINGLE("Single screen"),
+
+    /**
+     * The top screen alone, with the bottom panel dark.
+     *
+     * For the device sitting in a dock with a controller in your hands rather
+     * than the device itself. The bottom panel is under the dock, or facing the
+     * ceiling, or simply not where you are looking — and a launcher that keeps it
+     * lit is spending battery and throwing light at nobody, while putting half of
+     * itself somewhere unreadable.
+     *
+     * Both surfaces share the top screen, split the way [SPLIT_SINGLE] splits
+     * one: details above, grid below. Not a reduced launcher — everything is
+     * still here, and the second panel comes back the moment the mode changes.
+     */
+    COUCH("Couch mode"),
 }
 
 @Serializable

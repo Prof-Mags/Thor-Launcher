@@ -44,11 +44,24 @@ data class DisplayTopology(
                 if (hasSecondaryDisplay) DualScreenMode.DUAL_DISPLAY else DualScreenMode.SPLIT_SINGLE
             DualScreenMode.SPLIT_SINGLE -> DualScreenMode.SPLIT_SINGLE
             DualScreenMode.SINGLE -> DualScreenMode.SINGLE
+
+            // Honoured whether or not a second panel is attached: couch mode is
+            // about where the user is sitting, and a second panel being present
+            // is the thing it exists to switch off.
+            DualScreenMode.COUCH -> DualScreenMode.COUCH
         }
 
-    /** True when the info surface needs its own window on another display. */
+    /**
+     * True when the launcher needs a window on the other display.
+     *
+     * Couch mode needs one too, and not to draw the launcher in: it holds that
+     * panel with something black so the system does not fill it with the
+     * wallpaper and the last app's leftovers. "Needs a presentation" and "shows a
+     * surface there" stopped being the same question when couch mode arrived.
+     */
     val needsPresentation: Boolean
-        get() = effectiveMode == DualScreenMode.DUAL_DISPLAY && secondary != null
+        get() = secondary != null &&
+            effectiveMode in setOf(DualScreenMode.DUAL_DISPLAY, DualScreenMode.COUCH)
 
     companion object {
         /**

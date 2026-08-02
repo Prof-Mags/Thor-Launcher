@@ -80,6 +80,20 @@ An entry's context menu can send it to the *other* panel instead, leaving the gr
 
 <br>
 
+### Couch mode
+
+For the Thor sitting in a dock with the controller in your hands rather than the device.
+
+Everything moves to the **top screen** — details above, grid below — and the bottom panel goes **dark**. It isn't dimmed or left showing a stale grid: Loki holds that panel black so the system can't light it with the wallpaper.
+
+Nothing is taken away. Every section, setting and overlay is still there, and the second panel comes straight back when you switch out.
+
+**Settings → System & accessibility → Dual screen → Screen mode → Couch mode**
+
+Use **Split ratio** on the same page to decide how much of the screen the details take.
+
+<br>
+
 </div>
 
 <div align="center">
@@ -467,7 +481,7 @@ Every row works with the controller.
 
 | | |
 |:--|:--|
-| **Couch Mode** and **Desktop Mode** | Planned |
+| **Desktop Mode** | Planned |
 | Mouse and keyboard while streaming | Controller and trackpad work; full pointer and text paths aren't wired |
 | HDR while streaming | Accepted but not applied |
 | Controller remapping screen | Two profiles ship and apply live; no editor |

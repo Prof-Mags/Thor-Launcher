@@ -1195,7 +1195,9 @@ private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: S
 
     ChoiceRow(
         title = "Screen mode",
-        subtitle = "Automatic uses the second panel when one is attached",
+        subtitle = "Automatic uses the second panel when one is attached. " +
+            "Couch mode puts everything on the top screen and turns the bottom " +
+            "one off, for a docked device you are sitting away from.",
         options = DualScreenMode.entries,
         selected = display.mode,
         focused = focusedRow == 0,
@@ -1205,7 +1207,11 @@ private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: S
     RowDivider()
     SwitchRow(
         title = "Swap screens",
-        subtitle = "Put the grid on the main panel instead",
+        subtitle = if (display.mode == DualScreenMode.COUCH) {
+            "Not used in couch mode — only one screen is in play"
+        } else {
+            "Put the grid on the main panel instead"
+        },
         checked = display.swapScreens,
         focused = focusedRow == 1,
         onCheckedChange = { on -> viewModel.updateDisplay { it.copy(swapScreens = on) } },
@@ -1213,7 +1219,8 @@ private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: S
     RowDivider()
     SliderRow(
         title = "Split ratio",
-        subtitle = "How much of a single display the info panel takes",
+        subtitle = "How much of the screen the info panel takes, when one screen " +
+            "is showing both",
         value = display.splitRatio,
         range = 0.25f..0.75f,
         focused = focusedRow == 2,

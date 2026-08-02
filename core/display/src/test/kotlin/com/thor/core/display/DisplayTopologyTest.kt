@@ -75,6 +75,27 @@ class DisplayTopologyTest {
         assertThat(withoutPanel.needsPresentation).isFalse()
     }
 
+    /**
+     * Couch mode keeps the second window and puts nothing in it.
+     *
+     * The presentation is what holds the panel dark. Releasing it hands the screen
+     * back to the system, which lights it with the wallpaper — the opposite of
+     * what the mode is for. So "needs a window there" is true while "shows a
+     * surface there" is false, which is why the two stopped being one question.
+     */
+    @Test
+    fun `couch mode keeps a window on the second panel in order to darken it`() {
+        val withPanel = topology(DualScreenMode.COUCH, withSecondary = true)
+        val withoutPanel = topology(DualScreenMode.COUCH, withSecondary = false)
+
+        assertThat(withPanel.effectiveMode).isEqualTo(DualScreenMode.COUCH)
+        assertThat(withPanel.needsPresentation).isTrue()
+
+        // And it is still couch mode with nothing to darken.
+        assertThat(withoutPanel.effectiveMode).isEqualTo(DualScreenMode.COUCH)
+        assertThat(withoutPanel.needsPresentation).isFalse()
+    }
+
     @Test
     fun `aspect ratio is derived from the panel dimensions`() {
         assertThat(primary.aspectRatio).isWithin(0.001f).of(1920f / 1080f)

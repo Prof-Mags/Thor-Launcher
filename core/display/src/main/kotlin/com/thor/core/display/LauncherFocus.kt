@@ -54,7 +54,15 @@ object LauncherFocus {
         gridInActivityWindow: Boolean,
         overlayOpen: Boolean,
         focusYieldedToApp: Boolean,
+        bothPanelsInActivityWindow: Boolean = false,
     ): Boolean {
+        // Couch mode draws both surfaces in one window and leaves the presentation
+        // dark. There is nothing there to drive, so it must never take a key —
+        // [windowHolding] cannot say so on its own, because one boolean cannot
+        // express "both", and it would hand focus to the blank panel the moment
+        // the info surface became the active one.
+        if (bothPanelsInActivityWindow) return false
+
         val active = windowHolding(activePanel, gridInActivityWindow)
         return active == LauncherWindow.PRESENTATION && (overlayOpen || !focusYieldedToApp)
     }

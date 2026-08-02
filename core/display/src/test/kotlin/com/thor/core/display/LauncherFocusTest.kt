@@ -135,4 +135,48 @@ class LauncherFocusTest {
             ),
         ).isFalse()
     }
+
+    // ---- Couch mode ---------------------------------------------------------
+
+    /**
+     * The darkened panel must never take a key, in any combination.
+     *
+     * Couch mode draws both surfaces in the activity window and holds the other
+     * panel black. `gridInActivityWindow` cannot describe that on its own — it
+     * says which window holds the grid, and here the answer for *both* panels is
+     * the same window — so without the override, the info surface becoming active
+     * pointed focus at the panel showing nothing, and the controller stopped
+     * driving the screen the user was looking at.
+     */
+    @Test
+    fun `couch mode never gives focus to the darkened panel`() {
+        for (panel in LauncherPanel.entries) {
+            for (overlay in listOf(false, true)) {
+                for (yielded in listOf(false, true)) {
+                    assertThat(
+                        LauncherFocus.presentationTakesFocus(
+                            activePanel = panel,
+                            gridInActivityWindow = true,
+                            overlayOpen = overlay,
+                            focusYieldedToApp = yielded,
+                            bothPanelsInActivityWindow = true,
+                        ),
+                    ).isFalse()
+                }
+            }
+        }
+    }
+
+    /** And it is off by default, so every two-panel case is unchanged. */
+    @Test
+    fun `the two-panel rule is untouched when the panels are in two windows`() {
+        assertThat(
+            LauncherFocus.presentationTakesFocus(
+                activePanel = LauncherPanel.GRID,
+                gridInActivityWindow = false,
+                overlayOpen = false,
+                focusYieldedToApp = false,
+            ),
+        ).isTrue()
+    }
 }
