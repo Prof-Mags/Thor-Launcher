@@ -27,6 +27,8 @@ data class TutorialPage(
     val title: String,
     val body: String,
     val hint: String? = null,
+    /** Which part of the device the diagram should light for this page. */
+    val focus: TutorialFocus = TutorialFocus.NONE,
 )
 
 /** A group of pages about one part of the launcher. */
@@ -34,6 +36,15 @@ data class TutorialChapter(
     val title: String,
     val icon: ImageVector,
     val pages: List<TutorialPage>,
+    /**
+     * What the diagram lights for this chapter's pages.
+     *
+     * Set per chapter rather than per page because a chapter is already "the part
+     * of the device this is about" — repeating it on every page would be the same
+     * value written thirty times, and thirty chances for one of them to disagree
+     * with the prose beside it. A page that needs its own can still say so.
+     */
+    val focus: TutorialFocus = TutorialFocus.NONE,
 )
 
 /**
@@ -60,10 +71,11 @@ object ThorTutorial {
             TutorialChapter(
                 title = "Two screens",
                 icon = Icons.Rounded.Monitor,
+                focus = TutorialFocus.BOTH,
                 pages = listOf(
                     TutorialPage(
-                        title = "Welcome to THOR",
-                        body = "THOR is a launcher built for a handheld with two " +
+                        title = "Welcome to Loki",
+                        body = "Loki is a launcher built for a handheld with two " +
                             "screens, and it treats that as the point rather than " +
                             "as a complication.\n\nOne panel shows a sparse grid of " +
                             "icons. The other shows everything known about " +
@@ -100,6 +112,7 @@ object ThorTutorial {
             TutorialChapter(
                 title = "The grid",
                 icon = Icons.Rounded.GridView,
+                focus = TutorialFocus.GRID,
                 pages = listOf(
                     TutorialPage(
                         title = "Every cell is where you put it",
@@ -149,6 +162,7 @@ object ThorTutorial {
             TutorialChapter(
                 title = "Controls",
                 icon = Icons.Rounded.SportsEsports,
+                focus = TutorialFocus.CONTROLS,
                 pages = listOf(
                     TutorialPage(
                         title = "The buttons",
@@ -198,9 +212,10 @@ object ThorTutorial {
             TutorialChapter(
                 title = "Typing",
                 icon = Icons.Rounded.Keyboard,
+                focus = TutorialFocus.KEYBOARD,
                 pages = listOf(
                     TutorialPage(
-                        title = "THOR brings its own keyboard",
+                        title = "Loki brings its own keyboard",
                         body = "Android draws a keyboard on the screen that owns " +
                             "the focused window, which on this device means it " +
                             "arrived on the wrong panel or never appeared at " +
@@ -228,10 +243,11 @@ object ThorTutorial {
             TutorialChapter(
                 title = "Your library",
                 icon = Icons.AutoMirrored.Rounded.LibraryBooks,
+                focus = TutorialFocus.GRID,
                 pages = listOf(
                     TutorialPage(
                         title = "Start by adding your systems",
-                        body = "THOR knows 47 platforms out of the box, each with " +
+                        body = "Loki knows 47 platforms out of the box, each with " +
                             "its file extensions, its accent colour and its " +
                             "scraper ids. Only the systems you add are offered " +
                             "when assigning a game, so add the ones you " +
@@ -242,7 +258,7 @@ object ThorTutorial {
                     ),
                     TutorialPage(
                         title = "Point it at your ROMs",
-                        body = "Grant the folders your games live in and THOR " +
+                        body = "Grant the folders your games live in and Loki " +
                             "scans them, matching files to systems by extension " +
                             "and looking inside zip, 7z, rar and chd " +
                             "archives.\n\nFiles that vanish are flagged rather " +
@@ -277,6 +293,7 @@ object ThorTutorial {
             TutorialChapter(
                 title = "Films & shows",
                 icon = Icons.Rounded.Movie,
+                focus = TutorialFocus.NAV_BAR,
                 pages = listOf(
                     TutorialPage(
                         title = "Movies is a real section",
@@ -303,6 +320,7 @@ object ThorTutorial {
             TutorialChapter(
                 title = "PC streaming",
                 icon = Icons.Rounded.Cast,
+                focus = TutorialFocus.NAV_BAR,
                 pages = listOf(
                     TutorialPage(
                         title = "Stream finds PCs on your network",
@@ -330,6 +348,7 @@ object ThorTutorial {
             TutorialChapter(
                 title = "The pointer",
                 icon = Icons.Rounded.Mouse,
+                focus = TutorialFocus.POINTER,
                 pages = listOf(
                     TutorialPage(
                         title = "A cursor for what a pad cannot reach",
@@ -348,7 +367,7 @@ object ThorTutorial {
                             "stick scrolls. A clicks, X long-presses, B goes back " +
                             "and Y opens the keyboard; the shoulders scroll a page " +
                             "at a time.\n\nTo use it outside the launcher it needs " +
-                            "THOR's accessibility service enabled — that is the " +
+                            "Loki's accessibility service enabled — that is the " +
                             "only route an ordinary app has to a cursor that works " +
                             "over other apps.",
                         hint = "Settings → Controls → Pointer",
@@ -361,6 +380,7 @@ object ThorTutorial {
             TutorialChapter(
                 title = "Making it yours",
                 icon = Icons.Rounded.Palette,
+                focus = TutorialFocus.BOTH,
                 pages = listOf(
                     TutorialPage(
                         title = "Fifteen themes",
@@ -406,7 +426,7 @@ object ThorTutorial {
                 pages = listOf(
                     TutorialPage(
                         title = "You're set up",
-                        body = "Add your systems, point THOR at your ROMs, and let " +
+                        body = "Add your systems, point Loki at your ROMs, and let " +
                             "it scrape. Everything else can wait until you want " +
                             "it.\n\nThis walkthrough stays available — nothing " +
                             "here is a one-time decision, and none of it has to be " +

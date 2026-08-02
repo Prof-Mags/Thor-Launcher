@@ -46,7 +46,8 @@ import com.thor.feature.settings.component.SettingsTextButton
 @Composable
 fun TutorialScreen(
     pageIndex: Int,
-    onDismiss: () -> Unit,
+    onBack: () -> Unit,
+    onNext: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -85,6 +86,18 @@ fun TutorialScreen(
                  * chapter still animates — keying on the chapter would leave the
                  * body swapping instantly within one.
                  */
+                /*
+                 * The diagram sits outside the cross-fade.
+                 *
+                 * Its highlight moves between pages of the same chapter as often
+                 * as it stays put, and fading the whole illustration in and out
+                 * each time turns a pointer into a flicker. Redrawing in place
+                 * lets the lit region simply be somewhere else.
+                 */
+                TutorialSpotlight(
+                    focus = page.focus.takeIf { it != TutorialFocus.NONE } ?: chapter.focus,
+                )
+
                 AnimatedContent(
                     targetState = index,
                     transitionSpec = { fadeIn() togetherWith fadeOut() },
@@ -127,10 +140,20 @@ fun TutorialScreen(
                     horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    /*
+                     * Back, and nothing that leaves.
+                     *
+                     * Both of these used to call the same dismiss callback, so
+                     * "NEXT" closed the walkthrough on its first page — which,
+                     * with the routing fault that sent Confirm to the grid, is
+                     * two separate ways the same thing went wrong. There is no
+                     * skip: the only way out is the last page.
+                     */
                     SettingsTextButton(
-                        label = if (index == 0) "SKIP" else "BACK",
-                        reactToHover = true,
-                        onClick = onDismiss,
+                        label = "BACK",
+                        enabled = index > 0,
+                        reactToHover = index > 0,
+                        onClick = onBack.takeIf { index > 0 },
                     )
                     Box(modifier = Modifier.weight(1f))
                     SettingsTextButton(
@@ -140,12 +163,16 @@ fun TutorialScreen(
                         borderColor = colors.cursor.copy(alpha = 0.5f),
                         focused = true,
                         reactToHover = true,
-                        onClick = onDismiss,
+                        onClick = onNext,
                     )
                 }
 
                 Text(
-                    text = "A continues  ·  B goes back  ·  Start closes",
+                    text = if (isLast) {
+                        "A finishes"
+                    } else {
+                        "A continues  ·  B goes back"
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.onSurfaceVariant.copy(alpha = 0.7f),
                     modifier = Modifier.fillMaxWidth(),

@@ -607,6 +607,62 @@ fun ThorApp(
                 if (viewModel.introVisible.value) return@collect
 
                 /*
+                 * The walkthrough, which is modal in the same way the intro is.
+                 *
+                 * Handled here rather than in the overlay routing below, and that
+                 * placement is the fix for it closing after one page. That routing
+                 * collapses to `Overlay.NONE` whenever the *grid* is the active
+                 * surface — an overlay is expected to have claimed the surface as
+                 * it appeared, and this one never did — so Confirm fell through to
+                 * the launcher and launched whatever the cursor was sitting on.
+                 * The walkthrough did not close; a game opened on top of it.
+                 *
+                 * Being outermost also makes "cannot be skipped" true rather than
+                 * merely intended: there is no surface, section or panel that can
+                 * take a press before this does, so no button leaves early.
+                 */
+                if (overlay == Overlay.TUTORIAL) {
+                    val lastPage = ThorTutorial.PAGES.lastIndex
+                    when (event.command) {
+                        ControllerCommand.CONFIRM,
+                        ControllerCommand.NAVIGATE_RIGHT,
+                        -> {
+                            if (tutorialPage >= lastPage) {
+                                overlay = Overlay.NONE
+                                settingsViewModel.completeTutorial()
+                                feedback.play(FeedbackCue.SUCCESS)
+                            } else {
+                                tutorialPage++
+                                feedback.play(FeedbackCue.NAVIGATE)
+                            }
+                        }
+
+                        /*
+                         * Back steps a page and stops at the first.
+                         *
+                         * It does not leave, because nothing leaves: the only way
+                         * out is the last page. A walkthrough with an exit on the
+                         * first page is one most people never see past it.
+                         */
+                        ControllerCommand.BACK,
+                        ControllerCommand.NAVIGATE_LEFT,
+                        -> {
+                            if (tutorialPage > 0) {
+                                tutorialPage--
+                                feedback.play(FeedbackCue.BACK)
+                            } else {
+                                feedback.play(FeedbackCue.REJECT)
+                            }
+                        }
+
+                        // Everything else is swallowed rather than passed on. Home,
+                        // the shortcut panel and the section bar all sit underneath.
+                        else -> feedback.play(FeedbackCue.REJECT)
+                    }
+                    return@collect
+                }
+
+                /*
                  * The keyboard, when it is up, is every button.
                  *
                  * It lives on the grid surface and claims input for it, so the pad
@@ -723,6 +779,19 @@ fun ThorApp(
                         feedback.play(event.command.toCue())
                     }
 
+                    /*
+                     * Never reached, and named rather than folded into an `else`.
+                     *
+                     * The walkthrough takes its own presses at the top of this
+                     * collector and returns, precisely because this routing is
+                     * what broke it: `target` collapses to `NONE` whenever the
+                     * grid is the active surface, which sent Confirm to the
+                     * launcher and launched whatever was under the cursor. An
+                     * `else` here would let a future overlay inherit that bug in
+                     * silence; this way the compiler asks.
+                     */
+                    Overlay.TUTORIAL -> Unit
+
                     Overlay.SETTINGS -> {
                         if (event.command == ControllerCommand.BACK) {
                             // Back unwinds one level at a time: an open page
@@ -759,57 +828,6 @@ fun ThorApp(
                         }
                     }
 
-                    /*
-                     * The walkthrough is paged, and every button is spoken for.
-                     *
-                     * Nothing here reaches the launcher underneath: it is read on
-                     * a first run, over a grid that is already live, and a press
-                     * that fell through would launch whatever it landed on.
-                     */
-                    Overlay.TUTORIAL -> {
-                        val lastPage = ThorTutorial.PAGES.lastIndex
-                        when (event.command) {
-                            ControllerCommand.CONFIRM,
-                            ControllerCommand.NAVIGATE_RIGHT,
-                            -> {
-                                if (tutorialPage >= lastPage) {
-                                    overlay = Overlay.NONE
-                                    settingsViewModel.completeTutorial()
-                                    feedback.play(FeedbackCue.SUCCESS)
-                                } else {
-                                    tutorialPage++
-                                    feedback.play(FeedbackCue.NAVIGATE)
-                                }
-                            }
-
-                            // Back steps a page at a time and only leaves from the
-                            // first, so a mis-press costs a page rather than the
-                            // whole walkthrough.
-                            ControllerCommand.BACK,
-                            ControllerCommand.NAVIGATE_LEFT,
-                            -> {
-                                if (tutorialPage == 0) {
-                                    overlay = Overlay.NONE
-                                    settingsViewModel.completeTutorial()
-                                    feedback.play(FeedbackCue.BACK)
-                                } else {
-                                    tutorialPage--
-                                    feedback.play(FeedbackCue.BACK)
-                                }
-                            }
-
-                            // The way out from anywhere, for anyone who already
-                            // knows the launcher. Start, which everywhere else
-                            // opens the Start panel.
-                            ControllerCommand.OPEN_SIDE_MENU -> {
-                                overlay = Overlay.NONE
-                                settingsViewModel.completeTutorial()
-                                feedback.play(FeedbackCue.BACK)
-                            }
-
-                            else -> Unit
-                        }
-                    }
 
                     Overlay.SEARCH -> {
                         // Without this the app drawer opens from a dock slot
@@ -1153,7 +1171,7 @@ fun ThorApp(
                             mouse.requestPowerMenu()
                         } else {
                             transientMessage =
-                                "The power menu needs THOR's accessibility service. " +
+                                "The power menu needs Loki's accessibility service. " +
                                 "Settings → Controls → Pointer."
                             feedback.play(FeedbackCue.ERROR)
                         }
@@ -1246,9 +1264,14 @@ fun ThorApp(
 
                     Overlay.TUTORIAL -> TutorialScreen(
                         pageIndex = tutorialPage,
-                        onDismiss = {
-                            overlay = Overlay.NONE
-                            settingsViewModel.completeTutorial()
+                        onBack = { if (tutorialPage > 0) tutorialPage-- },
+                        onNext = {
+                            if (tutorialPage >= ThorTutorial.PAGES.lastIndex) {
+                                overlay = Overlay.NONE
+                                settingsViewModel.completeTutorial()
+                            } else {
+                                tutorialPage++
+                            }
                         },
                     )
 
