@@ -1,533 +1,479 @@
-# Loki Launcher
+<div align="center">
 
-A dual-screen Android launcher for the **AYN Thor**.
+# Loki for the AYN Thor
 
-The Thor has two screens, and most launchers treat that as a problem to work
-around. Loki treats it as the point: the panel you are holding the controller
-for shows a sparse, console-style icon grid, and the other panel shows
-everything known about whatever the cursor is resting on — box art,
-screenshots, developer, release year, how long you have played it.
+Loki is an all in one launcher built exclusively for the AYN Thor, designed to solve problems instead of creating them. Every part of the experience has been built with performance, stability, and ease of use in mind, delivering a fast, lightweight interface that takes full advantage of the Thor's unique dual screen hardware.
 
-It replaces your home screen. It scans your ROMs, launches them in the right
-emulator, scrapes artwork for them, plays films, and streams games from your PC.
+Unlike traditional front ends, Loki goes far beyond simply launching games. Stream movies and TV shows directly from within the launcher, connect to your PC or other devices over your local network for game streaming, and switch seamlessly into dedicated Couch Mode for a controller focused living room experience or Desktop Mode for a desktop style interface designed for larger displays. Everything is integrated into a single, cohesive experience so you never have to leave the launcher.
 
-**Licence:** GPL-3.0. **Requires:** Android 10 or newer.
+Loki features complete controller support across the entire interface, extensive customization options, modern dual screen layouts, built in media streaming, game streaming, and a growing collection of features designed specifically for the AYN Thor. The launcher is built to be extremely lightweight, highly optimized, and responsive, ensuring smooth performance without unnecessary overhead.
 
----
+One thing worth mentioning is that Loki was never intended to recreate the look or feel of the Nintendo 3DS. If you're looking for a launcher that closely resembles the 3DS interface, Cocoon is an excellent choice. Loki instead embraces a modern design philosophy with its own identity, focusing on usability, performance, and innovation rather than copying the appearance of another system.
 
-## Contents
+The goal of Loki is simple: create the most polished, feature rich, and reliable launcher available for the AYN Thor while remaining fast, intuitive, and built from the ground up for the hardware it runs on.
 
-- [Installing](#installing)
-- [First run](#first-run)
-- [The two screens](#the-two-screens)
-- [The grid](#the-grid)
-- [Controls](#controls)
-- [The pointer](#the-pointer)
-- [The keyboard](#the-keyboard)
-- [Your game library](#your-game-library)
-- [Artwork and metadata](#artwork-and-metadata)
-- [Films and shows](#films-and-shows)
-- [Streaming from your PC](#streaming-from-your-pc)
-- [Themes and appearance](#themes-and-appearance)
-- [Notifications](#notifications)
-- [Recording](#recording)
-- [Settings map](#settings-map)
-- [What it cannot do](#what-it-cannot-do)
+<br>
 
----
+**[Download](../../releases)** · Android 10+ · GPL-3.0
 
-## Installing
+<br>
 
-1. Download the APK from [Releases](../../releases) and install it.
-2. Open it once.
-3. Set it as your home app — Loki offers this on first run, or **Android
-   Settings → Apps → Default apps → Home app**.
+</div>
 
-Loki does not replace your existing launcher's data and can be uninstalled at any
-time. Your games, saves and emulators are untouched.
+<div align="center">
 
----
+## Getting started
 
-## First run
+**1.** Download the APK from [Releases](../../releases) and install it
 
-Three things happen the first time you open Loki, and only the first time.
+**2.** Open it once
 
-**A short intro plays.** It runs once, ever — not on every restart.
+**3.** Set it as your home app when Loki offers
 
-**A permission list appears** on the panel you are holding. Nothing on it is
-required, and Loki works with none of it granted. Each one turns on a specific
-part of the launcher, and each is granted in Android's own settings because no
-app can grant them for itself:
+Your games, saves and emulators are untouched. You can uninstall at any time.
 
-| Permission | What it turns on |
-|---|---|
+<br>
+
+### The first time you open it
+
+A short intro plays — **once, ever**, not on every restart.
+
+Then Loki shows you what it would like permission for. **None of it is required.**
+
+| | Turns on |
+|:--|:--|
 | **Home app** | Loki opens when you press Home |
-| **Accessibility** | The controller pointer, and typing into other apps |
-| **Notification access** | Device notifications shown on the top screen |
+| **Accessibility** | The pointer, and typing into other apps |
+| **Notifications** | Device notifications on the top screen |
 
-**Then a walkthrough**, which takes you through both panels, the grid, the
-controls, the keyboard, your library, films, streaming, the pointer and every
-settings page. You can replay it any time from **Settings → About → Replay the
-walkthrough**.
+Then a walkthrough takes you through everything. Replay it any time from
+**Settings → About → Replay the walkthrough**.
 
----
+<br>
 
-## The two screens
+</div>
 
-One panel is the **grid** — icons, the section bar, menus. The other is the
-**information panel** — details about whatever is selected, the clock, and the
-wallpaper.
+<div align="center">
 
-Which physical screen gets which is up to you: **Settings → System →
-Dual screen → Swap screens**. The same layout renders in either window, so
-nothing is second-class.
+## Two screens, one launcher
 
-**Running a game on one screen while using the launcher on the other** is what
-the design exists for:
+One panel holds the **grid** — your icons, menus and the section bar.
 
-- Launching sends the game to the grid's panel. The other panel carries on
-  showing the launcher.
-- An entry's context menu can send it to the *other* panel instead, leaving the
-  grid where it is and still navigable.
-- **Touching a panel gives it the controller.** Tap the game to play, tap the
-  launcher to browse, either direction, any time.
-- **Home** is what gives a panel back to the launcher, from either screen.
+The other holds **information** — artwork, details and play time for whatever the cursor is on.
 
-If your device only exposes one screen, Loki falls back to a split single
-display, and everything still works.
+<br>
 
----
+Swap which is which in **Settings → System → Dual screen**.
+
+<br>
+
+### Play on one screen, browse on the other
+
+Launch a game and it takes the grid's panel. The other panel stays on the launcher.
+
+**Touch a panel to give it the controller.** Tap the game to play, tap the launcher to browse, any time.
+
+**Home** gives a panel back to Loki, from either screen.
+
+An entry's context menu can send it to the *other* panel instead, leaving the grid where it is.
+
+<br>
+
+</div>
+
+<div align="center">
 
 ## The grid
 
-**Every icon is where you put it.** An entry occupies the cell you place it in,
-and an empty cell stays empty — nothing reflows when you add or remove
-something. That is a deliberate departure from launchers that flow icons into a
-list, and it is what makes rearranging feel like a console.
+**Every icon stays where you put it.** Empty cells stay empty. Nothing reflows.
 
-- **Move things** by holding **A** to pick an icon up, moving, and pressing
-  **A** to drop it. Dropping onto an occupied cell picks up whatever was there
-  so you can re-home it, rather than silently swapping the two.
-- **Pinch** to snap between eight density presets, from 3×2 to 8×5. Each carries
-  its own spacing so no density feels crowded.
-- **Pages** are fixed grids. The size of your library changes the *number* of
-  pages, never the cost of drawing one — ten thousand games cost the same per
-  frame as ten. **L2** and **R2** turn pages.
-- **Placements survive rescans.** An entry's identity comes from stable facts,
-  so reinstalling an app or moving a ROM keeps its cell.
-- **Icons** take one of five shapes — square, rounded, squircle, circle, hexagon
-  — and the selection cursor traces whichever shape the cell actually has.
+| | |
+|:--|:--|
+| **Move an icon** | Hold **A**, move, press **A** to drop |
+| **Change density** | Pinch — eight presets, 3×2 up to 8×5 |
+| **Turn pages** | **L2** / **R2** |
+| **Favourite** | **X** |
+| **Context menu** | **Y** |
+
+Placements survive rescans. Moving a ROM or reinstalling an app keeps its cell.
+
+Icons take one of five shapes, and the cursor traces whichever shape the cell has.
+
+<br>
 
 ### Folders
 
-Folders hold entries, scrape their own artwork, and can be made from the Start
-panel or any entry's context menu.
+Folders hold entries, scrape their own artwork, and can be made from any entry's menu.
 
-**Scanned games are filed into a folder per system** rather than scattered
-across pages, so adding a console brings in hundreds of games and costs the grid
-one cell. Anything you move out or rearrange stays where you put it through
-every later scan.
+**Scanned games are filed into one folder per system**, so adding a console costs the grid a single cell instead of three hundred. Anything you move out stays where you put it.
 
----
+<br>
+
+</div>
+
+<div align="center">
 
 ## Controls
 
-| Input | Action |
-|---|---|
-| D-pad / left stick | Move the cursor |
-| **A** | Launch — *hold* to pick the icon up |
-| **B** | Back / close |
-| **X** | Toggle favourite |
+| Button | Does |
+|:--|:--|
+| **A** | Launch — *hold* to pick up |
+| **B** | Back |
+| **X** | Favourite |
 | **Y** | Context menu |
-| **L1 / R1** | Previous / next screenshot for the selected game |
-| **L2 / R2** | Previous / next page |
+| **L1** / **R1** | Previous / next screenshot |
+| **L2** / **R2** | Previous / next page |
 | **Stick click** | Shortcut panel |
 | **Start** | Start panel |
 | **Select** | App drawer |
-| **Guide / Home** | Home |
-| Triggers held | Accelerates whatever else you press |
-| W A S D, E, F, Tab, Enter, Esc | Keyboard equivalents |
+| **Guide** | Home |
+| **Triggers held** | Speeds up whatever else you press |
 
-Three details you will feel rather than see: held directions repeat on Loki's own
-schedule rather than Android's much slower one; **A** dispatches on *release*,
-because holding it means "pick this up"; and pushing the stick past the dead zone
-gives one clean direction rather than a flood of diagonals.
+A paired keyboard works too — WASD, E, F, Tab, Enter, Esc.
 
-### The shortcut panel
+<br>
 
-Click either stick for quick access to the app drawer, search, settings, swap
-screens, rescan, recording, Wi-Fi, Bluetooth, volume and Android settings.
+### Shortcut panel
 
-It offers only what an ordinary app can genuinely do. Brightness, rotation and
-the notification shade need permissions a launcher cannot hold, so a tile for
-them could only pretend.
+Click either stick for the app drawer, search, settings, swap screens, rescan,
+recording, Wi-Fi, Bluetooth, volume and Android settings.
+
+<br>
 
 ### The AYN button
 
-Its firmware reports no code that reaches an app. A short press never arrives,
-and a long press also powers the bottom panel off — that is firmware behaviour on
-a button the vendor owns, and no installable launcher can intercept it. **The
-stick clicks are the binding that works everywhere.**
+Its firmware doesn't send anything an app can read, so Loki can't use it.
+**The stick clicks work everywhere.**
 
-If a button seems to do nothing, **Settings → About → Button tester** reports the
-keycode, device and current binding of anything you press. A code that never
-appears there is being taken by the system before Loki sees it.
+If a button seems dead, **Settings → About → Button tester** shows exactly what it sends.
 
----
+<br>
+
+</div>
+
+<div align="center">
 
 ## The pointer
 
-A handheld running Android is always one tap away from something no gamepad can
-press — a login form, a store page, an emulator's own settings.
+For everything a gamepad can't press — login forms, store pages, emulator settings.
 
-**Hold Start + Select** to raise a cursor you drive with the stick. It is off by
-default; turn it on in **Settings → Controls → Pointer**.
+**Hold Start + Select** to raise a cursor. Turn it on in **Settings → Controls → Pointer**.
 
-| Input | Action |
-|---|---|
-| Left stick | Move the cursor |
+| Input | Does |
+|:--|:--|
+| **Left stick** | Move the cursor |
 | **Right stick** | Scroll |
 | **A** | Click |
 | **X** | Long press |
 | **B** | Back |
 | **Y** | Open the keyboard |
-| **L1 / R1** | Scroll a page |
+| **L1** / **R1** | Scroll a page |
 
-**To use it outside Loki**, enable Loki's accessibility service. That is the only
-route an ordinary app has to a cursor that works over other apps — clicking
-inside another app needs gesture dispatch, and reading controller buttons while
-that app has focus needs key filtering. Both are accessibility APIs.
+To use it **outside** Loki, enable Loki's accessibility service.
 
-**Typing into other apps** works too. Tap a text field — a browser's address bar,
-a login box — press **Y**, and Loki's keyboard appears on the panel you are
-holding while the text goes into the field on the other screen. This needs the
-accessibility permission, which allows reading window contents; Loki uses it only
-to find the field you tapped and fill it in, and stores nothing. Fields that do
-not use standard Android text controls will not accept it.
+<br>
 
----
+### Typing into other apps
+
+Tap a text field in any app, press **Y**, and Loki's keyboard appears on the panel
+you're holding while the text lands in the field on the other screen.
+
+Needs the accessibility permission. Apps that don't use standard Android text
+fields won't accept it.
+
+<br>
+
+</div>
+
+<div align="center">
 
 ## The keyboard
 
-Loki brings its own on-screen keyboard, because it cannot use Android's. An
-Android keyboard is drawn on the screen that owns the focused window, so on this
-device it appeared on the wrong panel or never appeared at all.
+Loki brings its own, because Android's appears on the wrong screen on this device.
 
-Loki's is part of the launcher: it renders wherever the grid does, in your theme,
-with the same cursor, sounds and haptics as everything else.
-
-| Input | Key |
-|---|---|
-| D-pad | Move over the keys |
-| **A** | Press the key under the cursor |
-| **B** | Delete, or close when the field is empty |
+| Input | Does |
+|:--|:--|
+| **D-pad** | Move over the keys |
+| **A** | Press |
+| **B** | Delete, or close when empty |
 | **X** | Space |
-| **Y** | Shift — latched for one character |
-| **L2 / R2** | Letters ⟷ symbols |
+| **Y** | Shift |
+| **L2** / **R2** | Letters ⟷ symbols |
 | **Start** | Done |
 
-Every key is also a touch target. Typing on one screen while the field fills in
-on the other is what two screens are for.
+Every key is a touch target too.
 
----
+<br>
 
-## Your game library
+</div>
+
+<div align="center">
+
+## Your games
+
+<br>
 
 ### 1. Add your systems
 
 **Settings → Games & artwork → Platforms**
 
-Loki knows **47 platforms** out of the box, each with its file extensions, accent
-colour and scraper ids. Only the systems you add are offered when assigning a
-game, so add the ones you own.
+**47 systems** built in. **62 emulators** recognised, each handed a ROM the way
+that emulator expects. Add the consoles you own and pick an emulator for each.
 
-Each platform gets the emulator it launches with. **62 emulators** are
-recognised, and each is handed a ROM the way that particular emulator expects —
-a content URI, a real filesystem path, or an explicit component. An unrecognised
-emulator falls back to a generic open request, which works for many but not all.
+<br>
 
 ### 2. Point it at your ROMs
 
-**Settings → Games & artwork → Extra ROM folders**, or per-platform folders on
-the Platforms page.
+**Settings → Games & artwork → Extra ROM folders**
 
-Loki scans the folders you grant, matching files to systems by extension and
-looking inside `zip`, `7z`, `rar` and `chd` archives.
+Loki scans the folders you grant, matching files by extension and reading inside
+`zip`, `7z`, `rar` and `chd`.
 
-Files that vanish are **flagged rather than deleted**, so an unmounted SD card
-does not throw away everything known about what was on it.
+Missing files are **flagged, not deleted** — an unmounted SD card doesn't lose anything.
+
+<br>
 
 ### 3. Let it scrape
 
-**Settings → Games & artwork → Metadata & scraping**
+Scanning, scraping and play-time tracking all run in the background.
 
-Scanning, scraping and play-time bookkeeping all run in the background.
+Play time is recorded per game and shown on the information panel. It survives
+Loki being killed mid-game, which is normal when memory is tight.
 
-### Play time
+<br>
 
-Launches and play time are recorded per entry and shown on the information
-panel. A session opens when you launch something and is credited when you come
-back — or when the device sleeps, which on a handheld is how play usually ends.
-It survives the launcher being killed mid-game, which is normal when memory is
-tight.
+</div>
 
----
+<div align="center">
 
-## Artwork and metadata
+## Artwork and details
 
-Four providers supply details and artwork. They are merged **field by field**,
-because none is best at everything, and **anything you edit by hand is never
-overwritten** by a later scrape.
+Four sources, merged field by field. **Anything you edit by hand is never overwritten.**
 
-| Provider | Supplies | Needs |
-|---|---|---|
-| **Wikidata** | Developer, publisher, dates, series | **Nothing** — works out of the box |
-| **ScreenScraper** | Titles, developer, publisher, genres, dates, artwork | A developer key compiled into the build |
-| **SteamGridDB** | Square grid artwork | An API key you enter in settings |
-| **RAWG** | Descriptions, genres, credits, ratings, screenshots | An API key you enter in settings |
+| Source | Gives you | Needs |
+|:--|:--|:--|
+| **Wikidata** | Developer, publisher, dates, series | **Nothing** |
+| **ScreenScraper** | Titles, credits, genres, dates, artwork | Built-in key |
+| **SteamGridDB** | Square grid artwork | Your API key |
+| **RAWG** | Descriptions, ratings, screenshots | Your API key |
 
-A provider without credentials is skipped, never fatal. Each entry keeps one
-cover plus up to three screenshots, which the information panel rotates through
-and the bumpers step between.
+A source without a key is skipped, never fatal.
 
-**Platform artwork** can also be imported from an icon pack — **Settings → Games
-& artwork → Platform artwork**. Loki ships none; which pack you install is up to
-you.
+Each game keeps a cover and up to three screenshots. The bumpers step between them.
 
----
+**Platform artwork** can be imported from an icon pack — Loki ships none.
 
-## Films and shows
+<br>
 
-Reached from the section bar along the bottom of the grid panel. It browses a
-catalogue, finds sources for a title, and plays them.
+</div>
 
-Browsing needs nothing at all. Playing needs sources, and there are two kinds.
+<div align="center">
 
-### URL-based addons
+## Movies and TV
 
-**Settings → Films & shows → Sources & accounts → Add a URL-based addon**
+Open **Movies** from the section bar at the bottom of the grid.
 
-Loki speaks the Stremio addon protocol, so any addon that serves streams works.
-Paste the addon's install or manifest URL and press **Test** — it asks the addon
-for a stream it certainly has, which is the only way to tell a working addon from
-a URL that merely looks right.
+Browsing needs nothing. Playing needs a source, and there are two kinds.
 
-All the usual URL forms are accepted: a manifest URL copied from a browser, the
-`stremio://` link an install button produces, and the configured form that
-carries its options in the path.
+<br>
 
-Loki ships no addons. Which you install is your choice and your responsibility.
+### URL based addons
+
+**Settings → Films & shows → Sources & accounts**
+
+Loki speaks the Stremio addon protocol. **Paste an addon's URL and press Test.**
+
+Install links, manifest URLs and `stremio://` links are all accepted.
+
+<br>
 
 ### Torrent indexers
 
-**Settings → Films & shows → Sources & accounts → Add an indexer**
+Loki speaks **Torznab** — what **Jackett**, **Prowlarr** and **NZBHydra** all expose.
+It searches them itself, with no addon in between.
 
-Loki speaks **Torznab**, which is what **Jackett**, **Prowlarr** and **NZBHydra**
-all expose. It searches these itself — there is no addon in between.
-
-For each indexer you add:
-
-| Field | What to enter |
-|---|---|
+| Field | What to put |
+|:--|:--|
 | **Name** | Whatever you want to call it |
-| **URL** | The Torznab endpoint, e.g. `http://192.168.1.10:9117/api/v2.0/indexers/rarbg/results/torznab` |
-| **API key** | The key from your Jackett or Prowlarr dashboard |
+| **URL** | Your Torznab endpoint |
+| **API key** | From your Jackett or Prowlarr dashboard |
 
-Then press **Test**, which runs a real search and tells you what came back. An
-indexer that is unreachable, misconfigured or wrong about its key says so here
-rather than silently returning nothing later.
+Press **Test** — it runs a real search, so a wrong key or an unreachable
+indexer tells you now instead of silently finding nothing later.
 
-Indexers on your own network are reached over plain HTTP, which Loki allows
-specifically because that is how Jackett and Prowlarr serve by default. Anything
-remote — the catalogue, debrid, addons, artwork — is HTTPS.
+Indexers on your own network work over plain HTTP. Everything remote is HTTPS.
 
-Which indexers you search is your decision and your responsibility.
+<br>
 
 ### Real-Debrid
 
-**Settings → Films & shows → Sources & accounts → Real-Debrid token**
+Paste your token and press **Check**. It turns a torrent result into an instant stream.
 
-A debrid account turns a torrent result into an instant stream. Without it,
-sources are listed but cannot be opened — which is where most of the reliability
-comes from.
+Without it, sources are listed but won't open.
 
-Press **Check Real-Debrid** to confirm the token works and the account is active.
-A token that is present but expired looks exactly like a working one otherwise,
-and the symptom it produces — sources listed, nothing ever opening — points
-nowhere near this screen.
+<br>
 
 ### Playback
 
-**Settings → Films & shows → Playback** decides which source is chosen
-automatically and how it plays. The player handles progressive files, HLS and
-DASH, remembers where you were, and lets you pick a different source without
-leaving the title.
+Resume where you left off, pick a different source without leaving the title,
+choose audio track and playback speed. Handles progressive files, HLS and DASH.
 
----
+<br>
 
-## Streaming from your PC
+</div>
 
-Reached from the section bar. Loki finds PCs running **Sunshine** on your
-network, pairs with one by PIN, lists what it can stream with box art, and plays
-it — video, audio and controller — on a vendored Moonlight core.
+<div align="center">
 
-1. Install and run [Sunshine](https://github.com/LizardByte/Sunshine) on your PC.
-2. Open **Stream** in Loki. PCs on the network appear automatically; you can also
-   add one by address.
-3. Pick a PC, and enter the PIN it shows into Sunshine's web interface.
-4. Choose something to play.
+## Game streaming
 
-**While a stream is running, the other panel becomes a trackpad and keyboard.**
-That is the only way to type into a streamed desktop at all, because Android's
-own keyboard cannot render on the second display. Tap the keyboard to give it the
-controller; **B** hands the pad back to the game.
+Open **Stream** from the section bar. Loki finds PCs running
+[Sunshine](https://github.com/LizardByte/Sunshine) on your network.
 
-**To leave a stream:** press Back, or hold Start, Select, L1 and R1 together.
+**1.** Run Sunshine on your PC
 
-Resolution, frame rate, bitrate and codec are in **Settings → PC streaming →
-Picture**. What your PC is told to call this handheld is under **PCs**.
+**2.** Open Stream — PCs appear automatically, or add one by address
 
----
+**3.** Enter the PIN into Sunshine
 
-## Themes and appearance
+**4.** Pick something to play
 
-**Fifteen themes** — five dark, five colourful, five light. A theme is far more
-than a colour swap: each carries its own accent pair, corner radius, motion
-character, font, sound pack, and the way its panels are actually drawn.
+<br>
+
+**While streaming, the other panel becomes a trackpad and keyboard** — the only way
+to type into a streamed desktop, since Android's keyboard can't render there.
+
+Leave with **Back**, or hold **Start + Select + L1 + R1**.
+
+Resolution, frame rate and bitrate live in **Settings → PC streaming**.
+
+<br>
+
+</div>
+
+<div align="center">
+
+## Making it yours
+
+**Fifteen themes.** Each carries its own accents, corners, motion, font and sounds.
 
 | Dark | Colourful | Light |
-|---|---|---|
-| Material *(default)* | Neon | Daylight |
+|:--|:--|:--|
+| **Material** *(default)* | Neon | Daylight |
 | Midnight | Cyber | Meridian |
 | Obsidian | Ember | Paper |
 | OLED | Lagoon | Cherry |
 | Slate | Orchid | Sherbet |
 
-Also configurable:
+<br>
 
-- **Wallpapers** per panel — a picture, an animated effect, or a video preview of
-  whatever game is selected. Ten animated styles, including one that takes its
-  hue from the highlighted game's system.
-- **Corner style** — square, rounded, or each theme's own radius. One answer for
-  the whole interface, so nothing is rounded on its own.
-- **Cursor** style and idle animation, clock style, text scale, page indicators,
-  folder style, icon shape.
-- **Sounds and haptics**, with their own volume and intensity.
+Also yours to set: wallpaper per panel — static, animated, or a video preview of
+the selected game — corner style, icon shape, cursor style, clock, text size,
+sounds and haptics.
 
 **If it feels slow:** *Settings → System → Performance* turns the expensive
-effects off together — blur, animated wallpapers, video previews and shadows.
-Themes degrade rather than break; a glass theme without a blurred backdrop
-becomes a tinted one rather than an unreadable transparent sheet.
+effects off together.
 
-**Accessibility** — contrast, reduced motion, text size and colour-vision modes —
-is under *Settings → System → Accessibility*.
+**Accessibility:** contrast, reduced motion, text size and colour vision modes
+under *Settings → System*.
 
----
+<br>
+
+</div>
+
+<div align="center">
 
 ## Notifications
 
-With notification access granted, the top screen can show what your device is
-notifying about while you play. Loki reports the *grant* and the *connection*
-separately, because the grant survives an update and the connection does not — a
-page that conflated them would claim to be working while showing nothing.
+With notification access granted, the top screen shows what your device is
+notifying about while you play.
 
-**Settings → System → Notifications.**
+**Settings → System → Notifications**
 
----
+<br>
 
 ## Recording
 
-The shortcut panel's **Record** tile captures both panels into one video, laid
-out inside a dual-screen console body, saved to `Movies/Loki`.
+The shortcut panel's **Record** tile captures both panels into one video inside a
+dual screen console body, saved to `Movies/Loki`.
 
-Be clear about what this is: **it records the launcher, not the device.** Android
-only lets an app capture the default display, so a game running on a panel is
-another app's window that this cannot see, and it does not appear. It is useful
-for showing the launcher off and no use for capturing gameplay. There is no
-audio, and recording ends if Loki's process does.
+It records **the launcher, not the device** — Android only lets an app capture the
+default display, so a running game won't appear. No audio.
 
----
+<br>
 
-## Settings map
+</div>
+
+<div align="center">
+
+## Settings
 
 | Category | Pages |
-|---|---|
-| **Personalization** | Theme, Wallpaper, Interface, Home grid, Selection cursor |
-| **Games & artwork** | Platforms, Extra ROM folders, Scanning, Sorting, Metadata & scraping, Platform artwork |
-| **Films & shows** | Sources & accounts, Playback |
-| **PC streaming** | Picture, Controls, PCs |
-| **Controls** | Navigation, Pointer, Feedback |
-| **System & accessibility** | Dual screen, Performance, Accessibility, Notifications |
-| **About** | Version info, default launcher, replay walkthrough, verbose logging, button tester, reset |
+|:--|:--|
+| **Personalization** | Theme · Wallpaper · Interface · Home grid · Cursor |
+| **Games & artwork** | Platforms · ROM folders · Scanning · Sorting · Metadata · Platform artwork |
+| **Films & shows** | Sources & accounts · Playback |
+| **PC streaming** | Picture · Controls · PCs |
+| **Controls** | Navigation · Pointer · Feedback |
+| **System** | Dual screen · Performance · Accessibility · Notifications |
+| **About** | Info · Default launcher · Replay walkthrough · Logging · Button tester · Reset |
 
-Every row is reachable from the controller.
+Every row works with the controller.
 
----
+<br>
 
-## What it cannot do
+</div>
 
-Stated plainly, so nothing here is a surprise.
+<div align="center">
 
-- **Mouse and keyboard while streaming** are partly there — the controller and
-  the trackpad work; the full pointer and text paths the protocol also carries
-  are not wired.
-- **HDR while streaming** is accepted but not applied, so it stays off rather
-  than producing a washed-out picture.
-- **Controller remapping** has no editor. Two profiles ship and apply live, but
-  custom bindings cannot be edited on-device.
-- **Cloud sync and backup** are modelled but have no transport.
-- **Collections and achievements** have tables but no screens.
-- **Smart folders** evaluate correctly but can only be created in code.
-- **Plugin framework, theme editor, widget hosting** are not built.
-- **Emulator package names drift** between releases; an unrecognised emulator
-  falls back to a generic open request.
-- **Emulators needing a real filesystem path** can only open ROMs on primary
-  shared storage.
-- **Once an app has been sent to a panel**, Loki cannot tell whether it is still
-  running there — no unprivileged API reports another app's windows. Press Home
-  to take the panel back.
+## Not built yet
 
----
+| | |
+|:--|:--|
+| **Couch Mode** and **Desktop Mode** | Planned |
+| Mouse and keyboard while streaming | Controller and trackpad work; full pointer and text paths aren't wired |
+| HDR while streaming | Accepted but not applied |
+| Controller remapping screen | Two profiles ship and apply live; no editor |
+| Cloud sync and backup | Modelled, no transport |
+| Collections and achievements | Tables exist, no screens |
+| Smart folder editor | Works, but queries can only be made in code |
+| Theme editor, plugins, widgets | Not started |
+
+**Known limits:** emulator package names drift between releases, so an unknown one
+falls back to a generic open. Emulators needing a real file path can only reach
+primary storage. Once an app is on a panel, Loki can't tell if it's still there —
+press **Home** to take the panel back.
+
+<br>
+
+</div>
+
+<div align="center">
 
 ## Building it yourself
 
 ```bash
-./gradlew assembleRelease      # release APK
-./gradlew test                 # unit tests
-./gradlew :app:installDebug    # install to a connected device
+./gradlew assembleRelease
+./gradlew test
 ```
 
-Needs JDK 17, and the NDK plus CMake for the streaming core:
+JDK 17, plus the NDK and CMake for the streaming core:
 
 ```bash
 sdkmanager "ndk;27.0.12077973" "cmake;3.22.1"
 ```
 
-Optional ScreenScraper developer credentials go in `local.properties`:
+How it's built and why — the dual screen architecture and the rules behind it — is
+in [docs/DESIGN.md](docs/DESIGN.md).
 
-```properties
-thor.screenscraper.devId=yourDevId
-thor.screenscraper.devPassword=yourDevPassword
-```
-
-Without them ScreenScraper reports itself unconfigured and is skipped; the other
-three providers still work.
-
-**How it is built and why** — the dual-screen architecture, the focus rules and
-the invariants behind them — is documented in [docs/DESIGN.md](docs/DESIGN.md).
-
----
+<br>
 
 ## Licence
 
-**GNU General Public License v3.0** — see [LICENSE](LICENSE).
+**GPL-3.0** — see [LICENSE](LICENSE).
 
-Chosen rather than defaulted to: the streaming section is built on
-[Moonlight](https://github.com/moonlight-stream/moonlight-android), which is
-GPL-3.0, and GPL is copyleft. Anyone given a Loki build is entitled to its
-complete source under the same licence, and may modify and redistribute it.
-Building it for yourself carries no obligation at all — the terms attach to
-distribution.
+The streaming core is [Moonlight](https://github.com/moonlight-stream/moonlight-android),
+which is GPL, so Loki is too. Anyone given a build is entitled to its source.
 
-Loki is not affiliated with AYN, Valve, Nintendo, Sony, Microsoft, Stremio,
-Real-Debrid, or any emulator or indexer project.
+Loki is not affiliated with AYN, Stremio, Real-Debrid, or any emulator or indexer project.
+
+</div>
