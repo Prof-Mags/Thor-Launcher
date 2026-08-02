@@ -39,9 +39,6 @@ sealed interface LauncherAction {
     /** Open the power menu overlay. */
     @Serializable data object OpenPowerMenu : LauncherAction
 
-    /** Expand the system notification shade. */
-    @Serializable data object OpenNotifications : LauncherAction
-
     /** Enter grid edit mode. */
     @Serializable data object EditGrid : LauncherAction
 

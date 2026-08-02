@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -237,14 +238,24 @@ class LauncherViewModel @Inject constructor(
      * Confirm is what commits a section, so Left and Right only move the cursor —
      * see [navCursor].
      */
+    /**
+     * The extensions currently enabled, for walking the section bar.
+     *
+     * Read from the live state rather than collected into a field of its own:
+     * the bar is stepped by a press, so the value is only ever wanted at the
+     * moment of one, and a stale copy would let the cursor stop on a section
+     * that is no longer there.
+     */
+    private fun enabledExtensionIds(): Set<String> = uiState.value.enabledExtensions
+
     private fun onNavBarCommand(command: ControllerCommand) {
         val focused = _navCursor.value ?: return
         when (command) {
             ControllerCommand.NAVIGATE_LEFT ->
-                _navCursor.value = LauncherTab.step(focused, -1)
+                _navCursor.value = LauncherTab.step(focused, -1, enabledExtensionIds())
 
             ControllerCommand.NAVIGATE_RIGHT ->
-                _navCursor.value = LauncherTab.step(focused, 1)
+                _navCursor.value = LauncherTab.step(focused, 1, enabledExtensionIds())
 
             // Up is the way back into the content, and Back does the same thing:
             // a bar at the bottom of the screen has nothing below it, so both of
@@ -277,8 +288,6 @@ class LauncherViewModel @Inject constructor(
 
             ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
             // Shown on the top screen, so it does not disturb the grid the
-            // cursor is on — see NotificationPanel for why it is a binding.
-            ControllerCommand.OPEN_NOTIFICATIONS -> toggleNotifications()
 
             else -> Unit
         }
@@ -419,38 +428,22 @@ class LauncherViewModel @Inject constructor(
     /**
      * Whether the start-up sequence is still running.
      *
-     * Still held here rather than in the composition, so a rotation or a display
-     * change cannot replay it mid-run. What has changed is what ends it for good:
-     * this used to be scoped to the process on the reasoning that a launcher is
-     * returned to dozens of times a day and its process survives all of them.
+     * Scoped to the process, and that is the whole specification: it survives a
+     * rotation or a display change, and dies when the process does. So the intro
+     * plays when the device is turned on, when the launcher is force stopped and
+     * reopened, and when Android kills it to make room for a game — and does not
+     * play for a Home press against a launcher that is still running.
      *
-     * On this handheld it does not. The launcher is killed to make room for the
-     * game it just started, so coming back with Home is frequently a *cold* start
-     * — a new process, a new view model, and an intro that had every right to
-     * play again. From the front that is an intro that plays at random, several
-     * times a day, on a button that means "take me home".
-     *
-     * So it is recorded instead, and plays once: on the first run, beside the
-     * permission list and the walkthrough, which is the only time it is telling
-     * the user anything they have not already seen.
+     * It was briefly stored instead, which made it play exactly once per install.
+     * That is a different thing and not the one wanted: the sequence is the
+     * launcher starting up, so it belongs to a start-up rather than to a
+     * first run.
      */
     private val _introVisible = MutableStateFlow(true)
     val introVisible: StateFlow<Boolean> = _introVisible.asStateFlow()
 
     fun finishIntro() {
         _introVisible.value = false
-    }
-
-    /**
-     * Ends the intro and records that it has run.
-     *
-     * Written when the sequence *completes* rather than when it starts, so a
-     * process killed halfway through it still gets to show it properly next time
-     * rather than losing it to a run nobody saw the end of.
-     */
-    fun completeIntro() {
-        _introVisible.value = false
-        viewModelScope.launchSafely(TAG) { settingsRepository.setIntroPlayed(true) }
     }
 
     // ---- On-screen keyboard ------------------------------------------------
@@ -675,40 +668,6 @@ class LauncherViewModel @Inject constructor(
     private val _shortcutPanel = MutableStateFlow(ShortcutPanelState())
     val shortcutPanel: StateFlow<ShortcutPanelState> = _shortcutPanel.asStateFlow()
 
-    /**
-     * Opens or closes the panel the AYN button raises.
-     *
-     * A toggle rather than two calls because the button that opens it is the
-     * obvious thing to press to make it go away, and it is the only control the
-     * user is guaranteed to still have while a game holds the other panel.
-     */
-    private val _notificationsOpen = MutableStateFlow(false)
-
-    /**
-     * Whether the notification panel is showing on the top screen.
-     *
-     * Held here rather than in the notification view model because it is a
-     * property of the *launcher's* state — what the top screen is currently
-     * given over to — and the same shell that decides between a game's details
-     * and a platform's has to decide this too.
-     */
-    val notificationsOpen: StateFlow<Boolean> = _notificationsOpen.asStateFlow()
-
-    /**
-     * Opens or closes it.
-     *
-     * A toggle on one button, because it occupies the top screen entirely: the
-     * button that shows it is the obvious one to press to get the game details
-     * back, and a separate close binding would be a second thing to learn.
-     */
-    fun toggleNotifications() {
-        _notificationsOpen.value = !_notificationsOpen.value
-    }
-
-    fun closeNotifications() {
-        _notificationsOpen.value = false
-    }
-
     fun toggleShortcutPanel() {
         if (_shortcutPanel.value.visible) {
             closeShortcutPanel()
@@ -865,7 +824,8 @@ class LauncherViewModel @Inject constructor(
             settingsRepository.performance,
             settingsRepository.controls,
             settingsRepository.personalization,
-        ) { grid, performance, controls, personalization ->
+            settingsRepository.settings.map { it.enabledExtensions }.distinctUntilChanged(),
+        ) { grid, performance, controls, personalization, extensions ->
             GridConfig(
                 spec = grid,
                 // One page either side is enough to make a swipe look instant
@@ -874,6 +834,7 @@ class LauncherViewModel @Inject constructor(
                 pagePrefetchRadius = if (performance.performanceMode) 0 else 1,
                 touchEnabled = controls.touchEnabled,
                 folderStyle = personalization.folderStyle,
+                enabledExtensions = extensions,
             )
         },
         combine(cursor, currentPage, editMode, openFolderId, sideMenuOpen) { c, page, edit, folder, menu ->
@@ -894,6 +855,7 @@ class LauncherViewModel @Inject constructor(
         val derived = layoutMemo.of(layout, interaction.openFolderId)
         val selection = resolveSelection(layout, spec, interaction, derived.openFolderContents)
         LauncherUiState(
+            enabledExtensions = gridConfig.enabledExtensions,
             pages = layout.pages,
             placements = layout.placements,
             entriesById = layout.entries,
@@ -1011,6 +973,8 @@ class LauncherViewModel @Inject constructor(
         val pagePrefetchRadius: Int,
         val touchEnabled: Boolean,
         val folderStyle: com.thor.core.model.FolderStyle,
+        /** Optional sections enabled, so the bar knows what to draw. */
+        val enabledExtensions: Set<String>,
     )
 
     private data class InteractionSnapshot(
@@ -1158,7 +1122,6 @@ class LauncherViewModel @Inject constructor(
                 ControllerCommand.NAVIGATE_DOWN, ControllerCommand.BACK -> enterNavBar()
                 ControllerCommand.GO_HOME -> goHome()
                 ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
-                ControllerCommand.OPEN_NOTIFICATIONS -> toggleNotifications()
                 else -> Unit
             }
             return
@@ -1187,8 +1150,6 @@ class LauncherViewModel @Inject constructor(
             // Already handled above, where it applies from every surface.
             ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
             // Shown on the top screen, so it does not disturb the grid the
-            // cursor is on — see NotificationPanel for why it is a binding.
-            ControllerCommand.OPEN_NOTIFICATIONS -> toggleNotifications()
             ControllerCommand.GO_HOME -> goHome()
             ControllerCommand.PICK_UP -> pickUp()
             ControllerCommand.CANCEL_EDIT -> cancelEdit()

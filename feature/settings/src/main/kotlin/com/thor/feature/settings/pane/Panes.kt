@@ -85,14 +85,14 @@ fun SettingsPageContent(
     iconPackStatus: IconPackStatus,
     pointerServiceEnabled: Boolean,
     pointerRunning: Boolean,
-    notificationAccessGranted: Boolean,
-    notificationServiceConnected: Boolean,
     /** What Real-Debrid said when last asked, or null if it has not been. */
     debridStatus: String?,
     /** What the last grid clear did, or null if it has not been used. */
     gridClearResult: String?,
     indexerStatus: Map<Int, String>,
     addonStatus: Map<Int, String>,
+    /** What the last extension import said, or null if there has not been one. */
+    extensionStatus: String?,
 ) {
     Column(
         modifier = Modifier
@@ -144,9 +144,7 @@ fun SettingsPageContent(
             SettingsPage.DUAL_SCREEN -> DualScreenPage(settings, focusedRow, viewModel)
             SettingsPage.PERFORMANCE -> PerformancePage(settings, focusedRow, viewModel)
 
-            SettingsPage.NOTIFICATIONS -> NotificationsPage(
-                notificationAccessGranted, notificationServiceConnected, focusedRow, viewModel,
-            )
+            SettingsPage.EXTENSIONS -> ExtensionsPage(settings, focusedRow, viewModel, extensionStatus)
             SettingsPage.ACCESSIBILITY -> AccessibilityPage(settings, focusedRow, viewModel)
         }
     }
@@ -195,7 +193,7 @@ fun rowCountFor(
     SettingsPage.FEEDBACK -> 5
     SettingsPage.DUAL_SCREEN -> 4
     SettingsPage.PERFORMANCE -> 3
-    SettingsPage.NOTIFICATIONS -> NOTIFICATIONS_ROWS
+    SettingsPage.EXTENSIONS -> EXTENSIONS_ROWS
     SettingsPage.ACCESSIBILITY -> 5
 }
 

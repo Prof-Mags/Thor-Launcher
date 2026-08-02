@@ -76,10 +76,15 @@ fun PlatformDetailPanel(
                  * into the middle of the panel, where it read as one more fact
                  * rather than as the heading everything under it belongs to.
                  */
-                .padding(
-                    horizontal = dimens.spacing,
-                    vertical = dimens.spacingSmall,
-                ),
+                /*
+                 * No gap above at all, and the card's own inset carries the rest.
+                 *
+                 * There were two paddings stacked here — this one and the card's
+                 * — which between them pushed the system's name a long way down a
+                 * panel it is supposed to head. Halving the outer one was not
+                 * enough; the top gap is the card's inset now and nothing else.
+                 */
+                .padding(horizontal = dimens.spacing),
         ) {
             /*
              * The wordmark decorates the title; it does not replace it.
@@ -130,9 +135,9 @@ fun PlatformDetailPanel(
                 Text(
                     text = platform.name.ifBlank { folderTitle },
                     style = if (logoUri != null) {
-                        MaterialTheme.typography.headlineMedium
+                        MaterialTheme.typography.displaySmall
                     } else {
-                        MaterialTheme.typography.displayMedium
+                        MaterialTheme.typography.displayLarge
                     },
                     color = colors.onBackground,
                     textAlign = TextAlign.Center,
@@ -274,11 +279,49 @@ fun PlatformDetailPanel(
                      */
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-                        modifier = Modifier.fillMaxWidth(),
+                        /*
+                         * Fixed height, and the covers fit inside it.
+                         *
+                         * The slots were weighted in both directions, so making
+                         * them cover-shaped made them taller — the shelf grew,
+                         * and this panel ended up longer than the game one beside
+                         * it. Height is the constraint that matters here, because
+                         * the two panels alternate as the cursor moves and one
+                         * outgrowing the other is visible every time.
+                         *
+                         * So the row is as tall as it always was, and a cover
+                         * that is taller than it is wide simply takes less width.
+                         */
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(SHELF_HEIGHT.dp),
                     ) {
                         recent.forEach { game ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(),
+                                contentAlignment = Alignment.Center,
+                            ) {
                             ArtworkImage(
-                                model = game.metadata.artwork.cellImage,
+                                /*
+                                 * The cover, not the cell image.
+                                 *
+                                 * `cellImage` is `icon ?: boxArt` and is
+                                 * deliberately square — it exists to fill a 1:1
+                                 * grid cell, and it prefers a square app icon
+                                 * over the cover precisely so the grid does not
+                                 * letterbox. Asking for it here and then fitting
+                                 * it into a tall slot gives back exactly the
+                                 * square image it was built to be, which is the
+                                 * cover with its top and bottom already gone.
+                                 *
+                                 * The shelf wants the tall art, so it asks for
+                                 * the cover first and falls back to whatever the
+                                 * grid would have used.
+                                 */
+                                model = game.metadata.artwork.boxArt
+                                    ?: game.metadata.artwork.cellImage,
                                 contentDescription = game.title,
                                 fallbackText = game.title,
                                 /*
@@ -292,15 +335,15 @@ fun PlatformDetailPanel(
                                  * say what the game is.
                                  */
                                 contentScale = ContentScale.Fit,
+                                // Height first, then the width a cover needs at
+                                // that height — which is what keeps the shelf
+                                // from growing when the artwork gets taller.
                                 modifier = Modifier
-                                    .weight(1f)
-                                    // Taller than it was, because covers are
-                                    // taller than they are wide and the slot
-                                    // should waste as little as possible around
-                                    // one that is now fitted rather than filled.
+                                    .fillMaxHeight()
                                     .aspectRatio(2f / 3f)
                                     .clip(ThorTheme.shapes.small),
                             )
+                            }
                         }
                         repeat(RECENT_COUNT - recent.size) {
                             Spacer(modifier = Modifier.weight(1f))
@@ -444,7 +487,17 @@ private const val FLAGSHIP_MISS = Int.MAX_VALUE
 private const val PANEL_WEIGHT = 0.40f
 private const val PANEL_ALPHA = 0.82f
 /** Tightened so the name sits close under the wordmark rather than adrift. */
-private const val LOGO_HEIGHT = 44
+/** Shorter than it was, so the name behind it starts higher up the panel. */
+private const val LOGO_HEIGHT = 34
 private const val LOGO_MAX_WIDTH = 320
 /** Covers on the recently-played shelf; the row is built to fit exactly this many. */
 private const val RECENT_COUNT = 3
+
+/**
+ * How tall the shelf is, whatever shape the covers turn out to be.
+ *
+ * Fixed rather than derived from the width, so making the artwork cover-shaped
+ * does not lengthen the whole panel. This one alternates with the game panel as
+ * the cursor moves, and the two disagreeing in height is visible every time.
+ */
+private const val SHELF_HEIGHT = 110

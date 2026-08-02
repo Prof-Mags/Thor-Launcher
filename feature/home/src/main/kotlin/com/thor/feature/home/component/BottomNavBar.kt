@@ -67,6 +67,14 @@ fun BottomNavBar(
     selectedTab: LauncherTab,
     focusedTab: LauncherTab?,
     onTabSelected: (LauncherTab) -> Unit,
+    /**
+     * Sections the user has enabled.
+     *
+     * The bar draws only these. A section whose extension has not been imported
+     * is absent rather than disabled — an empty tab is a promise the launcher
+     * cannot keep.
+     */
+    tabs: List<LauncherTab> = LauncherTab.ORDERED,
     modifier: Modifier = Modifier,
 ) {
     val dimens = ThorTheme.dimens
@@ -104,7 +112,7 @@ fun BottomNavBar(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LauncherTab.ORDERED.forEach { tab ->
+        tabs.forEach { tab ->
             NavTab(
                 tab = tab,
                 selected = tab == selectedTab,

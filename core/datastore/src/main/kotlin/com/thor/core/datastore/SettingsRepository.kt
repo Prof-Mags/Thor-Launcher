@@ -166,9 +166,18 @@ class SettingsRepository @Inject constructor(
         edit { it.copy(permissionsPromptSeen = seen) }
     }
 
-    /** Records that the start-up sequence has played, so it plays once. */
-    suspend fun setIntroPlayed(played: Boolean) {
-        edit { it.copy(introPlayed = played) }
+
+    /** Records that an extension's own short walkthrough has been played. */
+    suspend fun setExtensionTourSeen(id: String) {
+        edit { it.copy(seenExtensionTours = it.seenExtensionTours + id) }
+    }
+
+    /** Adds or removes an optional part of the launcher, by extension id. */
+    suspend fun setExtensionEnabled(id: String, enabled: Boolean) {
+        edit {
+            val next = if (enabled) it.enabledExtensions + id else it.enabledExtensions - id
+            it.copy(enabledExtensions = next)
+        }
     }
 
     /** Replaces everything — used by restore and by settings import. */

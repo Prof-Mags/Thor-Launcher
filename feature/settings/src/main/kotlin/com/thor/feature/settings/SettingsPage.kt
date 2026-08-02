@@ -129,13 +129,13 @@ enum class SettingsPage(
         "Animation and visual effects",
     ),
 
+    EXTENSIONS(
+        SettingsCategory.SYSTEM, "Extensions",
+        "Add Movies or PC streaming to the launcher",
+    ),
     ACCESSIBILITY(
         SettingsCategory.SYSTEM, "Accessibility",
         "Contrast, motion, text and colour vision",
-    ),
-    NOTIFICATIONS(
-        SettingsCategory.SYSTEM, "Notifications",
-        "Show device notifications on the top screen",
     ),
     ;
 
@@ -150,13 +150,28 @@ enum class SettingsPage(
          * page itself is kept — see [LauncherFeatures] — so restoring the feature
          * restores its configuration with it.
          */
-        fun forCategory(category: SettingsCategory): List<SettingsPage> =
-            entries.filter { it.category == category && it.isAvailable }
+        fun forCategory(
+            category: SettingsCategory,
+            enabledExtensions: Set<String> = emptySet(),
+        ): List<SettingsPage> = entries.filter {
+            it.category == category && it.isAvailable && it.isUnlocked(enabledExtensions)
+        }
 
         private val SettingsPage.isAvailable: Boolean
             get() = when (this) {
                 DOCK -> LauncherFeatures.DOCK_ENABLED
                 else -> true
             }
+
+        /**
+         * Whether the extension this page configures has been enabled.
+         *
+         * Checked per page as well as per category, because a page can belong to
+         * an extension without its category doing so — and a settings screen for
+         * something the launcher is not currently offering is exactly the "dead
+         * page" this enum's own note warns about.
+         */
+        private fun SettingsPage.isUnlocked(enabled: Set<String>): Boolean =
+            category.extension?.id?.let { it in enabled } ?: true
     }
 }

@@ -57,19 +57,29 @@ data class ThorSettings(
      */
     val permissionsPromptSeen: Boolean = false,
     /**
-     * Whether the start-up sequence has ever been played.
+     * Extensions the user has enabled, by [LauncherExtension.id].
      *
-     * Stored, which the intro's own note used to argue against: a flag in
-     * settings "would replay it never", and once per cold start was the intended
-     * behaviour. That reasoning holds on a device whose launcher process stays
-     * alive, and this is not one — the process is killed to make room for
-     * whatever is being played, so returning Home is routinely a cold start, and
-     * "once per cold start" turned out to mean several times a day.
+     * Stored as ids rather than as the enum so an id Loki no longer has is
+     * carried harmlessly rather than failing to read — and so a manifest naming
+     * something from a newer build does not corrupt an older one's settings.
      */
-    val introPlayed: Boolean = false,
+    val enabledExtensions: Set<String> = emptySet(),
+    /**
+     * Extensions whose own short walkthrough has already been played.
+     *
+     * Separate from [enabledExtensions] so removing an extension and adding it
+     * back does not replay its tour, and separate from [tutorialCompleted]
+     * because the two are read at different moments: the main tour is the first
+     * run, and an extension's is whenever the user chooses to add it — possibly
+     * months later, on a launcher they already know.
+     */
+    val seenExtensionTours: Set<String> = emptySet(),
     /** Bumped by migrations in `SettingsSerializer`. */
     val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
 ) {
+    /** True when [extension] has been enabled by importing its manifest. */
+    fun has(extension: LauncherExtension): Boolean = extension.id in enabledExtensions
+
     companion object {
         const val CURRENT_SCHEMA_VERSION = 1
         val DEFAULT = ThorSettings()

@@ -18,10 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -61,8 +58,6 @@ fun TopScreen(
     folderChildren: List<GridEntry>,
     clockStyle: ClockStyle,
     showStatusBar: Boolean,
-    /** Whether the notification panel has taken the screen; see [NotificationPanel]. */
-    notificationsOpen: Boolean = false,
     /** Whether the user has enabled preview clips. */
     videoPreviewsEnabled: Boolean,
     /**
@@ -148,39 +143,15 @@ fun TopScreen(
         Scrim()
 
         AnimatedContent(
-            // Keyed on both, so opening the panel crossfades exactly as moving
-            // between two entries does rather than appearing instantly.
-            targetState = selection?.id to notificationsOpen,
+            // Keyed on the selection, so moving between entries crossfades.
+            targetState = selection?.id,
             transitionSpec = {
                 fadeIn(motion.tweenSpec(motion.detailMillis)) togetherWith
                     fadeOut(motion.tweenSpec(motion.detailMillis))
             },
             label = "topScreenDetail",
             modifier = Modifier.fillMaxSize(),
-        ) { (_, showingNotifications) ->
-            /*
-             * The panel takes the screen outright while it is open.
-             *
-             * Not drawn beside the game's details: the two answer unrelated
-             * questions, and a notification list squeezed alongside a synopsis
-             * would make both harder to read. The same button puts the details
-             * back.
-             */
-            if (showingNotifications) {
-                val notifications: NotificationViewModel = hiltViewModel()
-                val items by notifications.notifications.collectAsStateWithLifecycle()
-                val connected by notifications.connected.collectAsStateWithLifecycle()
-
-                NotificationPanel(
-                    notifications = items,
-                    connected = connected,
-                    onDismiss = notifications::dismiss,
-                    onDismissAll = notifications::dismissAll,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                return@AnimatedContent
-            }
-
+        ) { _ ->
             when (val entry = selection) {
                 null -> IdleWallpaperPanel(wallpaper = wallpaper, wallpaperUri = wallpaperUri)
 

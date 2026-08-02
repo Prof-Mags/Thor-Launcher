@@ -213,27 +213,6 @@
           `exported` is false: nothing else may bind to it. The system binds it
           through the permission below, which only the system holds.
         -->
-        <!--
-          Reads the device's notifications for the top screen's panel.
-
-          `exported="true"` and the bind permission are both required by the
-          platform: the system binds this from outside the app, and will only do
-          so for a service that declares it can only be bound by the system.
-          It is unreachable by any other app despite being exported.
-
-          Does nothing until the user grants notification access in system
-          settings — there is no way to request it in-app, and no dialog.
-        -->
-        <service
-            android:name=".notification.ThorNotificationService"
-            android:exported="true"
-            android:label="@string/notification_service_summary"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
         <service
             android:name=".mouse.ThorMouseService"
             android:exported="false"

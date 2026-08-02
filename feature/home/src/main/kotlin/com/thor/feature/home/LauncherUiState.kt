@@ -20,6 +20,14 @@ import com.thor.core.model.Platform
  */
 @Immutable
 data class LauncherUiState(
+    /**
+     * Optional sections the user has enabled, by extension id.
+     *
+     * Carried in the launcher's own state because the section bar is drawn from
+     * it and the cursor is stepped through it — both on the hot path, and both
+     * wrong the moment they disagree with what is actually available.
+     */
+    val enabledExtensions: Set<String> = emptySet(),
     val pages: List<GridPage> = emptyList(),
     val placements: List<GridPlacement> = emptyList(),
     val entriesById: Map<String, GridEntry> = emptyMap(),

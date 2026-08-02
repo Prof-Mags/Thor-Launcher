@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Mouse
-import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -182,10 +181,8 @@ private fun PermissionRow(item: PermissionItem) {
 fun rememberPermissionItems(
     isDefaultLauncher: Boolean,
     pointerServiceEnabled: Boolean,
-    notificationAccessGranted: Boolean,
     onSetDefaultLauncher: () -> Unit,
     onOpenPointerSettings: () -> Unit,
-    onOpenNotificationSettings: () -> Unit,
 ): List<PermissionItem> = listOf(
     PermissionItem(
         title = "Set Loki as your home app",
@@ -200,13 +197,6 @@ fun rememberPermissionItems(
         icon = Icons.Rounded.Mouse,
         granted = pointerServiceEnabled,
         onGrant = onOpenPointerSettings,
-    ),
-    PermissionItem(
-        title = "Notifications on the top screen",
-        detail = "Shows what the device is notifying about while you play",
-        icon = Icons.Rounded.Notifications,
-        granted = notificationAccessGranted,
-        onGrant = onOpenNotificationSettings,
     ),
 )
 

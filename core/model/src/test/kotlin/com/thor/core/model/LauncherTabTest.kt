@@ -55,4 +55,40 @@ class LauncherTabTest {
             assertThat(LauncherTab.step(tab, 0)).isEqualTo(tab)
         }
     }
+
+    @Test
+    fun `only enabled sections are shown`() {
+        assertThat(LauncherTab.visible(emptySet())).containsExactly(LauncherTab.HOME)
+
+        assertThat(LauncherTab.visible(setOf(LauncherExtension.MOVIES.id)))
+            .containsExactly(LauncherTab.HOME, LauncherTab.MOVIES)
+            .inOrder()
+
+        assertThat(LauncherTab.visible(ALL)).containsExactlyElementsIn(LauncherTab.ORDERED)
+    }
+
+    /**
+     * The cursor walks what is drawn, not what exists.
+     *
+     * With Stream disabled the bar is Home and Movies, so Left from Home has
+     * nowhere to go — landing on Stream would put the cursor on a tab that is
+     * not on screen, and pressing A there would open a section the user has not
+     * added.
+     */
+    @Test
+    fun `stepping skips sections that are not enabled`() {
+        val moviesOnly = setOf(LauncherExtension.MOVIES.id)
+
+        assertThat(LauncherTab.step(LauncherTab.HOME, -1, moviesOnly))
+            .isEqualTo(LauncherTab.HOME)
+        assertThat(LauncherTab.step(LauncherTab.HOME, 1, moviesOnly))
+            .isEqualTo(LauncherTab.MOVIES)
+        assertThat(LauncherTab.step(LauncherTab.HOME, 1, emptySet()))
+            .isEqualTo(LauncherTab.HOME)
+    }
+
+    private companion object {
+        val ALL: Set<String> =
+            LauncherExtension.entries.mapTo(mutableSetOf(), LauncherExtension::id)
+    }
 }

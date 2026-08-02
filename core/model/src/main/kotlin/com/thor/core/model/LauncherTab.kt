@@ -27,20 +27,53 @@ enum class LauncherTab(val label: String) {
     /** True for the section that owns the icon grid. */
     val isHome: Boolean get() = this == HOME
 
+    /** The extension this section belongs to, or null for Home. */
+    val extension: LauncherExtension?
+        get() = when (this) {
+            STREAM -> LauncherExtension.STREAM
+            MOVIES -> LauncherExtension.MOVIES
+            HOME -> null
+        }
+
     companion object {
         val DEFAULT: LauncherTab = HOME
 
-        /** Tabs in draw order. */
+        /** Every tab, in draw order, whether or not it is available. */
         val ORDERED: List<LauncherTab> = entries
+
+        /**
+         * The tabs the bar actually draws.
+         *
+         * Home alone until an extension is enabled. A section the user has not
+         * asked for is not shown greyed out or with an explanation inside it —
+         * it is simply not there, because a bar advertising two things that
+         * cannot be opened is worse than a bar with one thing on it.
+         *
+         * With only Home left the bar has nothing to switch between, and the
+         * surfaces that draw it can leave it out entirely.
+         */
+        fun visible(enabled: Set<String>): List<LauncherTab> =
+            ORDERED.filter { tab -> tab.extension?.id?.let { it in enabled } ?: true }
 
         /**
          * The tab [steps] places from this one, clamped at both ends.
          *
-         * Clamped rather than wrapped: a three-item bar that wraps means pressing
-         * Left on the first tab lands on the last, which reads as the cursor
-         * jumping rather than as running out of bar.
+         * Clamped rather than wrapped: a bar that wraps means pressing Left on
+         * the first tab lands on the last, which reads as the cursor jumping
+         * rather than as running out of bar.
+         *
+         * Walks the *visible* tabs, so a disabled section is not a dead stop the
+         * cursor lands on halfway along.
          */
-        fun step(from: LauncherTab, steps: Int): LauncherTab =
-            ORDERED[(ORDERED.indexOf(from) + steps).coerceIn(0, ORDERED.lastIndex)]
+        fun step(from: LauncherTab, steps: Int, enabled: Set<String> = ALL_IDS): LauncherTab {
+            val tabs = visible(enabled)
+            if (tabs.isEmpty()) return DEFAULT
+            val current = tabs.indexOf(from).takeIf { it >= 0 } ?: tabs.indexOf(DEFAULT)
+            return tabs[(current + steps).coerceIn(0, tabs.lastIndex)]
+        }
+
+        /** Every extension id, for callers that do not gate. */
+        private val ALL_IDS: Set<String> =
+            LauncherExtension.entries.mapTo(mutableSetOf(), LauncherExtension::id)
     }
 }

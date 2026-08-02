@@ -12,6 +12,7 @@ import androidx.compose.material.icons.rounded.Monitor
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.thor.core.model.LauncherExtension
 
 /**
  * The settings navigation rail.
@@ -41,6 +42,13 @@ enum class SettingsCategory(
     val summary: String,
     /** Kept for stored/deep-linked ids even when its pages move into a clearer group. */
     val visible: Boolean = true,
+    /**
+     * The extension this category belongs to, if any.
+     *
+     * Absent from the rail entirely until that extension is enabled — see
+     * [navigationEntries].
+     */
+    val extension: LauncherExtension? = null,
 ) {
     APPEARANCE(
         "appearance", "Personalization", Icons.Rounded.Palette,
@@ -90,6 +98,7 @@ enum class SettingsCategory(
     MOVIES(
         "movies", "Films & shows", Icons.Rounded.Movie,
         "Catalogue, sources and playback",
+        extension = LauncherExtension.MOVIES,
     ),
     /**
      * Streaming a PC, which is neither a library nor a film.
@@ -102,6 +111,7 @@ enum class SettingsCategory(
     STREAMING(
         "streaming", "PC streaming", Icons.Rounded.Cast,
         "Picture quality and how PCs are found",
+        extension = LauncherExtension.STREAM,
     ),
     CONTROLS(
         "controls", "Controls", Icons.Rounded.Gamepad,
@@ -121,7 +131,7 @@ enum class SettingsCategory(
     ),
     SYSTEM(
         "system", "System & accessibility", Icons.Rounded.Tune,
-        "Screens, performance, accessibility and notifications",
+        "Screens, performance, accessibility and extensions",
     ),
     ABOUT(
         "about", "About", Icons.Rounded.Info,
@@ -130,8 +140,19 @@ enum class SettingsCategory(
     ;
 
     companion object {
-        /** Categories actually shown in the navigation rail, in display order. */
-        val navigationEntries: List<SettingsCategory> = entries.filter(SettingsCategory::visible)
+        /**
+         * Categories the rail draws, for the extensions that are enabled.
+         *
+         * A category belonging to an extension the user has not asked for is not
+         * shown empty or disabled — it is absent, along with every page under
+         * it. Nothing in the base launcher should hint at a section that cannot
+         * be opened.
+         */
+        fun navigationEntries(enabledExtensions: Set<String>): List<SettingsCategory> =
+            entries.filter { it.visible && it.isAvailable(enabledExtensions) }
+
+        private fun SettingsCategory.isAvailable(enabled: Set<String>): Boolean =
+            extension?.id?.let { it in enabled } ?: true
 
         fun byId(id: String): SettingsCategory? = entries.firstOrNull { it.id == id }
     }

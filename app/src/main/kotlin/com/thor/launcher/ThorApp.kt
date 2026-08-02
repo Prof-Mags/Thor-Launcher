@@ -71,6 +71,7 @@ import com.thor.data.capture.RecordingState
 import com.thor.core.model.ControllerCommand
 import com.thor.core.model.DualScreenMode
 import com.thor.core.model.FolderEntry
+import com.thor.core.model.LauncherExtension
 import com.thor.core.model.GameEntry
 import com.thor.core.model.KeyboardKey
 import com.thor.core.model.PlatformFolders
@@ -113,12 +114,23 @@ import com.thor.feature.settings.SettingsCategory
 import com.thor.feature.settings.SettingsScreen
 import com.thor.feature.settings.tutorial.PermissionsScreen
 import com.thor.feature.settings.tutorial.ThorTutorial
+import com.thor.feature.settings.tutorial.TutorialPanel
 import com.thor.feature.settings.tutorial.TutorialScreen
+import com.thor.feature.settings.tutorial.TutorialStep
 import com.thor.feature.settings.tutorial.rememberPermissionItems
 import com.thor.feature.topscreen.TopScreen
 
 /** Which full-screen overlay, if any, is showing on the info surface. */
-private enum class Overlay { NONE, SETTINGS, SEARCH, TUTORIAL, PERMISSIONS }
+/**
+ * What the information panel is hosting.
+ *
+ * The walkthrough is deliberately not one of these. It runs *across* both panels
+ * and drives this state itself — a step about a settings category opens
+ * [Overlay.SETTINGS] on the information panel while the step's own card stays on
+ * the grid panel beside the reader. A tour that was an overlay could not do that,
+ * because it would be the thing occupying the surface it needs to show.
+ */
+private enum class Overlay { NONE, SETTINGS, SEARCH, PERMISSIONS }
 
 /**
  * The shell's surfaces named as the focus rule names them.
@@ -164,7 +176,6 @@ fun ThorApp(
      * of its windows exists, which is exactly as long as this composition does.
      */
     val state by viewModel.uiState.collectAsState()
-    val notificationsOpen by viewModel.notificationsOpen.collectAsState()
     val selectedScreenshot by viewModel.screenshotIndex.collectAsState()
     val settingsViewModel: com.thor.feature.settings.SettingsViewModel = hiltViewModel()
     val loadedSettings by settingsViewModel.loadedSettings.collectAsState()
@@ -186,13 +197,20 @@ fun ThorApp(
     var settingsRowCount by remember { mutableIntStateOf(0) }
 
     /**
-     * Which page of the walkthrough is showing.
+     * The walkthrough that is running, or nothing.
      *
-     * Held by the shell rather than by the screen, so the same command stream
-     * that drives every other overlay drives this one — and so the page cannot
-     * advance without the launcher knowing which page it is on.
+     * Held by the shell rather than by the screen because the tour drives the
+     * launcher: it opens settings categories, moves between panels and holds
+     * every button while it does. The screen is only the card.
+     *
+     * [tutorialExtension] says which tour it is — `null` for the main one, or the
+     * extension whose short tour is playing — so finishing writes the right flag.
      */
-    var tutorialPage by remember { mutableIntStateOf(0) }
+    var tutorialSteps by remember { mutableStateOf(emptyList<TutorialStep>()) }
+    var tutorialIndex by remember { mutableIntStateOf(0) }
+    var tutorialExtension by remember { mutableStateOf<LauncherExtension?>(null) }
+    val tutorialRunning = tutorialSteps.isNotEmpty()
+    val tutorialStep = tutorialSteps.getOrNull(tutorialIndex)
 
     /*
      * The surface the user last touched, which is the *lock*: it holds until the
@@ -295,12 +313,10 @@ fun ThorApp(
      */
     val isDefaultLauncher by settingsViewModel.isDefaultLauncher.collectAsState()
     val pointerServiceEnabled by settingsViewModel.pointerServiceEnabled.collectAsState()
-    val notificationAccessGranted by settingsViewModel.notificationAccessGranted.collectAsState()
 
     LifecycleResumeEffect(settingsViewModel) {
         settingsViewModel.refreshDefaultLauncher()
         settingsViewModel.refreshPointerService()
-        settingsViewModel.refreshNotificationAccess()
         onPauseOrDispose { }
     }
     val recording by viewModel.recording.collectAsState()
@@ -553,15 +569,6 @@ fun ThorApp(
         }
 
         /*
-         * The walkthrough, on a first run and whenever it is asked for again.
-         *
-         * Keyed on the stored flag rather than raised once at startup, so the
-         * Diagnostics "Replay" row is the whole of replaying it: clearing the flag
-         * brings this back with no second path to keep in step. Waits for the
-         * intro, which is the outermost surface and swallows everything while it
-         * runs — opening underneath it would spend the first pages unseen.
-         */
-        /*
          * First run, in order: permissions, then the walkthrough.
          *
          * The permission list comes first because it is the part that has to
@@ -569,34 +576,118 @@ fun ThorApp(
          * reads better once the launcher is actually set up. Each is remembered
          * separately — replaying the tour later is not a request to be asked
          * about accessibility again.
+         *
+         * Both wait for the intro, which is the outermost surface and swallows
+         * everything while it runs; opening underneath it would spend the first
+         * steps unseen.
+         *
+         * The main tour is keyed on the stored flag rather than raised once at
+         * startup, so the About screen's "Replay" row is the whole of replaying
+         * it: clearing the flag brings this back, with no second path to keep in
+         * step with the first.
+         *
+         * An extension's own short tour comes after, and only when the main one
+         * is done — someone adding Movies during their first ten minutes should
+         * not be handed two walkthroughs at once.
          */
+        val unseenExtension = LauncherExtension.entries.firstOrNull { extension ->
+            extension.id in settings.enabledExtensions &&
+                extension.id !in settings.seenExtensionTours
+        }
+
         LaunchedEffect(
             settings.permissionsPromptSeen,
             settings.tutorialCompleted,
+            unseenExtension,
             settingsLoaded,
             introVisible,
         ) {
             if (!settingsLoaded || introVisible) return@LaunchedEffect
+
+            /*
+             * Put the launcher back to its resting state before either tour.
+             *
+             * A tour is read against the home screen, and it is reached from deep
+             * inside Settings — so without this it would start over an open
+             * settings page, describing the grid while the grid is nowhere in
+             * sight. Everything else Home does is wanted here too: menus closed,
+             * folders closed, back to the first page and the Home section.
+             */
+            fun start(extension: LauncherExtension?, steps: List<TutorialStep>) {
+                viewModel.goHome()
+                settingsViewModel.resetFocus()
+                touchedSurface = InputSurface.BOTTOM
+                overlay = Overlay.NONE
+                tutorialExtension = extension
+                tutorialIndex = 0
+                tutorialSteps = steps
+            }
+
             when {
                 !settings.permissionsPromptSeen -> overlay = Overlay.PERMISSIONS
-                !settings.tutorialCompleted -> {
-                    /*
-                     * Put the launcher back to its resting state first.
-                     *
-                     * The walkthrough is read against the home screen, and it is
-                     * reached from deep inside Settings — so without this it
-                     * would open over an open settings page, describing the grid
-                     * while the grid is nowhere in sight. Everything else Home
-                     * does is wanted here too: menus closed, folders closed, back
-                     * to the first page and the Home section.
-                     */
-                    tutorialPage = 0
-                    viewModel.goHome()
-                    settingsViewModel.resetFocus()
-                    touchedSurface = InputSurface.BOTTOM
-                    overlay = Overlay.TUTORIAL
-                }
+
+                !settings.tutorialCompleted ->
+                    start(null, ThorTutorial.base(settings.enabledExtensions))
+
+                unseenExtension != null ->
+                    start(unseenExtension, ThorTutorial.forExtension(unseenExtension))
             }
+        }
+
+        /*
+         * The tour driving the launcher, one step at a time.
+         *
+         * This is what makes it a walkthrough rather than a document: a step
+         * naming a settings category opens that category on the information
+         * panel, so the reader is looking at the real screen while the card
+         * beside them describes it. A step naming none closes settings again.
+         *
+         * Driven from the step rather than from the handler that advances it, so
+         * stepping backwards puts the panel back exactly as it was on the way
+         * through — the two directions cannot disagree because only one of them
+         * is written down.
+         */
+        LaunchedEffect(tutorialStep) {
+            val category = tutorialStep?.settingsCategory
+            when {
+                !tutorialRunning -> Unit
+                category != null -> {
+                    settingsViewModel.selectCategory(category)
+                    settingsViewModel.resetFocus()
+                    overlay = Overlay.SETTINGS
+                }
+
+                overlay == Overlay.SETTINGS -> overlay = Overlay.NONE
+            }
+        }
+
+        /*
+         * One way forward, for the pad and for the button on the card.
+         *
+         * Both ends of the tour are reachable by touch as well as by controller —
+         * the walkthrough runs before the user necessarily knows which button is
+         * Confirm — so the two paths have to agree about what "next" means and
+         * about which flag gets written when there is no next.
+         */
+        val advanceTutorial: () -> Unit = advance@{
+            if (tutorialIndex < tutorialSteps.lastIndex) {
+                tutorialIndex++
+                feedback.play(FeedbackCue.NAVIGATE)
+                return@advance
+            }
+
+            val finished = tutorialExtension
+            tutorialSteps = emptyList()
+            tutorialExtension = null
+            // Leaves the launcher as it found it: a tour that ended on a settings
+            // step must not leave that screen open behind the card it removed.
+            overlay = Overlay.NONE
+            if (finished == null) {
+                settingsViewModel.completeTutorial()
+            } else {
+                settingsViewModel.completeExtensionTour(finished)
+            }
+            feedback.play(FeedbackCue.SUCCESS)
         }
 
         /*
@@ -661,21 +752,6 @@ fun ThorApp(
                 if (viewModel.introVisible.value) return@collect
 
                 /*
-                 * The walkthrough, which is modal in the same way the intro is.
-                 *
-                 * Handled here rather than in the overlay routing below, and that
-                 * placement is the fix for it closing after one page. That routing
-                 * collapses to `Overlay.NONE` whenever the *grid* is the active
-                 * surface — an overlay is expected to have claimed the surface as
-                 * it appeared, and this one never did — so Confirm fell through to
-                 * the launcher and launched whatever the cursor was sitting on.
-                 * The walkthrough did not close; a game opened on top of it.
-                 *
-                 * Being outermost also makes "cannot be skipped" true rather than
-                 * merely intended: there is no surface, section or panel that can
-                 * take a press before this does, so no button leaves early.
-                 */
-                /*
                  * The permission list, modal for the same reason the walkthrough
                  * is: it sits over a live grid, and any press that fell through
                  * would launch whatever the cursor happened to be on.
@@ -695,34 +771,44 @@ fun ThorApp(
                     return@collect
                 }
 
-                if (overlay == Overlay.TUTORIAL) {
-                    val lastPage = ThorTutorial.PAGES.lastIndex
+                /*
+                 * The walkthrough, which is modal in the same way the intro is.
+                 *
+                 * Handled here rather than in the overlay routing below, and that
+                 * placement is the fix for it closing after one step. That routing
+                 * collapses to `Overlay.NONE` whenever the *grid* is the active
+                 * surface — an overlay is expected to have claimed the surface as
+                 * it appeared, and this one never did — so Confirm fell through to
+                 * the launcher and launched whatever the cursor was sitting on.
+                 * The walkthrough did not close; a game opened on top of it.
+                 *
+                 * It has to stay outermost now for a second reason as well: the
+                 * tour opens Settings on the information panel to show a category
+                 * off, and a press reaching the settings routing below would drive
+                 * that screen instead of the tour that put it there.
+                 *
+                 * Being outermost also makes "cannot be skipped" true rather than
+                 * merely intended: there is no surface, section or panel that can
+                 * take a press before this does, so no button leaves early.
+                 */
+                if (tutorialRunning) {
                     when (event.command) {
                         ControllerCommand.CONFIRM,
                         ControllerCommand.NAVIGATE_RIGHT,
-                        -> {
-                            if (tutorialPage >= lastPage) {
-                                overlay = Overlay.NONE
-                                settingsViewModel.completeTutorial()
-                                feedback.play(FeedbackCue.SUCCESS)
-                            } else {
-                                tutorialPage++
-                                feedback.play(FeedbackCue.NAVIGATE)
-                            }
-                        }
+                        -> advanceTutorial()
 
                         /*
-                         * Back steps a page and stops at the first.
+                         * Back steps once and stops at the first.
                          *
                          * It does not leave, because nothing leaves: the only way
-                         * out is the last page. A walkthrough with an exit on the
+                         * out is the last step. A walkthrough with an exit on the
                          * first page is one most people never see past it.
                          */
                         ControllerCommand.BACK,
                         ControllerCommand.NAVIGATE_LEFT,
                         -> {
-                            if (tutorialPage > 0) {
-                                tutorialPage--
+                            if (tutorialIndex > 0) {
+                                tutorialIndex--
                                 feedback.play(FeedbackCue.BACK)
                             } else {
                                 feedback.play(FeedbackCue.REJECT)
@@ -856,15 +942,15 @@ fun ThorApp(
                     /*
                      * Never reached, and named rather than folded into an `else`.
                      *
-                     * The walkthrough takes its own presses at the top of this
-                     * collector and returns, precisely because this routing is
-                     * what broke it: `target` collapses to `NONE` whenever the
-                     * grid is the active surface, which sent Confirm to the
-                     * launcher and launched whatever was under the cursor. An
-                     * `else` here would let a future overlay inherit that bug in
-                     * silence; this way the compiler asks.
+                     * The permission list takes its own presses at the top of this
+                     * collector and returns, as the walkthrough does — precisely
+                     * because this routing is what broke the walkthrough: `target`
+                     * collapses to `NONE` whenever the grid is the active surface,
+                     * which sent Confirm to the launcher and launched whatever was
+                     * under the cursor. An `else` here would let a future overlay
+                     * inherit that bug in silence; this way the compiler asks.
                      */
-                    Overlay.TUTORIAL, Overlay.PERMISSIONS -> Unit
+                    Overlay.PERMISSIONS -> Unit
 
                     Overlay.SETTINGS -> {
                         if (event.command == ControllerCommand.BACK) {
@@ -952,18 +1038,7 @@ fun ThorApp(
         val introMotion = ThorTheme.materials.animationsEnabled &&
             !settings.performance.performanceMode
 
-        /*
-         * Already seen it, so there is nothing to play.
-         *
-         * Ended rather than never started, because the intro is what covers the
-         * launcher until the settings it is drawn with have loaded — the surface
-         * has to be there first and go afterwards, not be absent from the start.
-         */
-        LaunchedEffect(settingsLoaded, settings.introPlayed) {
-            if (settingsLoaded && settings.introPlayed) viewModel.finishIntro()
-        }
-
-        if (introVisible && settingsLoaded && !settings.introPlayed) {
+        if (introVisible && settingsLoaded) {
             LaunchedEffect(Unit) {
                 var openingStream: Int? = null
                 val openingSound = launch {
@@ -1022,9 +1097,7 @@ fun ThorApp(
                             ),
                         )
                     }
-                    // Recorded here, at the end of a run that actually finished,
-                    // so it plays once rather than once per cold start.
-                    viewModel.completeIntro()
+                    viewModel.finishIntro()
                 } finally {
                     openingSound.cancel()
                     // ui_boot is 1.5 seconds long, and must not be left playing
@@ -1366,19 +1439,6 @@ fun ThorApp(
                         viewModel = searchViewModel,
                     )
 
-                    Overlay.TUTORIAL -> TutorialScreen(
-                        pageIndex = tutorialPage,
-                        onBack = { if (tutorialPage > 0) tutorialPage-- },
-                        onNext = {
-                            if (tutorialPage >= ThorTutorial.PAGES.lastIndex) {
-                                overlay = Overlay.NONE
-                                settingsViewModel.completeTutorial()
-                            } else {
-                                tutorialPage++
-                            }
-                        },
-                    )
-
                     // Drawn on the grid panel instead; see `bottomContent`. This
                     // one is answered by touching its rows, so it belongs on the
                     // panel the user is holding rather than on the one they read.
@@ -1387,6 +1447,22 @@ fun ThorApp(
                     Overlay.NONE -> Unit
                 }
             }
+
+            /*
+             * The walkthrough's share of this panel, over whatever it opened.
+             *
+             * Outside the `AnimatedVisibility` above because it is not one of the
+             * overlays — it is the thing that opens them. A step about a settings
+             * category has Settings underneath it here and its card on the other
+             * screen; a step about this panel itself has its card here.
+             */
+            TutorialScreen(
+                steps = tutorialSteps,
+                index = tutorialIndex,
+                panel = TutorialPanel.INFO,
+                onBack = { if (tutorialIndex > 0) tutorialIndex-- },
+                onNext = advanceTutorial,
+            )
         }
 
         /** The info panel: game artwork and details, plus whatever it is hosting. */
@@ -1471,7 +1547,6 @@ fun ThorApp(
                     },
                     clockStyle = settings.personalization.clockStyle,
                     showStatusBar = settings.personalization.showStatusBar,
-                    notificationsOpen = notificationsOpen,
                     // Trailer playback is an explicit user preference. Performance
                     // mode reduces interface effects, but must not silently replace
                     // a successfully fetched trailer with screenshots.
@@ -1667,6 +1742,27 @@ fun ThorApp(
             )
 
             /*
+             * The walkthrough's share of this panel.
+             *
+             * The grid stays visible underneath and is dimmed around whatever the
+             * current step is pointing at, rather than covered. An earlier version
+             * put a solid panel over it and drew every step on the far screen,
+             * which meant the steps about the grid — most of them — were read with
+             * the grid hidden. Explaining a thing while hiding it is the fault
+             * this whole arrangement exists to fix.
+             *
+             * Ordering matters here as it does below: this is a `Box`, and a `Box`
+             * draws its children in the order they are declared.
+             */
+            TutorialScreen(
+                steps = tutorialSteps,
+                index = tutorialIndex,
+                panel = TutorialPanel.GRID,
+                onBack = { if (tutorialIndex > 0) tutorialIndex-- },
+                onNext = advanceTutorial,
+            )
+
+            /*
              * The permission list, on the panel being held.
              *
              * Every other overlay is drawn on the information panel, which is the
@@ -1674,44 +1770,21 @@ fun ThorApp(
              * pressed rather than read, each opening an Android settings screen,
              * so it belongs under the thumbs.
              *
-             * Placed here, near the end, because this is a `Box` and a `Box` draws
-             * its children in order. It was first, which put the entire grid on
-             * top of it — the list was composed, was never visible, and could not
-             * be dismissed, so the flag saying it had been seen never got written.
-             * That also kept the walkthrough from ever showing: the first-run
-             * check offers permissions before the walkthrough, so an offer that
-             * could not be answered blocked everything behind it.
+             * Placed here, near the end, for the reason just given. It was first,
+             * which put the entire grid on top of it — the list was composed, was
+             * never visible, and could not be dismissed, so the flag saying it had
+             * been seen never got written. That also kept the walkthrough from ever
+             * showing: the first-run check offers permissions before the
+             * walkthrough, so an offer that could not be answered blocked
+             * everything behind it.
              */
-            /*
-             * The grid clears itself while the walkthrough is up.
-             *
-             * The tutorial is drawn on the information panel and describes the
-             * grid from there, so leaving a full grid of icons on this one gives
-             * the reader a screen of things to look at instead of the thing being
-             * explained — and every one of them is a cell the cursor is no longer
-             * allowed to move to, since the walkthrough holds every button.
-             *
-             * A cover rather than emptying the state: nothing about the library
-             * changes, and it comes back exactly as it was.
-             */
-            if (overlay == Overlay.TUTORIAL) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(ThorTheme.colors.background),
-                )
-            }
-
             if (overlay == Overlay.PERMISSIONS) {
                 PermissionsScreen(
                     items = rememberPermissionItems(
                         isDefaultLauncher = isDefaultLauncher,
                         pointerServiceEnabled = pointerServiceEnabled,
-                        notificationAccessGranted = notificationAccessGranted,
                         onSetDefaultLauncher = settingsViewModel::requestDefaultLauncher,
                         onOpenPointerSettings = settingsViewModel::openPointerServiceSettings,
-                        onOpenNotificationSettings =
-                            settingsViewModel::openNotificationAccessSettings,
                     ),
                     onDone = {
                         overlay = Overlay.NONE

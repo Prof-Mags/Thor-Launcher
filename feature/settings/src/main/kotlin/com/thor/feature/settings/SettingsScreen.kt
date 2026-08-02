@@ -91,18 +91,17 @@ fun SettingsScreen(
     val iconPackStatus by viewModel.iconPackStatus.collectAsStateWithLifecycle()
     val pointerServiceEnabled by viewModel.pointerServiceEnabled.collectAsStateWithLifecycle()
     val pointerRunning by viewModel.pointerRunning.collectAsStateWithLifecycle()
-    val notificationGranted by viewModel.notificationAccessGranted.collectAsStateWithLifecycle()
-    val notificationConnected by
-        viewModel.notificationServiceConnected.collectAsStateWithLifecycle()
     val debridStatus by viewModel.debridStatus.collectAsStateWithLifecycle()
     val gridClearResult by viewModel.gridClearResult.collectAsStateWithLifecycle()
     val indexerStatus by viewModel.indexerStatus.collectAsStateWithLifecycle()
     val addonStatus by viewModel.addonStatus.collectAsStateWithLifecycle()
+    val extensionStatus by viewModel.extensionStatus.collectAsStateWithLifecycle()
     val pendingPlatformEmulators = pendingPlatform
         ?.let(viewModel::installedEmulatorsFor)
         .orEmpty()
 
-    val pages = SettingsPage.forCategory(category)
+    val enabledExtensions = settings.enabledExtensions
+    val pages = SettingsPage.forCategory(category, enabledExtensions)
     val horizontalRowRegistration: (Boolean) -> Unit = remember(viewModel, focusedRow, openPage) {
         { takesHorizontal ->
             if (openPage != null) {
@@ -115,7 +114,6 @@ fun SettingsScreen(
     // screen, so they can only have changed while the launcher was paused.
     LaunchedEffect(openPage, category) {
         if (category == SettingsCategory.ABOUT) viewModel.refreshDefaultLauncher()
-        if (openPage == SettingsPage.NOTIFICATIONS) viewModel.refreshNotificationAccess()
     }
 
     // Derived as one value so dynamic pages update their controller bounds as
@@ -216,7 +214,7 @@ fun SettingsScreen(
                         bottom = dimens.spacing,
                     ),
                 )
-                SettingsCategory.navigationEntries.forEach { entry ->
+                SettingsCategory.navigationEntries(enabledExtensions).forEach { entry ->
                     Box(modifier = Modifier.weight(1f, fill = false)) {
                         CategoryRow(
                             category = entry,
@@ -314,12 +312,11 @@ fun SettingsScreen(
                                 iconPackStatus = iconPackStatus,
                                 pointerServiceEnabled = pointerServiceEnabled,
                                 pointerRunning = pointerRunning,
-                                notificationAccessGranted = notificationGranted,
-                                notificationServiceConnected = notificationConnected,
                                 debridStatus = debridStatus,
                                 gridClearResult = gridClearResult,
                                 indexerStatus = indexerStatus,
                                 addonStatus = addonStatus,
+                                extensionStatus = extensionStatus,
                             )
                         }
 

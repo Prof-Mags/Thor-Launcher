@@ -290,12 +290,22 @@ fun BottomScreen(
 
         // Flush to the bottom edge, unlike the dock it replaces: a nav bar that
         // floats above the edge reads as a dialog, not as the frame of the app.
-        BottomNavBar(
-            selectedTab = selectedTab,
-            focusedTab = navCursor,
-            onTabSelected = onTabSelected,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        /*
+         * Drawn only when there is something to switch between.
+         *
+         * With no extensions enabled the bar holds Home alone, and a one-tab bar
+         * is a strip of screen spent saying where you already are.
+         */
+        val tabs = LauncherTab.visible(state.enabledExtensions)
+        if (tabs.size > 1) {
+            BottomNavBar(
+                selectedTab = selectedTab,
+                focusedTab = navCursor,
+                onTabSelected = onTabSelected,
+                tabs = tabs,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
 
         SortDialog(
             visible = sortPicker.visible,

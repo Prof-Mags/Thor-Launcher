@@ -23,7 +23,12 @@ import com.thor.core.model.RomDirectory
 import com.thor.core.model.ThemeId
 import com.thor.core.model.ThemeSpec
 import com.thor.core.model.ThorSettings
+import android.content.Context
 import androidx.core.net.toUri
+import com.thor.core.model.ExtensionManifest
+import com.thor.core.model.LauncherExtension
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.serialization.json.Json
 import com.thor.core.model.IconPack
 import com.thor.data.iconpack.IconPackImport
 import com.thor.data.iconpack.IconPackRepository
@@ -35,8 +40,6 @@ import com.thor.core.model.StremioAddons
 import com.thor.core.model.TorznabIndexer
 import com.thor.data.launcher.DefaultLauncherManager
 import com.thor.data.launcher.PointerServiceManager
-import com.thor.data.notification.NotificationAccessManager
-import com.thor.data.notification.NotificationHub
 import com.thor.data.launcher.EntryLauncher
 import com.thor.data.media.DebridStatus
 import com.thor.data.media.AddonCheck
@@ -88,11 +91,78 @@ class SettingsViewModel @Inject constructor(
     private val defaultLauncherManager: DefaultLauncherManager,
     private val iconPackRepository: IconPackRepository,
     private val pointerService: PointerServiceManager,
-    private val notificationAccess: NotificationAccessManager,
-    notificationHub: NotificationHub,
     private val mediaRepository: MediaRepository,
     mouse: MouseController,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
+
+    // ---- Extensions --------------------------------------------------------
+
+    /**
+     * Which optional parts are enabled, for navigation.
+     *
+     * The rail and the page lists are built from this, so an extension that has
+     * not been imported has no category to land on and no page to open — the
+     * cursor cannot reach a section that is not there.
+     */
+    private val enabledExtensions: StateFlow<Set<String>> = settingsRepository.settings
+        .map { it.enabledExtensions }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptySet(),
+        )
+
+    private val _extensionStatus = MutableStateFlow<String?>(null)
+
+    /** What the last import attempt did, or null if there has not been one. */
+    val extensionStatus: StateFlow<String?> = _extensionStatus.asStateFlow()
+
+    /**
+     * Reads an extension manifest and enables what it names.
+     *
+     * Every failure is reported in the row rather than logged and swallowed. An
+     * import is a deliberate act with a file the user went and fetched, so "it
+     * did nothing" is the one outcome that leaves them with nowhere to go —
+     * a file that is the wrong kind, names an unknown extension, or cannot be
+     * read all say which.
+     */
+    fun importExtension(uri: String) {
+        viewModelScope.launchSafely(TAG) {
+            val text = runCatching {
+                appContext.contentResolver.openInputStream(uri.toUri())
+                    ?.use { it.readBytes().decodeToString() }
+            }.getOrNull()
+
+            if (text.isNullOrBlank()) {
+                _extensionStatus.value = "That file could not be read."
+                return@launchSafely
+            }
+
+            val manifest = runCatching {
+                EXTENSION_JSON.decodeFromString(ExtensionManifest.serializer(), text)
+            }.getOrNull()
+
+            val extension = manifest?.resolved
+            if (extension == null) {
+                _extensionStatus.value =
+                    "That is not a Loki extension file, or it names one this " +
+                    "version does not have."
+                return@launchSafely
+            }
+
+            settingsRepository.setExtensionEnabled(extension.id, enabled = true)
+            _extensionStatus.value = "${extension.displayName} added."
+        }
+    }
+
+    /** Turns an extension off again, hiding its section and settings. */
+    fun removeExtension(extension: LauncherExtension) {
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.setExtensionEnabled(extension.id, enabled = false)
+            _extensionStatus.value = "${extension.displayName} removed."
+        }
+    }
 
     // ---- Icon packs --------------------------------------------------------
 
@@ -173,37 +243,6 @@ class SettingsViewModel @Inject constructor(
 
     fun openPointerServiceSettings() {
         pointerService.openSettings()
-    }
-
-    // ---- Notifications -----------------------------------------------------
-
-    private val _notificationAccessGranted = MutableStateFlow(notificationAccess.isGranted())
-
-    /** Whether the system permits reading notifications; see [refreshNotificationAccess]. */
-    val notificationAccessGranted: StateFlow<Boolean> =
-        _notificationAccessGranted.asStateFlow()
-
-    /**
-     * Whether the listener is bound, as distinct from permitted.
-     *
-     * Reported straight from the hub, which the service itself sets. The two
-     * disagree more often than one would expect — a grant survives an update and
-     * the binding does not — and the page says which is which.
-     */
-    val notificationServiceConnected: StateFlow<Boolean> = notificationHub.connected
-
-    /**
-     * Re-reads the grant.
-     *
-     * Nothing observes this setting: it changes only by the user leaving for
-     * system settings and coming back, so the page asks again when it opens.
-     */
-    fun refreshNotificationAccess() {
-        _notificationAccessGranted.value = notificationAccess.isGranted()
-    }
-
-    fun openNotificationAccessSettings() {
-        notificationAccess.openSettings()
     }
 
     fun updateMouse(transform: (MouseSettings) -> MouseSettings) {
@@ -612,7 +651,7 @@ class SettingsViewModel @Inject constructor(
     fun onControllerCommand(command: ControllerCommand, rowCount: Int): Boolean = when (command) {
         ControllerCommand.NAVIGATE_UP -> {
             if (_focusOnRail.value) {
-                val entries = SettingsCategory.navigationEntries
+                val entries = SettingsCategory.navigationEntries(enabledExtensions.value)
                 val index = entries.indexOf(_selectedCategory.value)
                 selectCategory(entries[(index - 1 + entries.size) % entries.size])
             } else {
@@ -623,7 +662,7 @@ class SettingsViewModel @Inject constructor(
 
         ControllerCommand.NAVIGATE_DOWN -> {
             if (_focusOnRail.value) {
-                val entries = SettingsCategory.navigationEntries
+                val entries = SettingsCategory.navigationEntries(enabledExtensions.value)
                 val index = entries.indexOf(_selectedCategory.value)
                 selectCategory(entries[(index + 1) % entries.size])
             } else if (rowCount > 0) {
@@ -662,25 +701,40 @@ class SettingsViewModel @Inject constructor(
             true
         }
 
-        ControllerCommand.CONFIRM -> when {
-            // From the rail, step into the category's page list.
-            _focusOnRail.value && rowCount > 0 -> {
-                _focusOnRail.value = false
-                _focusedRow.value = 0
-                true
-            }
+        ControllerCommand.CONFIRM -> {
+            val pages = SettingsPage.forCategory(
+                _selectedCategory.value,
+                enabledExtensions.value,
+            )
+            when {
+                // From the rail, step into the category's rows.
+                _focusOnRail.value && rowCount > 0 -> {
+                    _focusOnRail.value = false
+                    _focusedRow.value = 0
+                    true
+                }
 
-            // From a page list, open the highlighted page.
-            _openPage.value == null -> {
-                val pages = SettingsPage.forCategory(_selectedCategory.value)
-                pages.getOrNull(_focusedRow.value)?.let(::openPage) != null
-            }
+                /*
+                 * From a page list, open the highlighted page.
+                 *
+                 * `pages.isNotEmpty()` is what makes About work, and its absence
+                 * is why every control on that screen ignored the controller.
+                 * About is a *pane*, not a list of pages, so `_openPage` is
+                 * always null there — this branch was therefore always taken, it
+                 * looked in an empty page list, found nothing, and returned
+                 * false. The activation tick below was never reached, so the
+                 * counter each row watches never moved and Confirm did nothing.
+                 */
+                _openPage.value == null && pages.isNotEmpty() ->
+                    pages.getOrNull(_focusedRow.value)?.let(::openPage) != null
 
-            // Inside a page, broadcast to the focused row so its own control
-            // acts — a toggle flips, a choice advances, a stepper steps.
-            else -> {
-                _activationTick.value += 1
-                true
+                // Inside a page, or on a pane with rows of its own: broadcast to
+                // the focused row so its control acts — a toggle flips, an
+                // action fires, a choice advances.
+                else -> {
+                    _activationTick.value += 1
+                    true
+                }
             }
         }
 
@@ -816,6 +870,13 @@ class SettingsViewModel @Inject constructor(
      */
     fun replayTutorial() {
         viewModelScope.launchSafely(TAG) { settingsRepository.setTutorialCompleted(false) }
+    }
+
+    /** Records that [extension]'s own short walkthrough has been played. */
+    fun completeExtensionTour(extension: LauncherExtension) {
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.setExtensionTourSeen(extension.id)
+        }
     }
 
     /** Records that the first-run permission list has been shown. */
@@ -1040,6 +1101,19 @@ class SettingsViewModel @Inject constructor(
     }
 
     private companion object {
+        /**
+         * Lenient on purpose: these files are written by hand.
+         *
+         * An extension file is a few lines somebody may well have typed
+         * themselves, so an unexpected field or a trailing comma should not be
+         * the difference between a working import and a message saying the file
+         * is not a Loki extension.
+         */
+        val EXTENSION_JSON = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+        }
+
         /** Log tag for guarded background work. */
         const val TAG = "Settings"
 
