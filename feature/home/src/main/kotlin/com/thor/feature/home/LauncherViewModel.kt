@@ -206,6 +206,36 @@ class LauncherViewModel @Inject constructor(
     }
 
     /**
+     * Returns to Home when the section being shown has been withdrawn.
+     *
+     * Removing an extension takes its section off the bar, but the launcher was
+     * still *on* that section: the tab kept rendering, the info panel kept
+     * hosting it, and with only Home left the bar is not drawn at all — so the
+     * cursor sat on a tab that nothing painted, over a section that no longer
+     * existed, with no visible way back. Watched rather than handled at the point
+     * of removal because the same thing is true of a settings import, a restore
+     * and a reset, and only one of those goes through the Extensions page.
+     */
+    private fun observeWithdrawnSections() {
+        viewModelScope.launch {
+            settingsRepository.settings
+                .map { it.enabledExtensions }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    val sections = LauncherTab.visible(enabled)
+                    if (_selectedTab.value !in sections) {
+                        _selectedTab.value = LauncherTab.DEFAULT
+                    }
+                    // Off the bar too, if it is pointing at a tab that is gone —
+                    // or at any tab at all once the bar itself stops being drawn.
+                    if (sections.size < 2 || _navCursor.value !in sections) {
+                        _navCursor.value = null
+                    }
+                }
+        }
+    }
+
+    /**
      * Returns the cursor to the content above.
      *
      * Refused on a section that has no content to hold a cursor — leaving the bar
@@ -287,7 +317,6 @@ class LauncherViewModel @Inject constructor(
                 }
 
             ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
-            // Shown on the top screen, so it does not disturb the grid the
 
             else -> Unit
         }
@@ -770,6 +799,8 @@ class LauncherViewModel @Inject constructor(
                 _appDrawer.update { it.copy(apps = apps.sortedBy { app -> app.sortTitle }) }
             }
             .launchIn(viewModelScope)
+
+        observeWithdrawnSections()
     }
 
     fun openAppDrawer() {
@@ -1149,7 +1180,6 @@ class LauncherViewModel @Inject constructor(
             ControllerCommand.OPEN_APP_DRAWER -> openAppDrawer()
             // Already handled above, where it applies from every surface.
             ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
-            // Shown on the top screen, so it does not disturb the grid the
             ControllerCommand.GO_HOME -> goHome()
             ControllerCommand.PICK_UP -> pickUp()
             ControllerCommand.CANCEL_EDIT -> cancelEdit()

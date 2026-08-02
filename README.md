@@ -218,7 +218,7 @@ Every key is a touch target too.
 
 **Settings → Games & artwork → Platforms**
 
-**47 systems** built in. **73 emulators** recognised, each handed a ROM the way
+**47 systems** built in. **71 emulators** recognised, each handed a ROM the way
 that emulator expects. Add the consoles you own and pick an emulator for each.
 
 Standalone emulators are preferred over RetroArch and Lemuroid — a DS game goes

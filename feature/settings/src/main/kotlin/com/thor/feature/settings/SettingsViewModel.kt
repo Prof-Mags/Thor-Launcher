@@ -26,6 +26,8 @@ import com.thor.core.model.ThorSettings
 import android.content.Context
 import androidx.core.net.toUri
 import com.thor.core.model.ExtensionManifest
+import com.thor.core.common.dispatchers.Dispatcher
+import com.thor.core.common.dispatchers.ThorDispatcher
 import com.thor.core.model.LauncherExtension
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.json.Json
@@ -54,12 +56,14 @@ import com.thor.data.sync.MetadataSyncManager
 import com.thor.data.sync.ScrapeState
 import com.thor.data.sync.SyncState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -93,6 +97,7 @@ class SettingsViewModel @Inject constructor(
     private val pointerService: PointerServiceManager,
     private val mediaRepository: MediaRepository,
     mouse: MouseController,
+    @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
@@ -129,10 +134,23 @@ class SettingsViewModel @Inject constructor(
      */
     fun importExtension(uri: String) {
         viewModelScope.launchSafely(TAG) {
-            val text = runCatching {
-                appContext.contentResolver.openInputStream(uri.toUri())
-                    ?.use { it.readBytes().decodeToString() }
-            }.getOrNull()
+            /*
+             * Off the main thread, as every other importer here already is.
+             *
+             * `viewModelScope` is `Main.immediate`, and `openInputStream` on a
+             * document URI is a synchronous binder call into whichever provider
+             * owns it. A file on local storage returns immediately and hid this;
+             * one on Drive, an SMB share or a sleeping SD card fetches the
+             * document first, and the launcher is frozen for as long as that
+             * takes. `IconPackImporter` reads exactly the same way and has always
+             * wrapped it.
+             */
+            val text = withContext(ioDispatcher) {
+                runCatching {
+                    appContext.contentResolver.openInputStream(uri.toUri())
+                        ?.use { it.readBytes().decodeToString() }
+                }.getOrNull()
+            }
 
             if (text.isNullOrBlank()) {
                 _extensionStatus.value = "That file could not be read."
@@ -156,11 +174,20 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Turns an extension off again, hiding its section and settings. */
+    /**
+     * Turns an extension off again, hiding its section and settings.
+     *
+     * Clears the status rather than writing to it. [extensionStatus] is the
+     * subtitle of the *import* row, so a removal message landed there read as
+     * "Import an extension / Movies & TV removed." — an outcome reported by a
+     * control that had nothing to do with it, and one that then sat there for the
+     * life of the screen. The row for the extension itself already says what
+     * happened by flipping to "Not added", which is where the user was looking.
+     */
     fun removeExtension(extension: LauncherExtension) {
         viewModelScope.launchSafely(TAG) {
             settingsRepository.setExtensionEnabled(extension.id, enabled = false)
-            _extensionStatus.value = "${extension.displayName} removed."
+            _extensionStatus.value = null
         }
     }
 

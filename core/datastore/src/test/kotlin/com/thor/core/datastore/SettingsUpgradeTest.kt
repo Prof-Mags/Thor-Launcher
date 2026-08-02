@@ -4,7 +4,9 @@ import com.google.common.truth.Truth.assertThat
 import com.thor.core.model.AnimatedWallpaper
 import com.thor.core.model.ClockStyle
 import com.thor.core.model.DockStyle
+import com.thor.core.model.ControllerCommand
 import com.thor.core.model.GridSpec
+import com.thor.core.model.LauncherAction
 import com.thor.core.model.ThemeId
 import com.thor.core.model.ThemeSpec
 import com.thor.core.model.ThorSettings
@@ -115,6 +117,84 @@ class SettingsUpgradeTest {
 
         assertThat(read.personalization.themeId).isEqualTo(ThemeSpec.DEFAULT)
         assertThat(read.personalization.clockStyle).isEqualTo(ClockStyle.DIGITAL_24)
+    }
+
+    /**
+     * A retired command inside a *binding map*, which coercion does not reach.
+     *
+     * `coerceInputValues` substitutes the default for a class property that
+     * declares one. A [ControllerCommand] stored as a map *value* is neither — so
+     * when the notification command was deleted, every settings file belonging to
+     * a user who had bound a button to it became undecodable, and undecodable is
+     * reported as corruption, which resets everything they had ever configured.
+     *
+     * The binding is dropped instead: that button becomes unbound, which is the
+     * honest outcome, and the rest of the profile survives.
+     */
+    @Test
+    fun `a binding to a retired command drops the binding, not the document`() = runTest {
+        val document = """
+            {
+              "controls": {
+                "activeProfileId": "custom",
+                "customProfiles": [
+                  {
+                    "id": "custom",
+                    "name": "Mine",
+                    "bindings": {
+                      "96": "CONFIRM",
+                      "97": "OPEN_NOTIFICATIONS",
+                      "99": "GO_HOME"
+                    }
+                  }
+                ],
+                "hapticIntensity": 0.4
+              },
+              "schemaVersion": 1
+            }
+        """.trimIndent()
+
+        val read = serializer.readFrom(ByteArrayInputStream(document.toByteArray()))
+
+        val profile = read.controls.customProfiles.single()
+        assertThat(profile.bindings[96]).isEqualTo(ControllerCommand.CONFIRM)
+        assertThat(profile.bindings[99]).isEqualTo(ControllerCommand.GO_HOME)
+        assertThat(profile.bindings).doesNotContainKey(97)
+        // And nothing else in the document was lost.
+        assertThat(read.controls.hapticIntensity).isEqualTo(0.4f)
+    }
+
+    /**
+     * A retired dock action, which is the same failure through a sealed hierarchy.
+     *
+     * An unknown class discriminator is not coercible either — kotlinx has no
+     * default branch for a sealed type — so a dock holding the deleted
+     * notifications action took the whole document down with it.
+     *
+     * Built by rewriting the *current* document rather than hand-written, so the
+     * discriminator and its format come from the encoder instead of from my
+     * memory of it.
+     */
+    @Test
+    fun `a dock slot holding a retired action falls back to that slot alone`() = runTest {
+        val current = ByteArrayOutputStream()
+            .also { serializer.writeTo(ThorSettings.DEFAULT, it) }
+            .toByteArray()
+            .decodeToString()
+
+        val legacy = current.replaceFirst("LauncherAction.OpenSettings", "LauncherAction.OpenNotifications")
+        // The rewrite has to have actually happened, or this test proves nothing.
+        assertThat(legacy).isNotEqualTo(current)
+
+        val read = serializer.readFrom(ByteArrayInputStream(legacy.toByteArray()))
+
+        // Replaced, not removed: the dock is five fixed positions, and dropping
+        // one slides every later slot left — costing a binding that was fine.
+        assertThat(read.dock.slots).hasSize(ThorSettings.DEFAULT.dock.slots.size)
+        assertThat(read.dock.slots.first()).isEqualTo(LauncherAction.GoHome)
+        // Every other slot is untouched.
+        assertThat(read.dock.slots.drop(1))
+            .isEqualTo(ThorSettings.DEFAULT.dock.slots.drop(1))
     }
 
     @Test

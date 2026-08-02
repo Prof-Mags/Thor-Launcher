@@ -56,18 +56,39 @@ internal fun ExtensionsPage(
      */
     LauncherExtension.entries.forEachIndexed { index, extension ->
         val enabled = settings.has(extension)
-        ActionRow(
-            title = extension.displayName,
-            subtitle = if (enabled) {
-                "Added. ${extension.summary}"
-            } else {
-                extension.summary
-            },
-            focused = focusedRow == index + 1,
-            trailingLabel = if (enabled) "Remove" else "Not added",
-            destructive = enabled,
-            onClick = { if (enabled) viewModel.removeExtension(extension) },
-        )
+        if (enabled) {
+            ActionRow(
+                title = extension.displayName,
+                subtitle = "Added. ${extension.summary}",
+                focused = focusedRow == index + 1,
+                trailingLabel = "Remove",
+                destructive = true,
+                onClick = { viewModel.removeExtension(extension) },
+            )
+        } else {
+            /*
+             * A picker, not a dead button.
+             *
+             * This row used to be an [ActionRow] whose click did nothing when the
+             * extension was not yet added — focusable, drawn with a cursor-tinted
+             * button reading "Not added", and completely inert. Pressing A on it
+             * is the obvious way to try to add the thing, and the obvious way did
+             * nothing at all: no action, no message, no cue.
+             *
+             * It opens the same picker the import row does, so the obvious way
+             * now works. Any manifest is accepted from here rather than only this
+             * extension's — the importer reads what the file names, and refusing
+             * a valid file because it was picked from the neighbouring row would
+             * be a second dead end where the first one was.
+             */
+            FilePickerRow(
+                title = extension.displayName,
+                subtitle = "${extension.summary}  ·  Not added — pick its file to add it",
+                mimeTypes = arrayOf("application/json", "text/plain", "*/*"),
+                focused = focusedRow == index + 1,
+                onPicked = { uri, _ -> viewModel.importExtension(uri) },
+            )
+        }
         if (index != LauncherExtension.entries.lastIndex) RowDivider()
     }
 }

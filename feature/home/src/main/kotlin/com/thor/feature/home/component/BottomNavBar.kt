@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import com.thor.core.model.PanelLayout
 import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.modifier.thorSurface
@@ -180,7 +181,7 @@ private fun NavTab(
              *
              * The bar is a fixed height and the content has to fit inside it: icon,
              * label and underline together come to within a couple of dp of
-             * [NAV_BAR_HEIGHT], so the insets here are the slack. Loosening any of
+             * [PanelLayout.NAV_BAR_HEIGHT], so the insets here are the slack. Loosening any of
              * them without raising the bar clips the underline off the bottom.
              */
             .padding(horizontal = dimens.spacingTiny, vertical = TAB_INSET.dp)
@@ -240,21 +241,13 @@ private val LauncherTab.icon: ImageVector
         LauncherTab.MOVIES -> Icons.Rounded.Movie
     }
 
-/**
- * Height of the bar, which the grid reserves clearance for.
- *
- * Kept tight: this is permanent furniture on a handheld panel, and every dp of it
- * comes out of the grid above.
- */
-const val NAV_BAR_HEIGHT = 52
-
-private const val BAR_HEIGHT = NAV_BAR_HEIGHT
+private const val BAR_HEIGHT = PanelLayout.NAV_BAR_HEIGHT
 
 /**
  * Vertical breathing room, inside and outside the tab's pill.
  *
  * Both are part of the height budget described on the tab's modifier; see
- * [NAV_BAR_HEIGHT].
+ * [PanelLayout.NAV_BAR_HEIGHT].
  */
 private const val TAB_INSET = 3
 private const val TAB_PADDING = 2

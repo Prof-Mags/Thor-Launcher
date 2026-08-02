@@ -1,6 +1,7 @@
 package com.thor.feature.settings.tutorial
 
 import com.thor.core.model.LauncherExtension
+import com.thor.core.model.LauncherTab
 import com.thor.feature.settings.SettingsCategory
 
 /** Which screen a step's card is drawn on. */
@@ -133,16 +134,29 @@ object ThorTutorial {
                 spot = TutorialSpot.GRID,
             ),
         )
-        add(
-            TutorialStep(
-                title = "The bar along the bottom",
-                body = "Sections live here. Home is in the middle because it is the " +
-                    "one you come back to.\n\nPress Down past the last row of the " +
-                    "grid to reach it, then Left and Right to move.",
-                panel = TutorialPanel.GRID,
-                spot = TutorialSpot.NAV_BAR,
-            ),
-        )
+        /*
+         * Only when there is a bar to point at.
+         *
+         * The bar is drawn only once an extension has given it a second section
+         * to switch between, and the grid reserves no height for it otherwise.
+         * Teaching it regardless left a fresh install ringing an empty strip of
+         * grid and telling the reader to press Down onto a bar that is not on
+         * screen — and putting the cursor somewhere invisible if they did.
+         */
+        val sections = LauncherTab.visible(enabledExtensions)
+        if (sections.size > 1) {
+            add(
+                TutorialStep(
+                    title = "The bar along the bottom",
+                    body = "Your sections live here — " +
+                        sections.joinToString(", ") { it.label } +
+                        ".\n\nPress Down past the last row of the grid to reach " +
+                        "it, then Left and Right to move between them.",
+                    panel = TutorialPanel.GRID,
+                    spot = TutorialSpot.NAV_BAR,
+                ),
+            )
+        }
         add(
             TutorialStep(
                 title = "The buttons",

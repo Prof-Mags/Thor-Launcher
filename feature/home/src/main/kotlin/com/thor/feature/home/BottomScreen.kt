@@ -45,7 +45,7 @@ import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.SortDialog
 import com.thor.feature.home.component.BottomNavBar
 import com.thor.feature.home.component.EmptySection
-import com.thor.feature.home.component.NAV_BAR_HEIGHT
+import com.thor.core.model.PanelLayout
 import com.thor.feature.home.component.dockHeightFor
 import com.thor.core.model.LauncherFeatures.DOCK_ENABLED
 import com.thor.core.model.LauncherTab
@@ -139,7 +139,7 @@ fun BottomScreen(
             dockHeightFor(dockSettings) + dimens.spacingSmall
 
         DOCK_ENABLED -> 0.dp
-        navBarVisible -> NAV_BAR_HEIGHT.dp
+        navBarVisible -> PanelLayout.NAV_BAR_HEIGHT.dp
         else -> 0.dp
     }
     // Named for what the drawer actually wants: room at the bottom, whichever

@@ -209,7 +209,24 @@ fun ThorApp(
     var tutorialSteps by remember { mutableStateOf(emptyList<TutorialStep>()) }
     var tutorialIndex by remember { mutableIntStateOf(0) }
     var tutorialExtension by remember { mutableStateOf<LauncherExtension?>(null) }
-    val tutorialRunning = tutorialSteps.isNotEmpty()
+
+    /*
+     * A function, not a value, because the input collector reads it.
+     *
+     * That collector is a `LaunchedEffect` keyed on the router alone, so the
+     * lambda Compose keeps is the one built on the *first* composition. A plain
+     * `val tutorialRunning = tutorialSteps.isNotEmpty()` is captured by value at
+     * that moment — which is `false`, before any tour exists — and stays false
+     * forever, so every press during the walkthrough fell through to the routing
+     * below and launched whatever the cursor was sitting on.
+     *
+     * Read through the state delegate instead. `remember` hands back the same
+     * `MutableState` on every composition, so a read inside the lambda is a read
+     * of the current value rather than of the one it closed over. The rest of
+     * this file reads live for the same reason; see `activeSurfaceNow` and the
+     * note on the collector itself.
+     */
+    val tutorialRunningNow: () -> Boolean = { tutorialSteps.isNotEmpty() }
     val tutorialStep = tutorialSteps.getOrNull(tutorialIndex)
 
     /*
@@ -650,7 +667,7 @@ fun ThorApp(
         LaunchedEffect(tutorialStep) {
             val category = tutorialStep?.settingsCategory
             when {
-                !tutorialRunning -> Unit
+                !tutorialRunningNow() -> Unit
                 category != null -> {
                     settingsViewModel.selectCategory(category)
                     settingsViewModel.resetFocus()
@@ -791,7 +808,7 @@ fun ThorApp(
                  * merely intended: there is no surface, section or panel that can
                  * take a press before this does, so no button leaves early.
                  */
-                if (tutorialRunning) {
+                if (tutorialRunningNow()) {
                     when (event.command) {
                         ControllerCommand.CONFIRM,
                         ControllerCommand.NAVIGATE_RIGHT,

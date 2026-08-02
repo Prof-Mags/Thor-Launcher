@@ -164,12 +164,20 @@ enum class SettingsPage(
             }
 
         /**
-         * Whether the extension this page configures has been enabled.
+         * Whether the extension this page's category belongs to is enabled.
          *
-         * Checked per page as well as per category, because a page can belong to
-         * an extension without its category doing so — and a settings screen for
-         * something the launcher is not currently offering is exactly the "dead
-         * page" this enum's own note warns about.
+         * The same question [SettingsCategory] answers for the rail, asked again
+         * here — not a finer-grained one. It used to claim to be per *page*, on
+         * the reasoning that a page could belong to an extension its category
+         * does not; nothing supports that, because [SettingsPage] carries no
+         * extension of its own and this reads `category.extension`. A page in
+         * that position would still be listed.
+         *
+         * Worth keeping as the second gate even so. The rail cannot offer a
+         * hidden category, but the *selected* one is held in the view model and
+         * outlives the rail that chose it: removing an extension while its
+         * category is open leaves a selection naming something no longer there,
+         * and this is what stops its pages being handed back.
          */
         private fun SettingsPage.isUnlocked(enabled: Set<String>): Boolean =
             category.extension?.id?.let { it in enabled } ?: true

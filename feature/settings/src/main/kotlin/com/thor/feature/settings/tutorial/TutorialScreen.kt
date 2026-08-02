@@ -37,9 +37,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
+import com.thor.core.model.PanelLayout
 import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.feature.settings.component.SettingsTextButton
@@ -71,7 +73,36 @@ fun TutorialScreen(
     val dimens = ThorTheme.dimens
     val isLast = index == steps.lastIndex
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+    /*
+     * Every touch on both panels, swallowed for as long as the tour runs.
+     *
+     * The walkthrough already takes every *button* at the top of the shell's
+     * input collector, and that was the whole of "modal" — which was true only
+     * while an earlier version also hid the grid behind a solid cover. The grid
+     * is deliberately visible now, and visible means live: without this, tapping
+     * a cell during a step about the grid launches the game under it, and a long
+     * press opens a context menu over the card explaining what long press does.
+     *
+     * On the far panel too, not only the one holding the card. The other screen
+     * is just as touchable, and a step is no less interrupted for the tap having
+     * landed on the screen the reader was not looking at.
+     *
+     * The default `Main` pass, deliberately: it travels child before parent, so
+     * the card's own BACK and NEXT are offered the touch first and this only
+     * swallows what they did not want. Consuming on `Initial` would reach here
+     * before the buttons and leave the tour with no way forward but the pad.
+     */
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent().changes.forEach { it.consume() }
+                    }
+                }
+            },
+    ) {
         Spotlight(spot = if (step.panel == panel) step.spot else TutorialSpot.NONE)
 
         // Only the named panel carries the card; the other is dimmed or left alone.
@@ -227,7 +258,17 @@ private fun Spotlight(spot: TutorialSpot) {
     )
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val barTop = size.height * (1f - NAV_BAR_FRACTION)
+        /*
+         * The bar's own height, not a share of the panel.
+         *
+         * This was `height * 0.16f`, which on a panel of any real size lit a
+         * strip about twice as tall as the bar — swallowing the bottom row of
+         * icons and the page dots, and ringing them as though they were what the
+         * step was pointing at. The two numbers were independent and had already
+         * drifted; there is one now, and it is the one the bar is laid out from.
+         */
+        val barTop = (size.height - PanelLayout.NAV_BAR_HEIGHT.dp.toPx())
+            .coerceAtLeast(0f)
         val lit = when (spot) {
             TutorialSpot.GRID -> Rect(Offset.Zero, Size(size.width, barTop))
             TutorialSpot.NAV_BAR ->
@@ -294,9 +335,6 @@ private fun ProgressRail(index: Int, total: Int) {
         )
     }
 }
-
-/** Matches the section bar's share of the panel. */
-private const val NAV_BAR_FRACTION = 0.16f
 
 /**
  * How much of the panel the step's prose may take before it scrolls.

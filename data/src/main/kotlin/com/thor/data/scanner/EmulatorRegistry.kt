@@ -483,11 +483,18 @@ object EmulatorRegistry {
             displayName = "GBC.emu",
             platformIds = setOf("gb", "gbc"),
         ),
-        EmulatorSpec(
-            packageName = "com.explusalpha.MdEmu.n64",
-            displayName = "N64 Plus FZ Pro",
-            platformIds = setOf("n64"),
-        ),
+        /*
+         * "com.explusalpha.MdEmu.n64" used to be here, as "N64 Plus FZ Pro".
+         *
+         * No such package exists. The `com.explusalpha.*` family is Robert
+         * Broglia's `.emu` applications and MD.emu is the Genesis one; there is no
+         * N64 member and never was. The app that name was reaching for is
+         * Mupen64Plus FZ Pro, which is `org.mupen64plusae.v3.fzurita.pro` and is
+         * already listed above as "M64Plus FZ Pro".
+         *
+         * It could never match an installed package, so it did nothing except
+         * appear in the picker for N64 as a choice that would never launch.
+         */
         EmulatorSpec(
             packageName = "org.mupen64plusae.v3.fzurita",
             displayName = "Mupen64Plus FZ (Pro)",

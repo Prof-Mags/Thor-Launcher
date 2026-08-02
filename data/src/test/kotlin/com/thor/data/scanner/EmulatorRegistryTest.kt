@@ -59,6 +59,19 @@ class EmulatorRegistryTest {
     }
 
     /**
+     * The README quotes this figure, and had been quoting a guess.
+     *
+     * It claimed 62 before a dozen were added and 73 afterwards, while the table
+     * actually held 72 — edited by arithmetic on the last wrong number rather than
+     * read off the list. Failing here is the reminder: change the count, then
+     * change the README to match.
+     */
+    @Test
+    fun `the emulator count is what the README claims`() {
+        assertThat(EmulatorRegistry.KNOWN).hasSize(EMULATORS_IN_README)
+    }
+
+    /**
      * A spec claiming a system the launcher does not have is dead weight: nothing
      * ever asks for that id, so the entry is never offered and the mistake is
      * invisible.
@@ -89,3 +102,6 @@ class EmulatorRegistryTest {
         assertThat(packagesFor("nes")).contains("com.johnemulators.johnness")
     }
 }
+
+/** Kept in step with the figure in README.md, by the test above. */
+private const val EMULATORS_IN_README = 71
