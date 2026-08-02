@@ -143,10 +143,19 @@ internal fun MoviesCataloguePage(
         }
 
         ActionRow(
-            title = "Add a Stremio addon",
-            subtitle = "THOR speaks the Stremio addon protocol, so any addon that " +
-                "serves streams works. It ships none — which one you install is " +
-                "your choice, as it is in Stremio.",
+            /*
+             * Named for what the user does rather than for whose protocol it is.
+             *
+             * "Stremio addon" describes the format and assumes the reader already
+             * knows it; "URL-based addon" describes the action — you paste a URL —
+             * which is the whole of what this row asks for. The protocol is still
+             * named in the subtitle, because someone holding an install link needs
+             * to know it will be understood.
+             */
+            title = "Add a URL-based addon",
+            subtitle = "Paste an addon's URL and it is installed. THOR speaks the " +
+                "Stremio addon protocol, so any addon serving streams works — it " +
+                "ships none, and which you install is your choice.",
             focused = focusedRow == ADDON_FIRST_ROW + media.addons.size * ROWS_PER_ADDON,
             trailingLabel = "Add",
             onClick = { viewModel.addAddon() },
