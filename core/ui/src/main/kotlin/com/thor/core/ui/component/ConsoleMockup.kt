@@ -85,7 +85,7 @@ fun ConsoleMockup(
             Panel(aspect = bottomAspect, content = bottomPanel)
 
             Text(
-                text = "THOR",
+                text = "Loki",
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Light,
                 color = colors.onSurfaceVariant.copy(alpha = 0.7f),

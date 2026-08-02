@@ -85,7 +85,7 @@ class StreamRepository @Inject constructor(
      */
     suspend fun pair(host: StreamHost, onPin: (String) -> Unit): PairingState =
         withContext(ioDispatcher) {
-            val name = settings.stream.first().clientName.ifBlank { "THOR" }
+            val name = settings.stream.first().clientName.ifBlank { "Loki" }
             val result = pairing.pair(host, clientId(), name, onPin)
             if (result is PairingState.Paired) setPaired(host.address, true)
             result

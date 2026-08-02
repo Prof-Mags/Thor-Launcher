@@ -125,7 +125,7 @@ internal fun StreamQualityPage(
 
         SwitchRow(
             title = "Ask for HDR",
-            subtitle = "Only if the PC and the game both support it. THOR does not yet " +
+            subtitle = "Only if the PC and the game both support it. Loki does not yet " +
                 "apply the colour data, so this is off — and a stream that claims " +
                 "HDR without honouring it looks washed out.",
             checked = quality.enableHdr,
@@ -358,7 +358,7 @@ internal fun StreamHostsPage(
 
         TextFieldRow(
             title = "This device's name",
-            subtitle = "What THOR is listed as in Sunshine's client list on the PC. " +
+            subtitle = "What Loki is listed as in Sunshine's client list on the PC. " +
                 "Changing it does not undo a pairing.",
             value = stream.clientName,
             focused = focusedRow == 1,

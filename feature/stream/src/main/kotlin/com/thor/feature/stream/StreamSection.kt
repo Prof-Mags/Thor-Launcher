@@ -166,7 +166,7 @@ private fun StreamHeader(state: StreamUiState) {
 
             Column {
                 Text(
-                    text = "THOR LINK",
+                    text = "Loki LINK",
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.cursor,
                     fontWeight = FontWeight.Bold,

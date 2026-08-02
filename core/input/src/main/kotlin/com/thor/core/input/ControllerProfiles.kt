@@ -16,7 +16,7 @@ object ControllerProfiles {
 
     val DEFAULT: ControllerProfile = ControllerProfile(
         id = ControllerProfile.DEFAULT_ID,
-        name = "THOR Default",
+        name = "Loki Default",
         isBuiltIn = true,
         bindings = buildMap {
             // Directional input. Both D-pad and hat/stick synthesised codes.

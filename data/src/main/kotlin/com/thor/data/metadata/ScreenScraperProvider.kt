@@ -303,7 +303,7 @@ class ScreenScraperProvider @Inject constructor(
         private const val BASE_URL = "https://api.screenscraper.fr/api2"
 
         /** Identifies this client to ScreenScraper in its request logs. */
-        private const val SOFT_NAME = "THOR"
+        private const val SOFT_NAME = "Loki"
 
         /**
          * The application's registered developer key, compiled in at build time.

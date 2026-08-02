@@ -570,7 +570,7 @@ class ThorMouseService : AccessibilityService() {
             MouseAction.OPEN_KEYBOARD -> if (mouse.launcherForeground) {
                 mouse.requestKeyboard()
             } else {
-                ThorLog.i(TAG, "Keyboard request ignored: THOR is not on screen")
+                ThorLog.i(TAG, "Keyboard request ignored: Loki is not on screen")
             }
             MouseAction.TOGGLE_OFF -> mouse.setActive(false)
             MouseAction.NONE -> Unit

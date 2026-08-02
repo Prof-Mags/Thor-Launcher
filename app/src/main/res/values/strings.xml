@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">THOR</string>
+    <string name="app_name">Loki Launcher</string>
+    <!-- "AYN Thor" is the handheld this runs on, not the app; it stays. -->
     <string name="launcher_description">Dual screen launcher for the AYN Thor</string>
 
     <!--
@@ -9,7 +10,7 @@
       why does a launcher want this, and what will it do with it.
     -->
     <string name="mouse_service_summary">Controller pointer for apps and games</string>
-    <string name="mouse_service_description">Lets THOR show a pointer you can move with the controller and use anywhere on the device, including inside games and apps. Hold Start and Select to turn it on or off.\n\nTHOR does not read the contents of your screen. This permission is used only to draw the pointer and to send the taps it makes.</string>
+    <string name="mouse_service_description">Lets Loki show a pointer you can move with the controller and use anywhere on the device, including inside games and apps. Hold Start and Select to turn it on or off.\n\nLoki does not read the contents of your screen. This permission is used only to draw the pointer and to send the taps it makes.</string>
 
     <!--
       Shown beside THOR in the system's notification-access list, which is the

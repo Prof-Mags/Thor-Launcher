@@ -446,7 +446,7 @@ object BuiltInPlatforms {
             // launches by — see the Winlator entry in EmulatorRegistry.
             ext = setOf("exe", "lnk", "sh", "desktop"),
             screenscraper = "135", igdb = "6",
-            about = "Not a console at all, and the only platform here nobody designed. Everything from storefront launchers to loose executables, held together by whatever the user points THOR at."
+            about = "Not a console at all, and the only platform here nobody designed. Everything from storefront launchers to loose executables, held together by whatever the user points Loki at."
         ),
         platform(
             id = ID_ANDROID, name = "Android", short = "Android",

@@ -153,7 +153,7 @@ internal fun MoviesCataloguePage(
              * to know it will be understood.
              */
             title = "Add a URL-based addon",
-            subtitle = "Paste an addon's URL and it is installed. THOR speaks the " +
+            subtitle = "Paste an addon's URL and it is installed. Loki speaks the " +
                 "Stremio addon protocol, so any addon serving streams works — it " +
                 "ships none, and which you install is your choice.",
             focused = focusedRow == ADDON_FIRST_ROW + media.addons.size * ROWS_PER_ADDON,
@@ -237,7 +237,7 @@ internal fun MoviesCataloguePage(
         ActionRow(
             title = "Add a torrent indexer",
             subtitle = "The other route: a Torznab endpoint — Jackett, Prowlarr or " +
-                "NZBHydra — searched by THOR directly. Needs a URL and a key per " +
+                "NZBHydra — searched by Loki directly. Needs a URL and a key per " +
                 "site, so an addon is usually less work.",
             focused = focusedRow ==
                 indexerFirstRow(media) + media.indexers.size * ROWS_PER_INDEXER,

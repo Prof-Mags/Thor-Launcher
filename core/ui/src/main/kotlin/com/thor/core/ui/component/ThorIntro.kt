@@ -176,7 +176,7 @@ fun ThorIntro(
             Spacer(modifier = Modifier.height(MARK_GAP.dp))
 
             Text(
-                text = "THOR",
+                text = "Loki",
                 style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.Light,
                 color = colors.onBackground,

@@ -14,7 +14,9 @@ enum class ShortcutAction(val label: String, val description: String) {
 
     APPS("Apps", "Open the app drawer"),
     SEARCH("Search", "Search the whole library"),
-    THOR_SETTINGS("THOR", "Open THOR's settings"),
+    // The constant keeps its name: it is an identifier, not a label, and renaming
+    // it would rewrite every stored shortcut placement that refers to it.
+    THOR_SETTINGS("Loki", "Open Loki's settings"),
     SWAP_SCREENS("Swap screens", "Move the grid to the other panel"),
     SCAN_LIBRARY("Rescan", "Look for newly added games"),
     RECORD("Record", "Capture both panels to a video"),

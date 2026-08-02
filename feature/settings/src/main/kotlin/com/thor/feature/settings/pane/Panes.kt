@@ -311,7 +311,7 @@ private fun IconPacksPage(
         RowDivider()
         InfoRow(
             "Installed",
-            "None. THOR ships no packs — platform artwork comes from ones you import.",
+            "None. Loki ships no packs — platform artwork comes from ones you import.",
         )
         return
     }
@@ -374,7 +374,7 @@ private fun PointerPage(
 
     SwitchRow(
         title = "Controller pointer",
-        subtitle = "Hold Start and Select to raise a cursor. Works inside THOR " +
+        subtitle = "Hold Start and Select to raise a cursor. Works inside Loki " +
             "straight away; see below to use it in other apps.",
         checked = mouse.enabled,
         focused = focusedRow == 0,
@@ -412,7 +412,7 @@ private fun PointerPage(
             else ->
                 "Not granted. Android shows no prompt for this — open Accessibility " +
                     "and turn on “Controller pointer”. Until then the pointer works " +
-                    "inside THOR only."
+                    "inside Loki only."
         },
         focused = focusedRow == 1,
         trailingLabel = if (pointerRunning) "Accessibility" else "Open",
@@ -1330,7 +1330,7 @@ private fun DiagnosticsPage(
     ActionRow(
         title = "Set as default launcher",
         subtitle = if (isDefaultLauncher) {
-            "THOR is your home app"
+            "Loki is your home app"
         } else {
             "Opens Android's home app chooser"
         },

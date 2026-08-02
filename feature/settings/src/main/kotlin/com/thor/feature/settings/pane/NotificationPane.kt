@@ -49,11 +49,11 @@ internal fun NotificationsPage(
                     "Working. Notifications appear on the top screen."
 
                 granted ->
-                    "Granted, but the service is not running. Turn THOR off and on " +
+                    "Granted, but the service is not running. Turn Loki off and on " +
                         "again in the system list to rebind it."
 
                 else ->
-                    "Opens the system's notification access list. Find THOR there and " +
+                    "Opens the system's notification access list. Find Loki there and " +
                         "turn it on — there is no in-app prompt for this one."
             },
             focused = focusedRow == 0,
@@ -62,7 +62,7 @@ internal fun NotificationsPage(
         RowDivider()
 
         InfoRow(
-            title = "What THOR reads",
+            title = "What Loki reads",
             value = "The app name, title and text of notifications already on your " +
                 "lock screen, held in memory only. Nothing is written to disk and " +
                 "nothing leaves the device. Revoking access in system settings stops " +

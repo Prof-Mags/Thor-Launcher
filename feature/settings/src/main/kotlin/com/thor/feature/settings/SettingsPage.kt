@@ -99,7 +99,7 @@ enum class SettingsPage(
     ),
     STREAM_HOSTS(
         SettingsCategory.STREAMING, "PCs",
-        "How PCs are found, and what THOR calls itself",
+        "How PCs are found, and what Loki calls itself",
     ),
 
     // ---- Controls ----------------------------------------------------------

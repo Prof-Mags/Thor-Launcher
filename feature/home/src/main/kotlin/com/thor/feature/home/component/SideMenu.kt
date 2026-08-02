@@ -106,7 +106,7 @@ fun SideMenu(
                 ) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         Text(
-                            text = "THOR",
+                            text = "Loki",
                             style = MaterialTheme.typography.titleSmall,
                             color = colors.cursor,
                             modifier = Modifier.padding(

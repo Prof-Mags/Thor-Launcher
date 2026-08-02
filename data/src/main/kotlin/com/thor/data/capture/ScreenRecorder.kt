@@ -167,7 +167,7 @@ class ScreenRecorder @Inject constructor(
         }
 
     private fun createOutputEntry(): Uri? = runCatching {
-        val name = "THOR-${System.currentTimeMillis()}.mp4"
+        val name = "Loki-${System.currentTimeMillis()}.mp4"
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, name)
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
@@ -219,8 +219,8 @@ class ScreenRecorder @Inject constructor(
 
     private companion object {
         const val TAG = "Recorder"
-        const val DISPLAY_NAME = "THOR capture"
-        const val OUTPUT_DIRECTORY = "Movies/THOR"
+        const val DISPLAY_NAME = "Loki capture"
+        const val OUTPUT_DIRECTORY = "Movies/Loki"
         const val FRAME_RATE = 30
         const val MIN_DIMENSION = 240
         const val MAX_DIMENSION = 2160

@@ -185,7 +185,7 @@ fun SettingsScreen(
                         .padding(vertical = dimens.spacing),
                 ) {
                 Text(
-                    text = "THOR",
+                    text = "Loki",
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.cursor,
                     fontWeight = FontWeight.Bold,

@@ -220,6 +220,6 @@ private fun TextureView.cropToFill(videoAspect: Float) {
  * A plain product token rather than anything imitating a browser: these are
  * THOR's own requests to APIs it is credentialled for, and they should say so.
  */
-private const val USER_AGENT = "THOR-Launcher"
+private const val USER_AGENT = "Loki-Launcher"
 private const val CONNECT_TIMEOUT_MS = 15_000
 private const val READ_TIMEOUT_MS = 15_000

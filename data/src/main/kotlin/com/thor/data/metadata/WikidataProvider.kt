@@ -304,7 +304,7 @@ class WikidataProvider @Inject constructor(
          * A contact URL is expected; the project page stands in for one.
          */
         private const val USER_AGENT =
-            "THOR-Launcher/1.0 (https://github.com/thor-launcher) Android"
+            "Loki-Launcher/1.0 (https://github.com/thor-launcher) Android"
 
         // Wikidata property ids.
         private const val PROP_DEVELOPER = "P178"

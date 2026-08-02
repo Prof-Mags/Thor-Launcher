@@ -139,7 +139,7 @@ class StreamLauncher @Inject constructor(
         onStage: (LaunchStage) -> Unit = {},
     ): LaunchedSession = withContext(ioDispatcher) {
         val serverCert = channel.certificateFor(host.address)
-            ?: throw LaunchFailure("This PC is not paired with THOR any more. Pair it again.")
+            ?: throw LaunchFailure("This PC is not paired with Loki any more. Pair it again.")
 
         onStage(LaunchStage.ASKING_HOST)
         val server = serverInfo(host, clientId, serverCert)
@@ -299,7 +299,7 @@ class StreamLauncher @Inject constructor(
         )
 
         val appVersion = xml.textOf("appversion")
-            ?: throw LaunchFailure("The PC did not report a version, so THOR cannot talk to it")
+            ?: throw LaunchFailure("The PC did not report a version, so Loki cannot talk to it")
 
         return ServerInfo(
             appVersion = appVersion,

@@ -135,7 +135,7 @@ private fun CinemaHeader(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(
-                    text = "THOR CINEMA",
+                    text = "Loki CINEMA",
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.cursor,
                     fontWeight = FontWeight.Bold,

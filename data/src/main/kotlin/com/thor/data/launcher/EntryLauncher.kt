@@ -335,7 +335,7 @@ class EntryLauncher @Inject constructor(
              * so the write it was offering was never its to offer.
              *
              * The failure was invisible in the worst way. It presents as
-             * "Android would not let THOR open that app on this screen", which
+             * "Android would not let Loki open that app on this screen", which
              * is a true sentence about the wrong thing entirely, and it survived
              * being retried on every display because every retry carried the same
              * flag. Applications were unaffected throughout — their intents carry

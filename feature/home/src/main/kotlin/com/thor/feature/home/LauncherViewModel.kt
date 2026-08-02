@@ -376,7 +376,7 @@ class LauncherViewModel @Inject constructor(
             val saved = screenRecorder.stop()
             emit(
                 LauncherEffect.ShowMessage(
-                    saved?.let { "Saved $it to Movies/THOR" } ?: "Nothing was recorded",
+                    saved?.let { "Saved $it to Movies/Loki" } ?: "Nothing was recorded",
                 ),
             )
             return

@@ -112,7 +112,7 @@ fun NotificationPanel(
              */
             !connected -> Message(
                 icon = Icons.Rounded.NotificationsOff,
-                title = "THOR cannot read notifications yet",
+                title = "Loki cannot read notifications yet",
                 detail = "Settings → System → Notifications, then grant access in the " +
                     "system list that opens.",
             )

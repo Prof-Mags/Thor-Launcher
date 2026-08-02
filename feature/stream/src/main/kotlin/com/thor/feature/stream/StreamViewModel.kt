@@ -143,7 +143,7 @@ class StreamViewModel @Inject constructor(
     val clientName: StateFlow<String> = repository.clientName.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = "THOR",
+        initialValue = "Loki",
     )
 
     init {

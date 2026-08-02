@@ -103,7 +103,7 @@ data class StreamSettings(
      * Shown in Sunshine's own client list, so it wants to be recognisable on the
      * PC rather than unique to a protocol.
      */
-    val clientName: String = "THOR",
+    val clientName: String = "Loki",
 
     /**
      * The identity THOR presents to hosts, generated on first use.

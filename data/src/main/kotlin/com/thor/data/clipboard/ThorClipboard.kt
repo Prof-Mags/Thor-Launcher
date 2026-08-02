@@ -104,7 +104,7 @@ class ThorClipboard @Inject constructor(
 
     private companion object {
         const val TAG = "Clipboard"
-        const val DEFAULT_LABEL = "THOR"
+        const val DEFAULT_LABEL = "Loki"
 
         /**
          * Short on purpose. This is a paste menu reachable from a cursor on a

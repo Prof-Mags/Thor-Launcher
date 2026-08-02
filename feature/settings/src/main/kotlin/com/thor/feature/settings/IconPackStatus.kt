@@ -28,7 +28,7 @@ sealed interface IconPackStatus {
                 append("Installed $name — $applied platform")
                 if (applied != 1) append("s")
                 if (held > 0) {
-                    append(", $held held for systems THOR does not have yet")
+                    append(", $held held for systems Loki does not have yet")
                 }
             }
 
