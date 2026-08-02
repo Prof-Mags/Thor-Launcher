@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/banner.png" alt="Loki" width="880">
+
 # Loki for the AYN Thor
 
 Loki is an all in one launcher built exclusively for the AYN Thor, designed to solve problems instead of creating them. Every part of the experience has been built with performance, stability, and ease of use in mind, delivering a fast, lightweight interface that takes full advantage of the Thor's unique dual screen hardware.
@@ -44,7 +46,6 @@ Then Loki shows you what it would like permission for. **None of it is required.
 |:--|:--|
 | **Home app** | Loki opens when you press Home |
 | **Accessibility** | The pointer, and typing into other apps |
-| **Notifications** | Device notifications on the top screen |
 
 Then a walkthrough takes you through everything. Replay it any time from
 **Settings → About → Replay the walkthrough**.
@@ -271,6 +272,9 @@ Each game keeps a cover and up to three screenshots. The bumpers step between th
 
 ## Movies and TV
 
+> **An extension.** Add it with [`movies.json`](extensions/) — see
+> [Extensions](#extensions) below.
+
 Open **Movies** from the section bar at the bottom of the grid.
 
 Browsing needs nothing. Playing needs a source, and there are two kinds.
@@ -325,6 +329,9 @@ choose audio track and playback speed. Handles progressive files, HLS and DASH.
 <div align="center">
 
 ## Game streaming
+
+> **An extension.** Add it with [`stream.json`](extensions/) — see
+> [Extensions](#extensions) below.
 
 Open **Stream** from the section bar. Loki finds PCs running
 [Sunshine](https://github.com/LizardByte/Sunshine) on your network.
@@ -382,14 +389,6 @@ under *Settings → System*.
 
 <div align="center">
 
-## Notifications
-
-With notification access granted, the top screen shows what your device is
-notifying about while you play.
-
-**Settings → System → Notifications**
-
-<br>
 
 ## Recording
 
@@ -398,6 +397,35 @@ dual screen console body, saved to `Movies/Loki`.
 
 It records **the launcher, not the device** — Android only lets an app capture the
 default display, so a running game won't appear. No audio.
+
+<br>
+
+</div>
+
+<div align="center">
+
+## Extensions
+
+Movies and PC streaming are **optional**. They ship inside the app but stay
+switched off, so a launcher you only want for your ROMs has no section, no
+settings category and no pages for either.
+
+Adding one is a small file, not a download.
+
+| File | Adds |
+|:--|:--|
+| [`movies.json`](extensions/movies.json) | Browse films and shows, find sources, play them |
+| [`stream.json`](extensions/stream.json) | Find PCs on your network and stream from them |
+
+**Settings → System → Extensions → Import an extension**
+
+The section appears at once — nothing is fetched, and it works offline. Remove it
+from the same page and everything it added disappears, with its settings kept in
+case you add it back.
+
+It is not a licence key. Anyone can write one in a text editor; it is a way of
+saying which parts of the launcher you want. More in
+[extensions/README](extensions/).
 
 <br>
 
@@ -414,7 +442,7 @@ default display, so a running game won't appear. No audio.
 | **Films & shows** | Sources & accounts · Playback |
 | **PC streaming** | Picture · Controls · PCs |
 | **Controls** | Navigation · Pointer · Feedback |
-| **System** | Dual screen · Performance · Accessibility · Notifications |
+| **System** | Dual screen · Performance · Accessibility · Extensions |
 | **About** | Info · Default launcher · Replay walkthrough · Logging · Button tester · Reset |
 
 Every row works with the controller.
