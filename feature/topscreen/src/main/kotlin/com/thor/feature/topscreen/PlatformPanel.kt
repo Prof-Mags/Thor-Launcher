@@ -68,7 +68,18 @@ fun PlatformDetailPanel(
             modifier = Modifier
                 .weight(PANEL_WEIGHT)
                 .fillMaxHeight()
-                .padding(dimens.spacing),
+                /*
+                 * Tighter above and below than beside.
+                 *
+                 * The card carries its own inset as well, so a uniform gap here
+                 * was doubled at the top — enough to push the system's name down
+                 * into the middle of the panel, where it read as one more fact
+                 * rather than as the heading everything under it belongs to.
+                 */
+                .padding(
+                    horizontal = dimens.spacing,
+                    vertical = dimens.spacingSmall,
+                ),
         ) {
             /*
              * The wordmark decorates the title; it does not replace it.
@@ -110,18 +121,18 @@ fun PlatformDetailPanel(
                 /*
                  * Smaller when a logo is above it, larger when it stands alone.
                  *
-                 * With a wordmark present the name is a caption to it, and
-                 * setting both at display size stacked a tall image on a tall
-                 * heading — which pushed the title far enough down the panel to
-                 * look like it had been left there by mistake. Without a logo the
-                 * name *is* the masthead and keeps its full size.
+                 * With a wordmark present the name is a caption to it; without
+                 * one the name *is* the masthead. Both were a step down from
+                 * this, which left the system — the single thing the panel is
+                 * about — reading as one heading among several rather than as the
+                 * title of the page.
                  */
                 Text(
                     text = platform.name.ifBlank { folderTitle },
                     style = if (logoUri != null) {
-                        MaterialTheme.typography.headlineSmall
+                        MaterialTheme.typography.headlineMedium
                     } else {
-                        MaterialTheme.typography.displaySmall
+                        MaterialTheme.typography.displayMedium
                     },
                     color = colors.onBackground,
                     textAlign = TextAlign.Center,
@@ -270,9 +281,24 @@ fun PlatformDetailPanel(
                                 model = game.metadata.artwork.cellImage,
                                 contentDescription = game.title,
                                 fallbackText = game.title,
+                                /*
+                                 * Whole cover, not a crop of one.
+                                 *
+                                 * `ArtworkImage` crops by default, which is right
+                                 * for a grid cell filling a square — but box art
+                                 * is not one shape. A 2:3 cover in a 3:4 slot lost
+                                 * its top and bottom, which on box art is the
+                                 * title and the system banner: the two parts that
+                                 * say what the game is.
+                                 */
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .aspectRatio(3f / 4f)
+                                    // Taller than it was, because covers are
+                                    // taller than they are wide and the slot
+                                    // should waste as little as possible around
+                                    // one that is now fitted rather than filled.
+                                    .aspectRatio(2f / 3f)
                                     .clip(ThorTheme.shapes.small),
                             )
                         }
