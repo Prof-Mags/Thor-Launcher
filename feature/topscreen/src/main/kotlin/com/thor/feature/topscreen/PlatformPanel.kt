@@ -69,22 +69,21 @@ fun PlatformDetailPanel(
                 .weight(PANEL_WEIGHT)
                 .fillMaxHeight()
                 /*
-                 * Tighter above and below than beside.
+                 * The same inset the game panel uses, on all four sides.
                  *
-                 * The card carries its own inset as well, so a uniform gap here
-                 * was doubled at the top — enough to push the system's name down
-                 * into the middle of the panel, where it read as one more fact
-                 * rather than as the heading everything under it belongs to.
-                 */
-                /*
-                 * No gap above at all, and the card's own inset carries the rest.
+                 * It was horizontal-only for a while, to lift the system's name
+                 * clear of the middle of the panel. That worked and cost more than
+                 * it was worth: the card is `fillMaxHeight`, so dropping the
+                 * vertical inset made this one card two gaps taller than the game
+                 * card and ran it to the top and bottom edges of the panel. The
+                 * two alternate as the cursor crosses the grid, and one of them
+                 * being taller is visible every single time.
                  *
-                 * There were two paddings stacked here — this one and the card's
-                 * — which between them pushed the system's name a long way down a
-                 * panel it is supposed to head. Halving the outer one was not
-                 * enough; the top gap is the card's inset now and nothing else.
+                 * The name is high because of the masthead itself now — a short
+                 * wordmark, a tight gutter and a large face — rather than because
+                 * this card starts further up the screen than its neighbour.
                  */
-                .padding(horizontal = dimens.spacing),
+                .padding(dimens.spacing),
         ) {
             /*
              * The wordmark decorates the title; it does not replace it.
