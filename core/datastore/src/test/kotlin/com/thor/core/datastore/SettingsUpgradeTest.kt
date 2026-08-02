@@ -2,6 +2,7 @@ package com.thor.core.datastore
 
 import com.google.common.truth.Truth.assertThat
 import com.thor.core.model.AnimatedWallpaper
+import com.thor.core.model.ClockStyle
 import com.thor.core.model.DockStyle
 import com.thor.core.model.GridSpec
 import com.thor.core.model.ThemeId
@@ -42,7 +43,7 @@ class SettingsUpgradeTest {
         val legacy = """
             {
               "personalization": {
-                "themeId": "PLAYSTATION",
+                "themeId": "STEAM",
                 "animatedWallpaper": "AURORA",
                 "cursorStyle": "RING",
                 "clockStyle": "DIGITAL_24",
@@ -81,31 +82,39 @@ class SettingsUpgradeTest {
         // Retired field ignored, new fields defaulted, retained values preserved.
         assertThat(read.dock.style).isEqualTo(DockStyle.PILL)
         assertThat(read.audio.soundEffectsEnabled).isTrue()
-        assertThat(read.personalization.themeId).isEqualTo(ThemeId.PLAYSTATION)
+        assertThat(read.personalization.themeId).isEqualTo(ThemeId.STEAM)
         // `cellStyle` was retired; the document still carries it and is ignored.
         assertThat(read.grid.columns).isEqualTo(5)
     }
 
     @Test
-    fun `an unknown enum constant does not bring the launcher down`() = runTest {
-        // A theme or wallpaper retired between builds leaves a name in the
-        // document that no longer resolves. Decoding must fail as corruption —
-        // which DataStore recovers from with defaults — rather than escaping as
-        // an arbitrary exception on the startup path.
+    fun `a retired enum constant costs only its own field`() = runTest {
+        /*
+         * A theme or wallpaper retired between builds leaves a name in the
+         * document that no longer resolves, and what happens next used to be far
+         * more expensive than the stale field deserved: the read failed, which is
+         * reported as corruption, which has DataStore replace the whole document
+         * with defaults. Retiring one theme therefore reset every unrelated
+         * setting the user had — their grid, their ROM folders, their API keys.
+         *
+         * `coerceInputValues` makes the unresolvable value take its default and
+         * leaves the rest of the document alone, which is what this asserts:
+         * the theme falls back, and the setting beside it survives.
+         */
         val document = """
             {
-              "personalization": { "themeId": "A_THEME_THAT_WAS_REMOVED" },
+              "personalization": {
+                "themeId": "A_THEME_THAT_WAS_REMOVED",
+                "clockStyle": "DIGITAL_24"
+              },
               "schemaVersion": 1
             }
         """.trimIndent()
 
-        val thrown = runCatching {
-            serializer.readFrom(ByteArrayInputStream(document.toByteArray()))
-        }.exceptionOrNull()
+        val read = serializer.readFrom(ByteArrayInputStream(document.toByteArray()))
 
-        assertThat(thrown).isInstanceOf(
-            androidx.datastore.core.CorruptionException::class.java,
-        )
+        assertThat(read.personalization.themeId).isEqualTo(ThemeSpec.DEFAULT)
+        assertThat(read.personalization.clockStyle).isEqualTo(ClockStyle.DIGITAL_24)
     }
 
     @Test

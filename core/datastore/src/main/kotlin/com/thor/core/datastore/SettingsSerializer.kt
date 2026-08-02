@@ -69,6 +69,23 @@ class SettingsSerializer @Inject constructor() : Serializer<ThorSettings> {
             encodeDefaults = true
             prettyPrint = true
             isLenient = true
+
+            /*
+             * A value that is no longer valid takes its default instead of
+             * failing the read.
+             *
+             * `ignoreUnknownKeys` covers a *field* that no longer exists; this
+             * covers a field whose stored *value* no longer exists, which is a
+             * different failure and the more damaging one. Retiring a theme, a
+             * wallpaper or a cursor style leaves every settings file naming it
+             * holding an enum constant that will not parse — and an unparseable
+             * document is reported as corruption, which resets the user's entire
+             * configuration rather than the one setting that went stale.
+             *
+             * With this, a retired theme quietly becomes the default theme and
+             * everything else in the file survives.
+             */
+            coerceInputValues = true
         }
     }
 }

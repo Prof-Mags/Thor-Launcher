@@ -7,7 +7,7 @@ import org.junit.Test
 /**
  * Integrity of the bundled theme set.
  *
- * Twenty hand-written palettes are twenty chances to typo a hex value, and most
+ * Fifteen hand-written palettes are fifteen chances to typo a hex value, and most
  * mistakes there are invisible until someone selects that one theme on a device
  * — a surface ramp that goes backwards, unreadable body text, or an id with no
  * spec at all. These are the checks that catch those at build time.
@@ -20,6 +20,57 @@ class ThemeSpecTest {
 
         assertThat(ids).containsNoDuplicates()
         assertThat(ids).containsExactlyElementsIn(ThemeId.entries)
+    }
+
+    @Test
+    fun `every family holds the same number of themes`() {
+        // The even split is a design decision, not an accident of what has been
+        // added over time — the set was previously sixteen darks against four
+        // lights, which is what made the gallery a long scroll of near-identical
+        // cards. A new theme has to displace one from its own shelf.
+        val byFamily = ThemeSpec.ALL.groupBy(ThemeSpec::family)
+
+        assertThat(byFamily.keys).containsExactlyElementsIn(ThemeFamily.entries)
+        byFamily.forEach { (family, specs) ->
+            assertWithMessage("themes in $family").that(specs).hasSize(THEMES_PER_FAMILY)
+        }
+    }
+
+    @Test
+    fun `themes are grouped by family in menu order`() {
+        // The gallery renders ALL in order, so the ordering here *is* the
+        // grouping the user sees; interleaving would scatter the shelves.
+        val families = ThemeSpec.ALL.map(ThemeSpec::family)
+
+        assertThat(families).isEqualTo(families.distinct().flatMap { family ->
+            List(THEMES_PER_FAMILY) { family }
+        })
+    }
+
+    @Test
+    fun `the default theme exists and is bundled`() {
+        assertThat(ThemeSpec.of(ThemeSpec.DEFAULT).id).isEqualTo(ThemeSpec.DEFAULT)
+    }
+
+    @Test
+    fun `colourful themes actually lead with colour`() {
+        // The family's whole claim is that the ground is washed toward the
+        // accent rather than being a neutral dark with a coloured cursor on it,
+        // and `backgroundDepth` is the field that does it.
+        ThemeSpec.family(ThemeFamily.COLOURFUL).forEach { spec ->
+            assertWithMessage("background depth for ${spec.id}")
+                .that(spec.backgroundDepth)
+                .isAtLeast(MIN_COLOURFUL_DEPTH)
+        }
+    }
+
+    @Test
+    fun `light themes are light and the others are not`() {
+        ThemeSpec.ALL.forEach { spec ->
+            assertWithMessage("isDark for ${spec.id}")
+                .that(spec.isDark)
+                .isEqualTo(spec.family != ThemeFamily.LIGHT)
+        }
     }
 
     @Test
@@ -151,6 +202,12 @@ class ThemeSpecTest {
 
     private companion object {
         const val FULLY_OPAQUE = 0xFF
+
+        /** Fifteen themes, three families. */
+        const val THEMES_PER_FAMILY = 5
+
+        /** Below this the accent wash is not visible on a panel. */
+        const val MIN_COLOURFUL_DEPTH = 0.15f
 
         /** Above this, a surface composites close enough to opaque to measure. */
         const val OPAQUE_THRESHOLD = 0.85f
