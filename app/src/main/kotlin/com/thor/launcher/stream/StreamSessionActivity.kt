@@ -192,6 +192,9 @@ class StreamSessionActivity : ComponentActivity() {
                                 pad = pad,
                                 quality = quality,
                                 controller = panel,
+                                // So the panel's keyboard is the user's keyboard
+                                // and not THOR's default one; see StreamPadHost.
+                                settings = settings,
                             )
                         }
                     },

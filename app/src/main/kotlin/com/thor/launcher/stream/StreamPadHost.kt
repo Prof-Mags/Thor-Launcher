@@ -5,15 +5,19 @@ import android.hardware.display.DisplayManager
 import android.view.Display
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.thor.core.datastore.SettingsRepository
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.display.SecondaryDisplay
+import com.thor.core.model.AccessibilitySettings
+import com.thor.core.model.PerformanceSettings
+import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.SessionQuality
-import com.thor.core.model.ThemeSpec
 import com.thor.data.stream.StreamPad
 import com.thor.feature.stream.StreamPadPanel
 import com.thor.feature.stream.StreamPanelController
@@ -35,6 +39,8 @@ fun StreamPadHost(
     pad: StreamPad,
     quality: SessionQuality,
     controller: StreamPanelController,
+    /** Where the panel's theme comes from; see the theme scope below. */
+    settings: SettingsRepository,
 ) {
     val context = LocalContext.current
     var displayId by remember { mutableStateOf(secondaryDisplayId(context)) }
@@ -86,14 +92,41 @@ fun StreamPadHost(
         takesFocus = { false },
     ) {
         /*
-         * Its own theme scope, at defaults.
+         * Its own theme scope, carrying the user's theme.
          *
          * This window is outside the launcher's composition and inherits nothing
-         * from it. The user's chosen theme is not read here on purpose: doing so
-         * would mean this window depending on settings, and a trackpad is not
-         * worth making the stream wait on a DataStore read.
+         * from it, so the theme has to be re-provided on this side of the
+         * boundary — exactly as the launcher's own second panel does.
+         *
+         * It used to be left at defaults, on the reasoning that a trackpad was
+         * not worth making the stream wait on a DataStore read. The keyboard is
+         * the part that made that wrong: it is the same `ThorKeyboard` the
+         * launcher raises everywhere else, and drawn in the default theme while
+         * the launcher wore the user's it was visibly a different keyboard —
+         * different colours, different surface treatment, different corners.
+         *
+         * Nothing waits. Each flow is collected with the same default as its
+         * starting value, so the first frame is what it always was and the real
+         * theme arrives a frame or two later. The activity already reads this
+         * store for the keyboard's haptics and sound, for the same reason.
+         *
+         * Collected here, inside the presentation's own composition, rather than
+         * up in the activity's: this window runs its own recomposer precisely so
+         * it keeps working when the activity's composition is not, and a value
+         * derived up there would freeze while the stream is in front.
          */
-        ThorTheme {
+        val personalization by settings.personalization
+            .collectAsState(initial = PersonalizationSettings())
+        val accessibility by settings.accessibility
+            .collectAsState(initial = AccessibilitySettings())
+        val performance by settings.performance
+            .collectAsState(initial = PerformanceSettings())
+
+        ThorTheme(
+            personalization = personalization,
+            accessibility = accessibility,
+            performance = performance,
+        ) {
             StreamPadPanel(pad = pad, quality = quality, controller = controller)
         }
     }

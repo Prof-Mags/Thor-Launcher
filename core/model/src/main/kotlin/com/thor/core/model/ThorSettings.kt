@@ -47,14 +47,24 @@ data class ThorSettings(
 
 @Serializable
 data class PersonalizationSettings(
-    val themeId: ThemeId = ThemeId.DARK,
+    /**
+     * What a fresh install looks like before anything is chosen.
+     *
+     * These three travel together and are a deliberate first impression rather
+     * than a neutral one: Material's elevation tint, flowing bands behind it and
+     * hard corners throughout. Existing installs are untouched — the settings
+     * file is written with `encodeDefaults = true`, so every field is stored
+     * explicitly and a changed default here reaches only a device with no file
+     * yet.
+     */
+    val themeId: ThemeId = ThemeId.MATERIAL_YOU,
     /** Overrides the theme's own accent when set. */
     val accentOverrideArgb: Long? = null,
     /** Follows the system wallpaper/dynamic colour when supported (API 31+). */
     val useDynamicColor: Boolean = false,
     val wallpaperUri: String? = null,
     val topScreenWallpaperUri: String? = null,
-    val animatedWallpaper: AnimatedWallpaper = AnimatedWallpaper.AURORA,
+    val animatedWallpaper: AnimatedWallpaper = AnimatedWallpaper.WAVES,
     val cursorStyle: CursorStyle = CursorStyle.RING,
     val cursorAnimation: CursorAnimation = CursorAnimation.BREATHE,
     /** 0..1 intensity of the glow behind the cursor. */
@@ -66,8 +76,12 @@ data class PersonalizationSettings(
      * Corners were the theme's business alone, which meant a theme with a 2dp
      * radius still had pill-shaped tabs and circular dock slots hardcoded next to
      * its hard-edged panels. This is one answer for the whole interface.
+     *
+     * Square by default, which overrides the starting theme's own 24dp radius.
+     * A console grid reads as a grid when its cells share the panel's edges, and
+     * [THEME] is one selection away for anyone who wants the rounder shape back.
      */
-    val cornerStyle: CornerStyle = CornerStyle.THEME,
+    val cornerStyle: CornerStyle = CornerStyle.SQUARE,
     /**
      * Plays a game's trailer on the information panel while it is highlighted.
      *
