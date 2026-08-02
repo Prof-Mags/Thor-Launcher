@@ -10,7 +10,7 @@
       why does a launcher want this, and what will it do with it.
     -->
     <string name="mouse_service_summary">Controller pointer for apps and games</string>
-    <string name="mouse_service_description">Lets Loki show a pointer you can move with the controller and use anywhere on the device, including inside games and apps. Hold Start and Select to turn it on or off.\n\nLoki does not read the contents of your screen. This permission is used only to draw the pointer and to send the taps it makes.</string>
+    <string name="mouse_service_description">Lets Loki show a pointer you can move with the controller and use anywhere on the device, including inside games and apps. Hold Start and Select to turn it on or off.\n\nIt is also what lets Loki\'s on-screen keyboard type into other apps. To do that it can read the text field you have selected, which means this permission allows reading window contents. Loki uses it only to find the field you tapped and to fill it in, and stores nothing.</string>
 
     <!--
       Shown beside THOR in the system's notification-access list, which is the

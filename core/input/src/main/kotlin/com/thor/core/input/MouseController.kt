@@ -67,6 +67,37 @@ class MouseController @Inject constructor() {
     /** Bumped when a bound button asks for the on-screen keyboard. */
     val keyboardRequests: StateFlow<Int> = _keyboardRequests.asStateFlow()
 
+    private val _typedText = MutableStateFlow("")
+
+    /**
+     * What Loki's keyboard currently holds, for typing into another app.
+     *
+     * The keyboard itself never moves. It is drawn in Loki's own window on the
+     * panel the user is holding, which on this device is still on screen while
+     * an app has the other one — so the thing being filled in and the thing
+     * doing the filling are simply on different screens, which is the same
+     * arrangement the launcher's own fields already use.
+     *
+     * Only the *text* has to cross, and it crosses as the whole buffer rather
+     * than as keystrokes: the field is set to this value, so backspace, shift
+     * and the symbol layer all work without any of them being described here.
+     */
+    val typedText: StateFlow<String> = _typedText.asStateFlow()
+
+    fun setTypedText(text: String) {
+        _typedText.value = text
+    }
+
+    /**
+     * The text the field already held when the keyboard was raised.
+     *
+     * Read from the focused field and handed to the keyboard as its starting
+     * buffer, so filling in a URL bar that already has a URL in it edits that
+     * URL rather than silently replacing it with whatever is typed next.
+     */
+    @Volatile
+    var keyboardSeed: String = ""
+
     private val _typing = MutableStateFlow(false)
 
     /**

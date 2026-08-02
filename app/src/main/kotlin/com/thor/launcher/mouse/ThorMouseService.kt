@@ -6,6 +6,7 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.hardware.display.DisplayManager
 import android.os.Build
+import android.os.Bundle
 import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.view.Display
@@ -13,6 +14,7 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import com.thor.core.common.log.ThorLog
 import com.thor.data.stream.StreamPresence
 import com.thor.core.datastore.SettingsRepository
@@ -159,6 +161,19 @@ class ThorMouseService : AccessibilityService() {
          */
         mouse.typing
             .onEach { typing -> overlay?.setFocusable(!typing) }
+            .launchIn(scope)
+
+        /*
+         * Every edit on Loki's keyboard, written into the field the user tapped.
+         *
+         * `drop(1)` because collecting a state flow replays its current value,
+         * and replaying the seed the moment the keyboard opens would rewrite the
+         * field with what it already contains — harmless in a URL bar, not
+         * harmless in one that reacts to being edited.
+         */
+        mouse.typedText
+            .drop(1)
+            .onEach(::typeIntoFocusedField)
             .launchIn(scope)
 
         mouse.setServiceConnected(true)
@@ -567,13 +582,76 @@ class ThorMouseService : AccessibilityService() {
              * what appears when the pointer taps a text field in another app, and
              * that is the app's IME doing its job rather than THOR failing at one.
              */
-            MouseAction.OPEN_KEYBOARD -> if (mouse.launcherForeground) {
+            /*
+             * Raised whatever is in front, because it no longer only fills in
+             * Loki's own fields.
+             *
+             * The keyboard is drawn on Loki's panel — which on a two-screen
+             * handheld is still on screen while an app holds the other one — and
+             * what is typed is written into whichever field the cursor last
+             * tapped, in whatever app owns it. Seeded from that field so editing
+             * a URL that is already there edits it rather than replacing it.
+             */
+            MouseAction.OPEN_KEYBOARD -> {
+                mouse.keyboardSeed = focusedFieldText().orEmpty()
+                mouse.setTypedText(mouse.keyboardSeed)
                 mouse.requestKeyboard()
-            } else {
-                ThorLog.i(TAG, "Keyboard request ignored: Loki is not on screen")
             }
             MouseAction.TOGGLE_OFF -> mouse.setActive(false)
             MouseAction.NONE -> Unit
+        }
+    }
+
+    /**
+     * The text of the field the user has selected, in whatever app owns it.
+     *
+     * `findFocus(FOCUS_INPUT)` asks the system which node holds *input* focus,
+     * which is the field a keyboard would type into — as opposed to accessibility
+     * focus, which is where a screen reader is pointing and is not the same
+     * place. Null when nothing is being edited, which is the ordinary case and
+     * not a failure.
+     */
+    private fun focusedFieldText(): String? = runCatching {
+        // Not recycled: node pooling was removed from the platform and `recycle`
+        // is deprecated for it, so these are ordinary objects the collector takes.
+        findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            ?.takeIf { it.isEditable }
+            ?.text
+            ?.toString()
+    }.getOrElse { error ->
+        ThorLog.w(TAG, "Could not read the focused field: ${error.message}")
+        null
+    }
+
+    /**
+     * Writes [text] into the field the user has selected.
+     *
+     * The whole buffer every time rather than the character just pressed, which
+     * is what makes backspace, shift and the symbol layer work without this
+     * knowing any of them exist — the keyboard owns the editing and this owns
+     * only the delivery.
+     *
+     * Does nothing when nothing is focused, which is what happens while the
+     * keyboard is filling in one of Loki's own fields: that text is delivered by
+     * the launcher's own text focus, and the two paths never both fire because
+     * a field inside Loki does not hold Android's input focus.
+     */
+    private fun typeIntoFocusedField(text: String) {
+        runCatching {
+            val node = findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return
+            if (!node.isEditable) return
+            val arguments = Bundle().apply {
+                putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    text,
+                )
+            }
+            node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        }.onFailure { error ->
+            // A field that refuses the action is a field that cannot be filled in
+            // this way — a canvas-drawn one, or a password field that will not say
+            // what it holds. Reported rather than retried.
+            ThorLog.w(TAG, "Could not type into the focused field: ${error.message}")
         }
     }
 
