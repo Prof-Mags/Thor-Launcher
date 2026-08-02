@@ -37,6 +37,9 @@ class MoviesSectionState internal constructor(
     var focusedAction by mutableStateOf(PlayerAction.PLAY_PAUSE)
         internal set
 
+    /** Where the controls should land when playback is deliberately closed. */
+    internal var playbackExitMode = MoviesMode.BROWSE
+
     /**
      * Set when the controller has asked for the search box.
      *
@@ -94,8 +97,14 @@ fun rememberMoviesSection(viewModel: MoviesViewModel): MoviesSectionState {
     // Playback starting or stopping is what moves the section in and out of its
     // player state; nothing else may set it, so the two cannot disagree.
     LaunchedEffect(playback) {
-        section.mode = if (playback != null) MoviesMode.PLAYING else MoviesMode.BROWSE
-        if (playback != null) section.focusedAction = PlayerAction.PLAY_PAUSE
+        if (playback != null) {
+            section.mode = MoviesMode.PLAYING
+            section.playbackExitMode = MoviesMode.BROWSE
+            section.focusedAction = PlayerAction.PLAY_PAUSE
+        } else {
+            section.mode = section.playbackExitMode
+            section.playbackExitMode = MoviesMode.BROWSE
+        }
     }
 
     // The top-panel tabs are touchable even while the controller is in the
@@ -301,6 +310,8 @@ fun MoviesSectionState.pickEpisode(number: Int) {
 private fun MoviesSectionState.handlePlaying(command: ControllerCommand): Boolean = when (command) {
     ControllerCommand.NAVIGATE_LEFT -> { stepAction(-1); true }
     ControllerCommand.NAVIGATE_RIGHT -> { stepAction(1); true }
+    ControllerCommand.NAVIGATE_UP -> { stepActionRow(-1); true }
+    ControllerCommand.NAVIGATE_DOWN -> { stepActionRow(1); true }
     ControllerCommand.CONFIRM -> { perform(focusedAction); true }
 
     // Back stops rather than stepping the cursor: leaving a film is the one
@@ -312,27 +323,65 @@ private fun MoviesSectionState.handlePlaying(command: ControllerCommand): Boolea
 
 /** Carries out a transport action, wherever it came from. */
 fun MoviesSectionState.perform(action: PlayerAction) {
+    val skipMs = viewModel.settings.value.skipSeconds.coerceIn(1, 120) * 1_000L
     when (action) {
         PlayerAction.PLAY_PAUSE -> player.playPause()
-        PlayerAction.REWIND -> player.seekBy(-SKIP_BACK_MS)
-        PlayerAction.FORWARD -> player.seekBy(SKIP_FORWARD_MS)
+        PlayerAction.REWIND -> player.seekBy(-skipMs)
+        PlayerAction.FORWARD -> player.seekBy(skipMs)
+        PlayerAction.RESTART -> player.seekTo(0L)
+        PlayerAction.SPEED -> player.cycleSpeed()
+        PlayerAction.AUDIO -> player.cycleAudioTrack()
         PlayerAction.STOP -> {
             // stopPlayback takes the final player snapshot before closing it,
             // bypassing the periodic-write throttle so resume cannot lag behind.
+            playbackExitMode = MoviesMode.BROWSE
             viewModel.stopPlayback()
             mode = MoviesMode.BROWSE
         }
 
         PlayerAction.NEXT_EPISODE -> viewModel.playNextEpisode()
+        PlayerAction.CHANGE_SOURCE -> {
+            // Keep the selected title and its ranked results intact. The source
+            // list can therefore be used immediately without another search.
+            playbackExitMode = MoviesMode.SOURCES
+            mode = MoviesMode.SOURCES
+            viewModel.stopPlayback(refreshBrowseDetail = false)
+        }
     }
 }
 
 private fun MoviesSectionState.stepAction(delta: Int) {
-    val actions = PlayerAction.entries.filter { action ->
-        action != PlayerAction.NEXT_EPISODE || viewModel.nextEpisode() != null
-    }
+    val actions = playerActionRows().firstOrNull { focusedAction in it }
+        ?: playerActionRows().first()
     val index = actions.indexOf(focusedAction).coerceAtLeast(0)
     focusedAction = actions[(index + delta).coerceIn(0, actions.lastIndex)]
+}
+
+private fun MoviesSectionState.stepActionRow(delta: Int) {
+    val rows = playerActionRows()
+    val currentRow = rows.indexOfFirst { focusedAction in it }.coerceAtLeast(0)
+    val targetRow = (currentRow + delta).coerceIn(0, rows.lastIndex)
+    if (targetRow == currentRow) return
+
+    val currentColumn = rows[currentRow].indexOf(focusedAction).coerceAtLeast(0)
+    focusedAction = rows[targetRow][currentColumn.coerceAtMost(rows[targetRow].lastIndex)]
+}
+
+private fun MoviesSectionState.playerActionRows(): List<List<PlayerAction>> {
+    val transport = buildList {
+        add(PlayerAction.REWIND)
+        add(PlayerAction.PLAY_PAUSE)
+        add(PlayerAction.FORWARD)
+        if (viewModel.nextEpisode() != null) add(PlayerAction.NEXT_EPISODE)
+        add(PlayerAction.STOP)
+    }
+    val tools = buildList {
+        add(PlayerAction.RESTART)
+        add(PlayerAction.SPEED)
+        if (player.status.value.audioTracks.size > 1) add(PlayerAction.AUDIO)
+        add(PlayerAction.CHANGE_SOURCE)
+    }
+    return listOf(transport, tools)
 }
 
 private fun MoviesSectionState.rankedCount(): Int =
@@ -342,6 +391,3 @@ private fun MoviesSectionState.chosenSource() = sourceAt(focusedSource)
 
 private fun MoviesSectionState.sourceAt(index: Int) =
     (viewModel.sources.value.result as? SourceResult.Found)?.ranked?.getOrNull(index)
-
-private const val SKIP_BACK_MS = 10_000L
-private const val SKIP_FORWARD_MS = 30_000L

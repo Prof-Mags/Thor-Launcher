@@ -22,9 +22,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Forward30
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -56,8 +60,18 @@ import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 import java.util.concurrent.TimeUnit
 
-/** The transport buttons, in the order the cursor walks them. */
-enum class PlayerAction { REWIND, PLAY_PAUSE, FORWARD, NEXT_EPISODE, STOP }
+/** The playback buttons, split into transport and tools rows by [MoviesSectionState]. */
+enum class PlayerAction {
+    REWIND,
+    PLAY_PAUSE,
+    FORWARD,
+    NEXT_EPISODE,
+    STOP,
+    RESTART,
+    SPEED,
+    AUDIO,
+    CHANGE_SOURCE,
+}
 
 /**
  * The companion-screen playback deck.
@@ -73,6 +87,7 @@ fun PlayerControls(
     status: PlayerStatus,
     focusedAction: PlayerAction,
     hasNextEpisode: Boolean,
+    skipSeconds: Int,
     onAction: (PlayerAction) -> Unit,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -119,6 +134,12 @@ fun PlayerControls(
                 status = status,
                 focusedAction = focusedAction,
                 hasNextEpisode = hasNextEpisode,
+                skipSeconds = skipSeconds,
+                onAction = onAction,
+            )
+            PlaybackTools(
+                status = status,
+                focusedAction = focusedAction,
                 onAction = onAction,
             )
             StreamFacts(playback = playback, status = status)
@@ -344,6 +365,7 @@ private fun TransportDeck(
     status: PlayerStatus,
     focusedAction: PlayerAction,
     hasNextEpisode: Boolean,
+    skipSeconds: Int,
     onAction: (PlayerAction) -> Unit,
 ) {
     Row(
@@ -353,7 +375,7 @@ private fun TransportDeck(
     ) {
         TransportButton(
             icon = Icons.Rounded.Replay10,
-            label = "-10s",
+            label = "−${skipSeconds}s",
             action = PlayerAction.REWIND,
             focused = focusedAction == PlayerAction.REWIND,
             onAction = onAction,
@@ -369,7 +391,7 @@ private fun TransportDeck(
         )
         TransportButton(
             icon = Icons.Rounded.Forward30,
-            label = "+30s",
+            label = "+${skipSeconds}s",
             action = PlayerAction.FORWARD,
             focused = focusedAction == PlayerAction.FORWARD,
             onAction = onAction,
@@ -393,6 +415,122 @@ private fun TransportDeck(
             onAction = onAction,
             modifier = Modifier.weight(1f),
         )
+    }
+}
+
+/** Secondary playback controls. Every item calls a live player command. */
+@Composable
+private fun PlaybackTools(
+    status: PlayerStatus,
+    focusedAction: PlayerAction,
+    onAction: (PlayerAction) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PlaybackToolButton(
+            icon = Icons.Rounded.Replay,
+            label = "Restart",
+            value = "From start",
+            action = PlayerAction.RESTART,
+            focused = focusedAction == PlayerAction.RESTART,
+            onAction = onAction,
+            modifier = Modifier.weight(1f),
+        )
+        PlaybackToolButton(
+            icon = Icons.Rounded.Speed,
+            label = "Speed",
+            value = status.playbackSpeed.asSpeedLabel(),
+            action = PlayerAction.SPEED,
+            focused = focusedAction == PlayerAction.SPEED,
+            onAction = onAction,
+            modifier = Modifier.weight(1f),
+        )
+        PlaybackToolButton(
+            icon = Icons.Rounded.VolumeUp,
+            label = "Audio",
+            value = status.activeAudioLabel(),
+            action = PlayerAction.AUDIO,
+            focused = focusedAction == PlayerAction.AUDIO,
+            enabled = status.audioTracks.size > 1,
+            onAction = onAction,
+            modifier = Modifier.weight(1.25f),
+        )
+        PlaybackToolButton(
+            icon = Icons.Rounded.Tune,
+            label = "Source",
+            value = "Change",
+            action = PlayerAction.CHANGE_SOURCE,
+            focused = focusedAction == PlayerAction.CHANGE_SOURCE,
+            onAction = onAction,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun PlaybackToolButton(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    action: PlayerAction,
+    focused: Boolean,
+    onAction: (PlayerAction) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val colors = ThorTheme.colors
+    val shape = ThorTheme.shapes.small
+    val hover = rememberPointerHover()
+    val lit = enabled && (focused || hover.isHovered)
+    val container = if (lit) colors.cursor else colors.surface.copy(alpha = 0.90f)
+    val content = when {
+        lit -> contrastingContentColor(colors.cursor)
+        enabled -> colors.onSurface
+        else -> colors.onSurfaceVariant.copy(alpha = 0.42f)
+    }
+
+    Row(
+        modifier = modifier
+            .height(PLAYBACK_TOOL_HEIGHT.dp)
+            .pointerHover(hover)
+            .clip(shape)
+            .background(container)
+            .border(
+                width = if (lit) 2.dp else 1.dp,
+                color = if (lit) content.copy(alpha = 0.72f) else colors.outline.copy(alpha = 0.28f),
+                shape = shape,
+            )
+            .thorCursor(focused = lit, shape = shape)
+            .clickable(enabled = enabled) { onAction(action) }
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = content,
+            modifier = Modifier.size(21.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = content.copy(alpha = 0.72f),
+                maxLines = 1,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelMedium,
+                color = content,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -474,7 +612,8 @@ private fun StreamFacts(playback: Playback, status: PlayerStatus) {
         source.providerName,
         source.seeders?.let { "$it seeders" },
         "${bufferAheadSeconds}s buffered",
-        status.audioTracks.size.takeIf { it > 1 }?.let { "$it audio tracks" },
+        status.activeAudioLabel().takeIf { status.audioTracks.isNotEmpty() }?.let { "Audio: $it" },
+        "Speed ${status.playbackSpeed.asSpeedLabel()}",
     )
 
     GlassSurface(
@@ -577,6 +716,14 @@ private fun PlayerStatus.problemDescription(): String? = when {
     else -> null
 }
 
+private fun PlayerStatus.activeAudioLabel(): String =
+    audioTracks.getOrNull(selectedAudioTrack) ?: audioTracks.firstOrNull() ?: "Auto"
+
+private fun Float.asSpeedLabel(): String = when {
+    kotlin.math.abs(this - toInt()) < 0.01f -> "${toInt()}x"
+    else -> "${this}x"
+}
+
 /** "1:42:07", or "3:12" for anything under an hour. */
 private fun Long.asClock(): String {
     val totalSeconds = TimeUnit.MILLISECONDS.toSeconds(this.coerceAtLeast(0L))
@@ -594,3 +741,4 @@ private const val TRACK_HEIGHT = 8
 private const val TRACK_TOUCH_HEIGHT = 32
 private const val PLAYHEAD_SIZE = 15
 private const val TRANSPORT_HEIGHT = 68
+private const val PLAYBACK_TOOL_HEIGHT = 52

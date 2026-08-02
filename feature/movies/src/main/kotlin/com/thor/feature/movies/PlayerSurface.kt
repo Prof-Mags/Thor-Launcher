@@ -61,6 +61,10 @@ data class PlayerStatus(
     val audioUnsupported: Boolean = false,
     /** Human labels for the selectable audio tracks, in the file's own order. */
     val audioTracks: List<String> = emptyList(),
+    /** Index into [audioTracks], when ExoPlayer reports an active track. */
+    val selectedAudioTrack: Int = 0,
+    /** Current playback rate, reflected immediately after a speed change. */
+    val playbackSpeed: Float = 1f,
 )
 
 /**

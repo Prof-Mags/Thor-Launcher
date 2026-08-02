@@ -10,6 +10,8 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackGroup
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -129,6 +131,8 @@ class ThorPlayer @Inject constructor(
     // Written by the listener, read by the ticker. Both are on the main thread.
     private var audioUnsupported = false
     private var audioTracks = emptyList<String>()
+    private var audioSelections = emptyList<AudioSelection>()
+    private var selectedAudioTrack = 0
     private var nothingPlayable = false
     private var retried = false
 
@@ -192,16 +196,37 @@ class ThorPlayer @Inject constructor(
              * complaint anywhere. Comparing "has audio" against "has *playable*
              * audio" is the only way to tell that from a film that is silent.
              */
-            audioUnsupported = audio.isNotEmpty() && audio.none { it.isSupported }
-            audioTracks = audio.mapIndexed { index, group ->
-                val format = group.mediaTrackGroup.getFormat(0)
-                listOfNotNull(
-                    format.language?.uppercase(),
-                    format.sampleMimeType?.substringAfter('/')?.uppercase(),
-                    format.channelCount.takeIf { it > 0 }?.let { "${it}ch" },
-                    if (group.isSupported) null else "unsupported",
-                ).joinToString(" ").ifBlank { "Track ${index + 1}" }
+            audioUnsupported = audio.isNotEmpty() && audio.none { group ->
+                (0 until group.length).any { trackIndex ->
+                    group.isTrackSupported(trackIndex)
+                }
             }
+            var selected = -1
+            audioSelections = buildList {
+                audio.forEach { group ->
+                    repeat(group.length) { trackIndex ->
+                        if (!group.isTrackSupported(trackIndex)) return@repeat
+                        val format = group.getTrackFormat(trackIndex)
+                        val label = listOfNotNull(
+                            format.label?.takeIf(String::isNotBlank),
+                            format.language?.uppercase(),
+                            format.sampleMimeType?.substringAfter('/')?.uppercase(),
+                            format.channelCount.takeIf { it > 0 }?.let { "${it}ch" },
+                        ).distinct().joinToString(" ").ifBlank { "Track ${size + 1}" }
+                        add(
+                            AudioSelection(
+                                group = group.mediaTrackGroup,
+                                trackIndex = trackIndex,
+                                label = label,
+                            ),
+                        )
+                        if (group.isTrackSelected(trackIndex)) selected = lastIndex
+                    }
+                }
+            }
+            audioTracks = audioSelections.map(AudioSelection::label)
+            selectedAudioTrack = selected.takeIf { it >= 0 }
+                ?: selectedAudioTrack.coerceIn(0, (audioTracks.size - 1).coerceAtLeast(0))
         }
     }
 
@@ -219,6 +244,8 @@ class ThorPlayer @Inject constructor(
         sourceHeaders = requestHeaders
         audioUnsupported = false
         audioTracks = emptyList()
+        audioSelections = emptyList()
+        selectedAudioTrack = 0
         nothingPlayable = false
         retried = false
         stallReason = null
@@ -228,6 +255,7 @@ class ThorPlayer @Inject constructor(
         ThorLog.i(TAG, "Opening ${url.hostOnly()}")
         runCatching {
             player.setMediaItem(MediaItem.fromUri(url))
+            player.setPlaybackSpeed(1f)
             player.playWhenReady = true
             player.prepare()
             if (resumeFromMs > 0L) player.seekTo(resumeFromMs)
@@ -383,6 +411,31 @@ class ThorPlayer @Inject constructor(
         exo?.setPlaybackSpeed(speed.coerceIn(MIN_SPEED, MAX_SPEED))
     }
 
+    /** Advances through the rates exposed by the bottom-screen speed button. */
+    fun cycleSpeed() {
+        val player = exo ?: return
+        val current = player.playbackParameters.speed
+        val index = PLAYBACK_SPEEDS.indexOfFirst { speed ->
+            kotlin.math.abs(speed - current) < SPEED_EPSILON
+        }
+        player.setPlaybackSpeed(PLAYBACK_SPEEDS[(index + 1).mod(PLAYBACK_SPEEDS.size)])
+    }
+
+    /** Selects the next supported audio track and lets ExoPlayer switch in place. */
+    fun cycleAudioTrack() {
+        val player = exo ?: return
+        if (audioSelections.size <= 1) return
+        val next = (selectedAudioTrack + 1).mod(audioSelections.size)
+        val selection = audioSelections[next]
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setOverrideForType(
+                TrackSelectionOverride(selection.group, selection.trackIndex),
+            )
+            .build()
+        selectedAudioTrack = next
+    }
+
     // ------------------------------------------------------------------- status
 
     /**
@@ -462,6 +515,8 @@ class ThorPlayer @Inject constructor(
                     videoHeight = player.videoSize.height,
                     audioUnsupported = audioUnsupported,
                     audioTracks = audioTracks,
+                    selectedAudioTrack = selectedAudioTrack,
+                    playbackSpeed = player.playbackParameters.speed,
                 )
 
                 delay(STATUS_INTERVAL_MS)
@@ -574,3 +629,12 @@ class ThorPlayer @Inject constructor(
         const val NO_CONTENT_MESSAGE = "This source has no video in it — pick another"
     }
 }
+
+private data class AudioSelection(
+    val group: TrackGroup,
+    val trackIndex: Int,
+    val label: String,
+)
+
+private val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+private const val SPEED_EPSILON = 0.01f
