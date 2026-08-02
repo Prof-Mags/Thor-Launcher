@@ -225,8 +225,23 @@ class ControllerInputRouter(
          * pointer needs no permission at all. The service exists only to carry the
          * pointer *out* of the launcher.
          */
+        /*
+         * THOR's keyboard outranks the pointer for keys.
+         *
+         * This check has to come *before* the pointer, and that ordering is the
+         * whole of it: the branch below swallows every key while the pointer is
+         * up, so with the keyboard showing there was nothing left to type with.
+         * The keyboard is driven by the commands this router emits, so consuming
+         * them for the cursor left it drawn, focused and completely inert — keys
+         * went to the pointer, the field stayed empty, and the only way to enter
+         * text was to put the pointer away first.
+         *
+         * The stick is untouched, so the cursor still moves while typing. Only
+         * the buttons change hands, which is what makes A a key rather than a
+         * click for as long as there is a key under it.
+         */
         val pointer = mouse
-        if (pointer != null && pointer.isActive) {
+        if (pointer != null && pointer.isActive && !pointer.launcherTyping) {
             // Acted on only when the launcher owns the pointer. Swallowed either
             // way: a press that both clicked the cursor and moved the grid
             // underneath it would do two things and look like it had done none.
@@ -292,8 +307,9 @@ class ControllerInputRouter(
     fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         if (handlePointerChord(keyCode, down = false)) return true
         // Matched to the press, or a release would still fire the command whose
-        // press the pointer swallowed.
-        if (mouse?.isActive == true) return true
+        // press the pointer swallowed — and matched to the typing exception
+        // above it too, so a key the keyboard received is released to it as well.
+        if (mouse?.isActive == true && mouse?.launcherTyping != true) return true
         if (textInputActive) return false
         // Swallowed to match the press, or a release would still fire a command.
         if (captureMode && !isEscape(keyCode)) return true
@@ -550,6 +566,23 @@ class ControllerInputRouter(
     private fun cancelLongPressWatch() {
         longPressJob?.cancel()
         longPressJob = null
+    }
+
+    /**
+     * Injects a command that did not come from this window's input stream.
+     *
+     * For input the launcher has to act on but never sees: the pointer's buttons
+     * are read by the accessibility service while it is connected, so a press
+     * that means something to the launcher rather than to the system — Back, for
+     * one — arrives from the service instead of from a key event.
+     *
+     * Deliberately the same [events] stream rather than a second channel. Every
+     * surface that already knows what to do with a command keeps working without
+     * being told there is now more than one way for one to arrive, and the
+     * feedback cue, the focus rules and the overlay handling all come for free.
+     */
+    fun emitCommand(command: ControllerCommand) {
+        emit(ControllerEvent(command))
     }
 
     private fun emit(event: ControllerEvent) {

@@ -31,6 +31,16 @@ import com.thor.core.input.PointerPosition
 class PointerOverlay(
     private val context: Context,
     private val onMotion: (MotionEvent) -> Boolean,
+    /**
+     * The window feeding the stick stream has stopped feeding it.
+     *
+     * Load-bearing, because a held stick produces no further events: the stream
+     * is a burst on deflection and then silence, so "the stick is still down" and
+     * "nobody is telling us any more" look identical from here. Whoever is moving
+     * the cursor has to be told the moment the feed goes, or it carries on
+     * applying the last deflection it was given for as long as the pointer is up.
+     */
+    private val onFeedLost: () -> Unit = {},
 ) {
 
     private val displayManager = context.getSystemService(DisplayManager::class.java)
@@ -64,6 +74,50 @@ class PointerOverlay(
         windows.keys.toList().forEach(::hideOn)
     }
 
+    /**
+     * Whether these windows take key focus.
+     *
+     * Focusable is the normal state and is what delivers the analogue stick — an
+     * accessibility service is given keys but not motion. It has to be given up
+     * while THOR's own keyboard is showing, because focus carries keys as well,
+     * and a focused overlay is a keyboard that receives nothing.
+     *
+     * Applied to windows already on screen rather than only to new ones, since
+     * the keyboard opens and closes many times over a single pointer session.
+     */
+    fun setFocusable(focusable: Boolean) {
+        if (this.focusable == focusable) return
+        this.focusable = focusable
+
+        windows.values.forEach { window ->
+            val params = window.view.layoutParams as? WindowManager.LayoutParams ?: return@forEach
+            params.flags = flagsFor(focusable)
+            runCatching { window.windowManager.updateViewLayout(window.view, params) }
+                .onFailure { error -> ThorLog.w(TAG, "Could not update overlay focus", error) }
+            if (focusable) window.view.requestFocus()
+        }
+    }
+
+    private var focusable = true
+
+    /**
+     * The window flags, which differ only in whether focus is taken.
+     *
+     * `FLAG_NOT_TOUCHABLE` is in both and never negotiable: this window covers the
+     * whole panel, and a touchable one would swallow every tap meant for the app
+     * underneath the cursor.
+     */
+    private fun flagsFor(focusable: Boolean): Int {
+        val base = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        return if (focusable) {
+            base or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+        } else {
+            base or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        }
+    }
+
     private fun hideOn(displayId: Int) {
         val window = windows.remove(displayId) ?: return
         runCatching { window.windowManager.removeViewImmediate(window.view) }
@@ -91,7 +145,7 @@ class PointerOverlay(
         )
 
         for (type in types) {
-            val view = PointerView(displayContext, onMotion)
+            val view = PointerView(displayContext, onMotion, onFeedLost)
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -104,10 +158,7 @@ class PointerOverlay(
                  * app beneath it, while focus gives the external pointer the same
                  * stick control it has inside THOR.
                  */
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                flagsFor(focusable),
                 PixelFormat.TRANSLUCENT,
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
@@ -146,6 +197,7 @@ class PointerOverlay(
 private class PointerView(
     context: Context,
     private val onMotion: (MotionEvent) -> Boolean,
+    private val onFeedLost: () -> Unit,
 ) : View(context) {
 
     private var pointerX = 0f
@@ -207,6 +259,34 @@ private class PointerView(
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean =
         onMotion(event) || super.onGenericMotionEvent(event)
+
+    /**
+     * Focus is what delivers the stick, so losing it ends the deflection.
+     *
+     * The motion stream follows the focused window, and this one does not keep
+     * focus for the life of the pointer: the cursor crossing to the other panel
+     * tears this window down and builds another over there, a dialog or an app
+     * can take focus at any moment, and whether a focusable overlay is even
+     * permitted on a secondary display varies by ROM.
+     *
+     * Whenever that happens mid-deflection, the event that would have reported
+     * the stick returning to centre is delivered somewhere else — and the last
+     * deflection this window *did* report is left standing. The cursor then
+     * travels in that direction for as long as the pointer is up, answering
+     * nothing, which is the "it drifts to the bottom of the screen and I cannot
+     * control it" fault. Ending the deflection on focus loss is the same
+     * protection `LauncherActivity` gets from `releaseAll`.
+     */
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus) onFeedLost()
+    }
+
+    /** The window going away is the same loss, arriving by the other route. */
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        onFeedLost()
+    }
 
     fun moveTo(x: Float, y: Float, sizeDp: Int) {
         val px = sizeDp * resources.displayMetrics.density

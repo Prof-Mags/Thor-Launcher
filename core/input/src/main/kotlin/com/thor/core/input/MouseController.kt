@@ -67,6 +67,55 @@ class MouseController @Inject constructor() {
     /** Bumped when a bound button asks for the on-screen keyboard. */
     val keyboardRequests: StateFlow<Int> = _keyboardRequests.asStateFlow()
 
+    private val _typing = MutableStateFlow(false)
+
+    /**
+     * Whether THOR's own keyboard is up and waiting for keys.
+     *
+     * The pointer has to stand aside for it, and nothing else in this class does
+     * that job. While the keyboard is showing, the buttons mean letters: the
+     * cursor keeps its stick, but A is a key press rather than a click and the
+     * D-pad walks the layout rather than nudging the pointer.
+     *
+     * Three things read this, because the keys are intercepted in three places
+     * before they could ever reach the keyboard — the accessibility service
+     * filters them first, the router swallows them next, and the focusable cursor
+     * overlay holds the window focus that would carry them. All three defer while
+     * this is true.
+     */
+    val typing: StateFlow<Boolean> = _typing.asStateFlow()
+
+    /** True while THOR's keyboard is showing; see [typing]. */
+    val launcherTyping: Boolean get() = _typing.value
+
+    fun setLauncherTyping(value: Boolean) {
+        _typing.value = value
+    }
+
+    private val _backRequests = MutableStateFlow(0)
+
+    /**
+     * Bumped when the pointer's Back is pressed while THOR is the thing on screen.
+     *
+     * Back means two different things depending on what is in front, and the
+     * pointer has to ask for the right one. Over another app it is the system's
+     * Back, which the service performs directly. Over THOR it is the *launcher's*
+     * Back — close the folder, the panel, the overlay — and the system's Back is
+     * no use for that at all: `LauncherActivity` is a home activity, so a global
+     * Back aimed at it is a press with nothing to go back to.
+     *
+     * That is what made the button appear dead inside the launcher. The service
+     * owns the pointer's buttons whenever it is connected, so the launcher had
+     * already swallowed the press and the service then spent it on a global Back
+     * that did nothing. This is the way back across that boundary, and it is the
+     * same shape as [keyboardRequests], which exists for the same reason.
+     */
+    val backRequests: StateFlow<Int> = _backRequests.asStateFlow()
+
+    fun requestBack() {
+        _backRequests.update { it + 1 }
+    }
+
     /**
      * Actions the pointer wants performed, wherever it currently is.
      *

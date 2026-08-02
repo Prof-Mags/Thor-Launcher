@@ -89,10 +89,14 @@ class ThorMouseService : AccessibilityService() {
     private var stickY = 0f
     private var stickLoop: Job? = null
 
+    /** Right-stick deflection, driving the scroll; see [startScrollLoop]. */
+    private var scrollStick = 0f
+    private var scrollLoop: Job? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         requestControllerKeyFiltering()
-        overlay = PointerOverlay(this, ::onStickMoved)
+        overlay = PointerOverlay(this, ::onStickMoved, ::stopAllStickInput)
         reportDisplays()
         mouse.onPanelsNeeded(::reportDisplays)
 
@@ -137,6 +141,24 @@ class ThorMouseService : AccessibilityService() {
         mouse.powerMenuRequests
             .drop(1)
             .onEach { performGlobalAction(GLOBAL_ACTION_POWER_DIALOG) }
+            .launchIn(scope)
+
+        /*
+         * The cursor hands back key focus while THOR is typing.
+         *
+         * This window is focusable on purpose — focus is what delivers the stick,
+         * which an accessibility service is not given. But focus also delivers
+         * *keys*, so while it holds it the launcher's own keyboard cannot receive
+         * one, and letting the service pass keys through would only send them to
+         * this window instead. Standing down for the keyboard's lifetime is what
+         * puts them back on the launcher.
+         *
+         * The stick stops with the focus, which is correct rather than a cost:
+         * the cursor holds its place, and `onFeedLost` is what stops it drifting
+         * off on the last deflection it happened to be given.
+         */
+        mouse.typing
+            .onEach { typing -> overlay?.setFocusable(!typing) }
             .launchIn(scope)
 
         mouse.setServiceConnected(true)
@@ -232,6 +254,18 @@ class ThorMouseService : AccessibilityService() {
         // The chord is checked first and always, so the pointer can be dismissed
         // from any state — including one where something else has gone wrong.
         if (handleChord(event)) return true
+
+        /*
+         * Every key belongs to THOR's keyboard while it is up.
+         *
+         * This service filters keys before any window sees them, so a bound
+         * button was taken for the pointer and the keyboard never heard it — the
+         * field stayed empty however much was typed. Passing them through is only
+         * half of it: the cursor overlay is focusable, so the keys would land
+         * there instead of on the launcher. The overlay gives up focus for the
+         * same span; see the collector in `onServiceConnected`.
+         */
+        if (mouse.launcherTyping) return false
 
         if (!mouse.isActive) return false
 
@@ -370,6 +404,12 @@ class ThorMouseService : AccessibilityService() {
             return true
         }
 
+        // Only a move carries an axis reading worth acting on. Without this, any
+        // other generic event on this window — a hover, a scroll — is read for
+        // axes it does not have, and a deflection can be set from an event that
+        // was never about the stick at all.
+        if (event.action != MotionEvent.ACTION_MOVE) return false
+
         // The hat is a D-pad reported as axes. Prefer it only when it is actually
         // engaged so a controller that reports both does not make two directions
         // fight each other.
@@ -381,7 +421,71 @@ class ThorMouseService : AccessibilityService() {
         stickX = x.takeIf { abs(it) >= STICK_DEAD_ZONE } ?: 0f
         stickY = y.takeIf { abs(it) >= STICK_DEAD_ZONE } ?: 0f
         if (stickX == 0f && stickY == 0f) stopStickLoop() else startStickLoop()
+
+        val scroll = rightStickY(event)
+        scrollStick = scroll.takeIf { abs(it) >= SCROLL_DEAD_ZONE } ?: 0f
+        if (scrollStick == 0f) stopScrollLoop() else startScrollLoop()
         return true
+    }
+
+    /**
+     * The right stick's vertical axis, if this pad actually has one.
+     *
+     * Which axis carries it is not settled across controllers: `AXIS_RZ` is the
+     * usual answer and `AXIS_RY` the other one. Both are also names that *trigger*
+     * axes go by on some pads, which matters here more than it looks — read
+     * blindly, a pulled trigger would read as a stick buried downward and scroll
+     * the page for as long as it was held.
+     *
+     * The range tells them apart without guessing at the device. A stick swings
+     * both ways and reports a minimum below zero; a trigger only presses and
+     * reports a minimum of zero. So an axis is only believed to be a stick when it
+     * says it can go negative.
+     */
+    private fun rightStickY(event: MotionEvent): Float {
+        val device = event.device ?: return 0f
+        for (axis in SCROLL_AXES) {
+            val range = device.getMotionRange(axis, event.source) ?: continue
+            if (range.min >= 0f) continue
+            val value = event.getAxisValue(axis)
+            if (abs(value) >= SCROLL_DEAD_ZONE) return value
+        }
+        return 0f
+    }
+
+    /**
+     * Scrolls under the cursor for as long as the right stick is held.
+     *
+     * A swipe rather than a scroll event, because `dispatchGesture` is the only
+     * thing this service can do to another app's window and a drag is what a
+     * scrollable view is built to answer. Paced to the length of the gesture it
+     * dispatches: overlapping strokes are rejected, so issuing them faster than
+     * they finish scrolls no quicker and drops most of them on the floor.
+     *
+     * Distance follows deflection, which is what makes it a stick rather than a
+     * button — a nudge moves a line, burying it moves a page.
+     */
+    private fun startScrollLoop() {
+        if (scrollLoop?.isActive == true) return
+        scrollLoop = scope.launch {
+            while (isActive && mouse.isActive && scrollStick != 0f) {
+                val position = mouse.state.value.position
+                if (position == null) {
+                    delay(SCROLL_REPEAT_MS)
+                    continue
+                }
+                // Pushing the stick down scrolls down, which is the direction the
+                // content moves rather than the direction the finger does.
+                swipe(position, SCROLL_DISTANCE_PX * scrollStick)
+                delay(SCROLL_REPEAT_MS)
+            }
+        }
+    }
+
+    private fun stopScrollLoop() {
+        scrollLoop?.cancel()
+        scrollLoop = null
+        scrollStick = 0f
     }
 
     private fun startStickLoop() {
@@ -409,7 +513,21 @@ class ThorMouseService : AccessibilityService() {
     private fun cancelMovement() {
         heldDirections.values.forEach(Job::cancel)
         heldDirections.clear()
+        stopAllStickInput()
+    }
+
+    /**
+     * Ends both stick loops together.
+     *
+     * They are driven by one stream and are lost together: whatever stops the
+     * pad's deflections reaching this service — the overlay losing focus, the
+     * window going away, the pointer being put down — leaves *both* sticks
+     * holding whatever they last reported. One of them running on is a cursor
+     * that walks itself off the screen; the other is a page that scrolls forever.
+     */
+    private fun stopAllStickInput() {
         stopStickLoop()
+        stopScrollLoop()
     }
 
     private fun perform(action: MouseAction) {
@@ -419,7 +537,25 @@ class ThorMouseService : AccessibilityService() {
             MouseAction.SECONDARY_CLICK -> tap(position, LONG_PRESS_MS)
             MouseAction.SCROLL_UP -> swipe(position, -SCROLL_DISTANCE_PX)
             MouseAction.SCROLL_DOWN -> swipe(position, SCROLL_DISTANCE_PX)
-            MouseAction.BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
+            /*
+             * Whichever Back the thing on screen actually has.
+             *
+             * The system's Back over another app, the launcher's own over THOR.
+             * They are not interchangeable: `LauncherActivity` is a home activity,
+             * so `GLOBAL_ACTION_BACK` aimed at it is a press with nowhere to go —
+             * and because this service owns the pointer's buttons whenever it is
+             * connected, the launcher had already swallowed B by the time that
+             * no-op ran. B did nothing at all inside THOR as a result, while
+             * working perfectly everywhere else.
+             *
+             * Same test as the keyboard below, for the same reason: what a bound
+             * button should do depends on where it would land.
+             */
+            MouseAction.BACK -> if (mouse.launcherForeground) {
+                mouse.requestBack()
+            } else {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+            }
             /*
              * Only useful while THOR is on screen, and it says so.
              *
@@ -522,6 +658,27 @@ class ThorMouseService : AccessibilityService() {
         const val MAX_STICK_FRAME_MS = 64L
         const val STICK_DEAD_ZONE = 0.22f
         const val HAT_THRESHOLD = 0.5f
+
+        /**
+         * Where the right stick's vertical axis might be, best first.
+         *
+         * Checked against the device's reported range rather than taken on faith
+         * — see `rightStickY`, which is what stops a trigger sharing one of these
+         * names from being read as a stick held downward.
+         */
+        val SCROLL_AXES = intArrayOf(MotionEvent.AXIS_RZ, MotionEvent.AXIS_RY)
+
+        /**
+         * Larger than the cursor's own dead zone, deliberately.
+         *
+         * A right stick that is only resting near centre should not creep the
+         * page, and scrolling has no equivalent of the fine cursor nudge that
+         * makes a tight dead zone worth having on the left one.
+         */
+        const val SCROLL_DEAD_ZONE = 0.3f
+
+        /** Paced to the gesture: overlapping strokes are refused, not queued. */
+        const val SCROLL_REPEAT_MS = SCROLL_MS
 
         /** A compact reticle stays legible without covering the target. */
         const val MIN_CURSOR_SIZE_DP = 28

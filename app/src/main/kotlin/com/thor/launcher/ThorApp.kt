@@ -519,6 +519,19 @@ fun ThorApp(
         }
 
         /*
+         * Tells the pointer to stand aside while THOR's keyboard is up.
+         *
+         * Distinct from [textInputActive] above, which is about the *platform's*
+         * IME and suspends routing entirely. This is the opposite case: THOR's own
+         * keyboard is driven by this router, so it needs the keys rather than
+         * needing them held back — and while the pointer is up, three separate
+         * things were taking them first. See `MouseController.typing`.
+         */
+        LaunchedEffect(keyboard.visible) {
+            mouse.setLauncherTyping(keyboard.visible)
+        }
+
+        /*
          * ---- Button tester ---------------------------------------------------
          * The router belongs to the activity, so the settings screen asks for
          * capture through its own state and the shell applies it here.
@@ -1550,6 +1563,20 @@ fun ThorApp(
         LaunchedEffect(mouse) {
             mouse.keyboardRequests.drop(1).collect {
                 viewModel.openKeyboard(label = "Type", initial = "")
+            }
+        }
+
+        /*
+         * The pointer's Back, when THOR is what it would be going back from.
+         *
+         * Dispatched as the launcher's own Back command rather than as the
+         * system's, so it closes the folder, panel or overlay that is actually
+         * open — see `MouseController.backRequests`. `drop(1)` for the same reason
+         * as the keyboard above: collecting a counter replays its current value.
+         */
+        LaunchedEffect(mouse) {
+            mouse.backRequests.drop(1).collect {
+                inputRouter.emitCommand(ControllerCommand.BACK)
             }
         }
 
