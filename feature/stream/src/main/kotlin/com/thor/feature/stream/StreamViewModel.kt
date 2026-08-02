@@ -36,12 +36,23 @@ sealed interface StreamEffect {
     data object OpenSession : StreamEffect
 }
 
+/** Actions that can occupy the selected-PC button row on the bottom display. */
+enum class StreamHostAction {
+    START_STREAM,
+    STOP_SESSION,
+    REFRESH,
+    PAIR,
+    CANCEL_PAIRING,
+}
+
 /** What the Stream section is showing, as one value both panels read. */
 data class StreamUiState(
     val hosts: List<StreamHost> = emptyList(),
     /** Keyed by address, because that is what identifies a host before it answers. */
     val statuses: Map<String, HostStatus> = emptyMap(),
     val cursor: Int = 0,
+    /** Horizontal controller cursor within the selected PC's visible actions. */
+    val actionCursor: Int = 0,
     /** How pairing with the highlighted PC is going. */
     val pairing: PairingState = PairingState.Idle,
     /** What is in the "add a PC by address" field. */
@@ -69,6 +80,37 @@ data class StreamUiState(
     /** How many PCs are online and paired, for the panel's summary line. */
     val readyCount: Int
         get() = hosts.count { (statusOf(it) as? HostStatus.Online)?.paired == true }
+
+    /** Exactly the controls currently rendered for the highlighted PC. */
+    val hostActions: List<StreamHostAction>
+        get() {
+            val host = selected ?: return emptyList()
+            val status = statusOf(host)
+            val online = status as? HostStatus.Online
+            val pairingActive = pairing is PairingState.AwaitingPin ||
+                pairing is PairingState.Verifying
+
+            return when {
+                connecting -> emptyList()
+                pairingActive -> listOf(StreamHostAction.CANCEL_PAIRING)
+                online?.paired == true && online.currentGame != null -> listOf(
+                    StreamHostAction.START_STREAM,
+                    StreamHostAction.STOP_SESSION,
+                )
+                online?.paired == true -> listOf(
+                    StreamHostAction.START_STREAM,
+                    StreamHostAction.REFRESH,
+                )
+                online != null -> listOf(
+                    StreamHostAction.REFRESH,
+                    StreamHostAction.PAIR,
+                )
+                else -> listOf(StreamHostAction.REFRESH)
+            }
+        }
+
+    val focusedHostAction: StreamHostAction?
+        get() = hostActions.getOrNull(actionCursor.coerceIn(0, (hostActions.size - 1).coerceAtLeast(0)))
 }
 
 /**
@@ -182,8 +224,33 @@ class StreamViewModel @Inject constructor(
         val next = index.coerceIn(0, state.hosts.lastIndex)
         if (next != state.cursor) {
             _uiState.update {
-                it.copy(cursor = next, pairing = PairingState.Idle, error = null)
+                it.copy(
+                    cursor = next,
+                    actionCursor = 0,
+                    pairing = PairingState.Idle,
+                    error = null,
+                )
             }
+        }
+    }
+
+    /** Moves through only the actions that are actually visible on the bottom panel. */
+    fun moveAction(delta: Int) {
+        val state = _uiState.value
+        val actions = state.hostActions
+        if (actions.isEmpty()) return
+        val current = state.actionCursor.coerceIn(0, actions.lastIndex)
+        _uiState.update { it.copy(actionCursor = (current + delta).mod(actions.size)) }
+    }
+
+    /** Runs the same operation used by the corresponding touch button. */
+    fun performHostAction(action: StreamHostAction) {
+        when (action) {
+            StreamHostAction.START_STREAM -> shareScreen()
+            StreamHostAction.STOP_SESSION -> stopHostSession()
+            StreamHostAction.REFRESH -> _uiState.value.selected?.let(::refresh)
+            StreamHostAction.PAIR -> pair()
+            StreamHostAction.CANCEL_PAIRING -> cancelPairing()
         }
     }
 
@@ -344,6 +411,18 @@ class StreamViewModel @Inject constructor(
     fun handleCommand(command: ControllerCommand): Boolean = when (command) {
         ControllerCommand.NAVIGATE_UP -> { move(-1); true }
         ControllerCommand.NAVIGATE_DOWN -> { move(1); true }
+        ControllerCommand.NAVIGATE_LEFT -> {
+            if (_uiState.value.hostActions.isEmpty()) false else {
+                moveAction(-1)
+                true
+            }
+        }
+        ControllerCommand.NAVIGATE_RIGHT -> {
+            if (_uiState.value.hostActions.isEmpty()) false else {
+                moveAction(1)
+                true
+            }
+        }
 
         /*
          * Y is the secondary action on whatever is highlighted, and which one
@@ -382,8 +461,7 @@ class StreamViewModel @Inject constructor(
         ControllerCommand.CONFIRM -> {
             when {
                 _uiState.value.newAddress.isNotBlank() -> addTypedHost()
-                _uiState.value.canStream -> shareScreen()
-                else -> _uiState.value.selected?.let(::refresh)
+                else -> _uiState.value.focusedHostAction?.let(::performHostAction)
             }
             true
         }

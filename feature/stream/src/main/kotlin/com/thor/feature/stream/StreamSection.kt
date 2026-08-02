@@ -793,15 +793,13 @@ private fun HostActions(
     onStopStream: () -> Unit,
 ) {
     val online = status as? HostStatus.Online
-    val pairingActive = state.pairing is PairingState.AwaitingPin ||
-        state.pairing is PairingState.Verifying
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        when {
-            state.connecting -> StreamActionButton(
+        if (state.connecting) {
+            StreamActionButton(
                 label = "CONNECTING",
                 icon = Icons.Rounded.Link,
                 enabled = false,
@@ -809,64 +807,48 @@ private fun HostActions(
                 onClick = {},
                 modifier = Modifier.weight(1f),
             )
-
-            pairingActive -> StreamActionButton(
-                label = "CANCEL PAIRING",
-                icon = Icons.Rounded.Close,
-                primary = false,
-                onClick = onCancelPairing,
-                modifier = Modifier.weight(1f),
-            )
-
-            online?.paired == true -> {
-                StreamActionButton(
-                    label = if (online.currentGame != null) "RESUME STREAM" else "START STREAM",
-                    icon = Icons.Rounded.PlayArrow,
-                    primary = true,
-                    onClick = onStartStream,
-                    modifier = Modifier.weight(1f),
-                )
-                if (online.currentGame != null) {
-                    StreamActionButton(
-                        label = "STOP SESSION",
-                        icon = Icons.Rounded.Stop,
-                        destructive = true,
-                        onClick = onStopStream,
-                        modifier = Modifier.weight(1f),
-                    )
-                } else {
-                    StreamActionButton(
-                        label = "REFRESH",
-                        icon = Icons.Rounded.Refresh,
-                        onClick = { onRefreshHost(host) },
-                        modifier = Modifier.weight(1f),
-                    )
+        } else {
+            state.hostActions.forEach { action ->
+                val label = when (action) {
+                    StreamHostAction.START_STREAM -> if (online?.currentGame != null) {
+                        "RESUME STREAM"
+                    } else {
+                        "START STREAM"
+                    }
+                    StreamHostAction.STOP_SESSION -> "STOP SESSION"
+                    StreamHostAction.REFRESH -> if (online?.paired == true) {
+                        "REFRESH"
+                    } else {
+                        "CHECK AGAIN"
+                    }
+                    StreamHostAction.PAIR -> "PAIR PC"
+                    StreamHostAction.CANCEL_PAIRING -> "CANCEL PAIRING"
                 }
-            }
-
-            online != null -> {
+                val icon = when (action) {
+                    StreamHostAction.START_STREAM -> Icons.Rounded.PlayArrow
+                    StreamHostAction.STOP_SESSION -> Icons.Rounded.Stop
+                    StreamHostAction.REFRESH -> Icons.Rounded.Refresh
+                    StreamHostAction.PAIR -> Icons.Rounded.Link
+                    StreamHostAction.CANCEL_PAIRING -> Icons.Rounded.Close
+                }
+                val onClick = when (action) {
+                    StreamHostAction.START_STREAM -> onStartStream
+                    StreamHostAction.STOP_SESSION -> onStopStream
+                    StreamHostAction.REFRESH -> ({ onRefreshHost(host) })
+                    StreamHostAction.PAIR -> onPairHost
+                    StreamHostAction.CANCEL_PAIRING -> onCancelPairing
+                }
                 StreamActionButton(
-                    label = "CHECK AGAIN",
-                    icon = Icons.Rounded.Refresh,
-                    primary = true,
-                    onClick = { onRefreshHost(host) },
+                    label = label,
+                    icon = icon,
+                    primary = action == StreamHostAction.START_STREAM ||
+                        (action == StreamHostAction.REFRESH && online?.paired != true),
+                    destructive = action == StreamHostAction.STOP_SESSION,
+                    controllerFocused = state.focusedHostAction == action,
+                    onClick = onClick,
                     modifier = Modifier.weight(1f),
                 )
-                StreamActionButton(
-                    label = "PAIR PC",
-                    icon = Icons.Rounded.Link,
-                    onClick = onPairHost,
-                    modifier = Modifier.weight(1f),
-                )
             }
-
-            else -> StreamActionButton(
-                label = "CHECK AGAIN",
-                icon = Icons.Rounded.Refresh,
-                primary = true,
-                onClick = { onRefreshHost(host) },
-                modifier = Modifier.weight(1f),
-            )
         }
     }
 }
@@ -1007,10 +989,11 @@ private fun StreamActionButton(
     enabled: Boolean = true,
     primary: Boolean = false,
     destructive: Boolean = false,
+    controllerFocused: Boolean = false,
 ) {
     val colors = ThorTheme.colors
     val hover = rememberPointerHover()
-    val highlighted = enabled && hover.isHovered
+    val highlighted = enabled && (controllerFocused || hover.isHovered)
     val tint = when {
         destructive -> colors.error
         primary -> colors.cursor
@@ -1018,12 +1001,14 @@ private fun StreamActionButton(
     }
     val background = when {
         !enabled -> colors.surface
-        highlighted || primary || destructive -> tint
+        highlighted -> tint
+        primary || destructive -> tint.copy(alpha = 0.16f)
         else -> colors.surfaceHighest
     }
     val content = when {
         !enabled -> colors.onSurfaceVariant
-        highlighted || primary || destructive -> contrastingContentColor(tint)
+        highlighted -> contrastingContentColor(tint)
+        primary || destructive -> tint
         else -> colors.onSurface
     }
 
@@ -1037,7 +1022,7 @@ private fun StreamActionButton(
                 color = when {
                     !enabled -> colors.outline.copy(alpha = 0.24f)
                     highlighted -> contrastingContentColor(tint).copy(alpha = 0.82f)
-                    primary || destructive -> tint
+                    primary || destructive -> tint.copy(alpha = 0.46f)
                     else -> colors.outline.copy(alpha = 0.34f)
                 },
                 shape = ThorTheme.shapes.small,
