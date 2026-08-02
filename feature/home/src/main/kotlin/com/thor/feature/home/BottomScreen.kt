@@ -45,6 +45,7 @@ import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.SortDialog
 import com.thor.feature.home.component.BottomNavBar
 import com.thor.feature.home.component.EmptySection
+import com.thor.feature.home.couch.CouchScreen
 import com.thor.core.model.PanelLayout
 import com.thor.feature.home.component.dockHeightFor
 import com.thor.core.model.LauncherFeatures.DOCK_ENABLED
@@ -106,6 +107,15 @@ fun BottomScreen(
      * still the right answer for a tab nothing has been built for yet.
      */
     sectionContent: (@Composable (LauncherTab) -> Unit)? = null,
+    /**
+     * Draw the couch layout instead of the handheld one.
+     *
+     * A parameter rather than a separate screen because everything this composable
+     * hosts *around* the grid — the drawer, the menus, the dialogs, the banners —
+     * is wanted in both, and a second screen would have had to grow its own copy
+     * of all of it. Only the grid, the wallpaper and the section bar differ.
+     */
+    couchMode: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val dimens = ThorTheme.dimens
@@ -139,7 +149,9 @@ fun BottomScreen(
             dockHeightFor(dockSettings) + dimens.spacingSmall
 
         DOCK_ENABLED -> 0.dp
-        navBarVisible -> PanelLayout.NAV_BAR_HEIGHT.dp
+        // Couch mode has no bottom bar at all — its sections run along the top —
+        // so nothing is owed to the bottom edge and the drawer runs right to it.
+        navBarVisible && !couchMode -> PanelLayout.NAV_BAR_HEIGHT.dp
         else -> 0.dp
     }
     // Named for what the drawer actually wants: room at the bottom, whichever
@@ -154,6 +166,34 @@ fun BottomScreen(
         ?.let { platform -> Color(platform.accentArgb) }
 
     Box(modifier = modifier.fillMaxSize()) {
+        /*
+         * Couch mode replaces the furniture, not the screen.
+         *
+         * Everything below this — the app drawer, the side menu, the context
+         * menu, the sort and folder dialogs, the banners — is hosted here and is
+         * wanted in couch mode too. Swapping the whole screen out for a separate
+         * one meant losing all of it, so what is swapped is only the part couch
+         * mode actually redraws: the wallpaper, the grid and the section bar.
+         *
+         * [CouchScreen] brings its own backdrop, so the animated wallpaper is not
+         * drawn behind it — two backgrounds fighting is exactly the busy screen
+         * this mode exists to avoid.
+         */
+        if (couchMode) {
+            CouchScreen(
+                state = state,
+                tabs = tabs,
+                selectedTab = selectedTab,
+                navCursor = navCursor,
+                onTabSelected = onTabSelected,
+                onCellTapped = onCellTapped,
+                onCellLongPressed = onCellLongPressed,
+                onPageChanged = onPageChanged,
+                sectionContent = sectionContent,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+
         AnimatedWallpaperBackground(
             wallpaper = wallpaper,
             imageUri = wallpaperUri,
@@ -240,6 +280,8 @@ fun BottomScreen(
             Spacer(modifier = Modifier.height(dockClearance))
         }
 
+        } // end of the handheld layout; couch mode drew its own above
+
         if (state.isScanning) {
             ScanBanner(
                 label = state.scanLabel,
@@ -292,7 +334,7 @@ fun BottomScreen(
          * the dock is how the drawer is opened and closed again, and hiding it
          * there made the launcher feel like it had switched to a different app.
          */
-        if (DOCK_ENABLED) {
+        if (DOCK_ENABLED && !couchMode) {
             FloatingDock(
                 settings = dockSettings,
                 focusedSlot = focusedDockSlot,
@@ -308,7 +350,7 @@ fun BottomScreen(
         // Flush to the bottom edge, unlike the dock it replaces: a nav bar that
         // floats above the edge reads as a dialog, not as the frame of the app.
         // Drawn only when there is something to switch between; see [navBarVisible].
-        if (navBarVisible) {
+        if (navBarVisible && !couchMode) {
             BottomNavBar(
                 selectedTab = selectedTab,
                 focusedTab = navCursor,

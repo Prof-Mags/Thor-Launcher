@@ -82,15 +82,24 @@ An entry's context menu can send it to the *other* panel instead, leaving the gr
 
 ### Couch mode
 
-For the Thor sitting in a dock with the controller in your hands rather than the device.
+For the Thor sitting in a dock with the controller in your hands rather than the device — and a **different interface**, not the handheld one rearranged.
 
-Everything moves to the **top screen** — details above, grid below — and the bottom panel goes **dark**. It isn't dimmed or left showing a stale grid: Loki holds that panel black so the system can't light it with the wallpaper.
+Everything moves to the **top screen** and the bottom panel goes **dark**. It isn't dimmed or left showing a stale grid: Loki holds that panel black so the system can't light it with the wallpaper.
 
-Nothing is taken away. Every section, setting and overlay is still there, and the second panel comes straight back when you switch out.
+| | |
+|:--|:--|
+| **Upright tiles** | Games and system folders as box art, the shape box art actually is |
+| **Sections along the top** | Where a television puts its navigation, with page dots on the right |
+| **Full-bleed artwork** | The focused game's own art fills the screen behind everything |
+| **One line of detail** | Title, system, year and play time — what's readable from a sofa |
+
+The grid underneath is untouched. Same pages, same placements, same cursor — an icon is in the cell you put it in here too, and moving one here moves it everywhere.
+
+Nothing is taken away either: the app drawer, menus, keyboard, search and settings all work exactly as they do on the handheld layout.
 
 **Settings → System & accessibility → Dual screen → Screen mode → Couch mode**
 
-Use **Split ratio** on the same page to decide how much of the screen the details take.
+**Pinch to a lower density** once you're in it — three rows of covers on a television is a wall of stamps, two is a shelf.
 
 <br>
 

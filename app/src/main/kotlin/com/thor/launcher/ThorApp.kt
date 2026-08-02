@@ -1602,6 +1602,63 @@ fun ThorApp(
             }
         }
 
+        /*
+         * The non-Home sections, hoisted so both screens host the same ones.
+         *
+         * Couch mode draws its own layout and still has to be able to show
+         * Movies and Stream; without this the lambda would be written twice
+         * and the two copies would start to differ on the first edit.
+         *
+         * Supplied from here rather than from the home module, so a feature
+         * module never has to depend on an unrelated one.
+         */
+        val sectionHost: @Composable (LauncherTab) -> Unit = { tab ->
+                    if (tab == LauncherTab.MOVIES) {
+                        // In this panel's own composition; see the note beside the
+                        // matching collection in the info panel above.
+                        val moviesStatus by moviesViewModel.playerStatus.collectAsState()
+
+                        MoviesBottomPanel(
+                            mode = moviesSection.mode,
+                            detail = moviesDetail,
+                            sources = moviesSources,
+                            playback = moviesPlayback,
+                            status = moviesStatus,
+                            focusedSource = moviesSection.focusedSource,
+                            focusedAction = moviesSection.focusedAction,
+                            hasNextEpisode = moviesViewModel.nextEpisode() != null,
+                            skipSeconds = moviesSettings.skipSeconds,
+                            onPlayerAction = moviesSection::perform,
+                            onSeek = moviesSection::seekTo,
+                            onSourcePicked = moviesSection::pickSource,
+                            onSeasonSelected = moviesSection::pickSeason,
+                            onEpisodeSelected = moviesSection::pickEpisode,
+                            query = moviesState.query,
+                            onQueryChanged = moviesViewModel::onQueryChanged,
+                            searchRequested = moviesSection.searchRequested,
+                            onSearchFocused = moviesSection::onSearchFocused,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else if (tab == LauncherTab.STREAM) {
+                        val streamState by streamViewModel.uiState.collectAsState()
+                        val clientName by streamViewModel.clientName.collectAsState()
+
+                        StreamBottomPanel(
+                            state = streamState,
+                            clientName = clientName,
+                            onAddressChanged = streamViewModel::onAddressChanged,
+                            onAddHost = streamViewModel::addTypedHost,
+                            onRefreshHost = streamViewModel::refresh,
+                            onStartStream = streamViewModel::shareScreen,
+                            onPairHost = streamViewModel::pair,
+                            onCancelPairing = streamViewModel::cancelPairing,
+                            onStopStream = streamViewModel::stopHostSession,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        EmptySection(tab = tab, modifier = Modifier.fillMaxSize())
+                    }
+        }
         val bottomContent: @Composable (Modifier) -> Unit = { bottomModifier ->
             Box(
                 modifier = bottomModifier
@@ -1668,59 +1725,10 @@ fun ThorApp(
                 selectedTab = selectedTab,
                 navCursor = navCursor,
                 onTabSelected = viewModel::selectTab,
-                /*
-                 * The other half of the Movies section: describe, choose, or
-                 * control, matching whatever its top panel is showing. Supplied
-                 * from here rather than from the home module, so a feature module
-                 * never has to depend on an unrelated one.
-                 */
-                sectionContent = { tab ->
-                    if (tab == LauncherTab.MOVIES) {
-                        // In this panel's own composition; see the note beside the
-                        // matching collection in the info panel above.
-                        val moviesStatus by moviesViewModel.playerStatus.collectAsState()
-
-                        MoviesBottomPanel(
-                            mode = moviesSection.mode,
-                            detail = moviesDetail,
-                            sources = moviesSources,
-                            playback = moviesPlayback,
-                            status = moviesStatus,
-                            focusedSource = moviesSection.focusedSource,
-                            focusedAction = moviesSection.focusedAction,
-                            hasNextEpisode = moviesViewModel.nextEpisode() != null,
-                            skipSeconds = moviesSettings.skipSeconds,
-                            onPlayerAction = moviesSection::perform,
-                            onSeek = moviesSection::seekTo,
-                            onSourcePicked = moviesSection::pickSource,
-                            onSeasonSelected = moviesSection::pickSeason,
-                            onEpisodeSelected = moviesSection::pickEpisode,
-                            query = moviesState.query,
-                            onQueryChanged = moviesViewModel::onQueryChanged,
-                            searchRequested = moviesSection.searchRequested,
-                            onSearchFocused = moviesSection::onSearchFocused,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else if (tab == LauncherTab.STREAM) {
-                        val streamState by streamViewModel.uiState.collectAsState()
-                        val clientName by streamViewModel.clientName.collectAsState()
-
-                        StreamBottomPanel(
-                            state = streamState,
-                            clientName = clientName,
-                            onAddressChanged = streamViewModel::onAddressChanged,
-                            onAddHost = streamViewModel::addTypedHost,
-                            onRefreshHost = streamViewModel::refresh,
-                            onStartStream = streamViewModel::shareScreen,
-                            onPairHost = streamViewModel::pair,
-                            onCancelPairing = streamViewModel::cancelPairing,
-                            onStopStream = streamViewModel::stopHostSession,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else {
-                        EmptySection(tab = tab, modifier = Modifier.fillMaxSize())
-                    }
-                },
+                // The other half of the Movies section: describe, choose, or
+                // control, matching whatever its top panel is showing.
+                sectionContent = sectionHost,
+                couchMode = mode == DualScreenMode.COUCH,
                 modifier = Modifier.fillMaxSize(),
             )
 
@@ -2141,7 +2149,75 @@ fun ThorApp(
                 }
             }
 
-            DualScreenMode.SPLIT_SINGLE, DualScreenMode.COUCH -> {
+            /*
+             * Couch mode, which is its own screen rather than a rearrangement.
+             *
+             * Everything else here lays the same two panels out differently.
+             * This one draws something else entirely — upright box art, section
+             * bar along the top, the focused game's own artwork behind it, and a
+             * caption instead of an information panel — because the difference
+             * that matters is reading distance, and the handheld layout is
+             * illegible from a sofa however it is arranged.
+             *
+             * The grid underneath is untouched: same pages, same placements, same
+             * cursor, so the shell's input, editing and launching all work here
+             * without knowing this screen exists.
+             */
+            DualScreenMode.COUCH -> {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    /*
+                     * The same grid surface, drawing its couch layout.
+                     *
+                     * Everything the grid panel hosts comes with it — the app
+                     * drawer, the side menu, the context menu, the keyboard, the
+                     * shortcut panel, the walkthrough — because `couchMode`
+                     * changes only what that surface *draws*, not what it holds.
+                     */
+                    bottomContent(Modifier.fillMaxSize())
+
+                    // Settings, search and the entry editor: the information
+                    // panel's surfaces, raised over the one screen there is,
+                    // because it has no window of its own in this mode.
+                    infoOverlays()
+
+                    if (recording is RecordingState.Active) {
+                        RecordingBadge(modifier = Modifier.align(Alignment.TopEnd))
+                    }
+                    transientMessage?.let { message ->
+                        TransientMessage(
+                            text = message,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+                    }
+                }
+
+                /*
+                 * The panel nobody is looking at, held dark.
+                 *
+                 * A presentation showing black rather than no presentation at
+                 * all: dismissing it hands the panel back to whatever the system
+                 * would otherwise put there, which on this device is the
+                 * wallpaper and the previous app's leftovers. Holding it with
+                 * something black is how the panel stays off.
+                 *
+                 * It never takes focus — see `singleWindowNow` — so the
+                 * controller keeps driving the screen the user can see.
+                 */
+                if (secondary != null) {
+                    SecondaryDisplay(
+                        displayId = secondary.displayId,
+                        enabled = { !appOnSecondaryPanelNow() },
+                        takesFocus = { false },
+                        keyDispatcher = inputRouter::dispatchKeyEvent,
+                        motionDispatcher = inputRouter::onGenericMotionEvent,
+                        onFocusChanged = ::onPresentationFocusChanged,
+                        onVisibilityChanged = viewModel::setSecondaryPresentationVisible,
+                        content = { DarkPanel() },
+                    )
+                }
+            }
+
+            DualScreenMode.SPLIT_SINGLE -> {
                 val topWeight = settings.display.splitRatio.coerceIn(0.2f, 0.8f)
                 Box(modifier = Modifier.fillMaxSize()) {
                     Column(modifier = Modifier.fillMaxSize()) {
@@ -2155,15 +2231,7 @@ fun ThorApp(
                                 bottomContent(Modifier.fillMaxSize())
                             }
                         }
-                        /*
-                         * Not swapped in couch mode.
-                         *
-                         * `swapScreens` says which of the *two panels* holds the
-                         * grid, and couch mode is not using two panels — applying
-                         * it here would put the grid above the details for no
-                         * reason a user of this mode could act on.
-                         */
-                        if (settings.display.swapScreens && mode != DualScreenMode.COUCH) {
+                        if (settings.display.swapScreens) {
                             second()
                             first()
                         } else {
@@ -2173,35 +2241,6 @@ fun ThorApp(
                     }
                     // One overlay for the shared window, covering both halves.
                     introOverlay()
-                }
-
-                /*
-                 * The panel nobody is looking at, held dark.
-                 *
-                 * Only in couch mode, and only when there is a second panel to
-                 * darken — `SPLIT_SINGLE` is chosen precisely by people whose
-                 * device has one screen to give.
-                 *
-                 * A presentation showing black rather than no presentation at all:
-                 * dismissing it hands the panel back to whatever the system would
-                 * otherwise put there, which on this device is the wallpaper and
-                 * the previous app's leftovers. Holding it with something black is
-                 * how the panel stays off.
-                 *
-                 * It never takes focus — see `singleWindowNow` — so the controller
-                 * keeps driving the screen the user can actually see.
-                 */
-                if (mode == DualScreenMode.COUCH && secondary != null) {
-                    SecondaryDisplay(
-                        displayId = secondary.displayId,
-                        enabled = { !appOnSecondaryPanelNow() },
-                        takesFocus = { false },
-                        keyDispatcher = inputRouter::dispatchKeyEvent,
-                        motionDispatcher = inputRouter::onGenericMotionEvent,
-                        onFocusChanged = ::onPresentationFocusChanged,
-                        onVisibilityChanged = viewModel::setSecondaryPresentationVisible,
-                        content = { DarkPanel() },
-                    )
                 }
             }
 
