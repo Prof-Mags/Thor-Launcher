@@ -107,13 +107,21 @@ enum class SettingsCategory(
         "controls", "Controls", Icons.Rounded.Gamepad,
         "Buttons, navigation, pointer, haptics and sound",
     ),
+    /**
+     * Folded into [SYSTEM], and kept only for stored or deep-linked ids.
+     *
+     * Two pages is not a category. "How the screens behave" and "how hard the
+     * launcher works" are the same visit as contrast and text size, and a rail
+     * entry holding a pair of pages costs more to walk past than it saves.
+     */
     DISPLAY(
         "display", "Display & performance", Icons.Rounded.Monitor,
         "Dual-screen behaviour, animation and visual effects",
+        visible = false,
     ),
     SYSTEM(
         "system", "System & accessibility", Icons.Rounded.Tune,
-        "Accessibility, diagnostics and launcher maintenance",
+        "Screens, performance, accessibility and notifications",
     ),
     ABOUT(
         "about", "About", Icons.Rounded.Info,

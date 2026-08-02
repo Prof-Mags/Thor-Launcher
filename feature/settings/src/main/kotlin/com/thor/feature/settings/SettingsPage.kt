@@ -116,17 +116,19 @@ enum class SettingsPage(
         "Haptics and interface sound",
     ),
 
-    // ---- Display -----------------------------------------------------------
+    // ---- System ------------------------------------------------------------
+    // Display and performance live here rather than in a category of their own.
+    // Two pages is not a category, and "how the screens behave" is the same visit
+    // as "how it reads and how hard it works".
     DUAL_SCREEN(
-        SettingsCategory.DISPLAY, "Dual screen",
+        SettingsCategory.SYSTEM, "Dual screen",
         "How the two panels are used",
     ),
     PERFORMANCE(
-        SettingsCategory.DISPLAY, "Performance",
+        SettingsCategory.SYSTEM, "Performance",
         "Animation and visual effects",
     ),
 
-    // ---- System ------------------------------------------------------------
     ACCESSIBILITY(
         SettingsCategory.SYSTEM, "Accessibility",
         "Contrast, motion, text and colour vision",
@@ -134,10 +136,6 @@ enum class SettingsPage(
     NOTIFICATIONS(
         SettingsCategory.SYSTEM, "Notifications",
         "Show device notifications on the top screen",
-    ),
-    DIAGNOSTICS(
-        SettingsCategory.SYSTEM, "Diagnostics",
-        "Logging and resetting",
     ),
     ;
 

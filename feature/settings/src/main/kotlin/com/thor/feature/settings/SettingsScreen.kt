@@ -46,6 +46,7 @@ import com.thor.feature.settings.component.LocalHorizontalRowRegistration
 import com.thor.feature.settings.component.LocalRowStep
 import com.thor.feature.settings.component.SettingsTextButton
 import com.thor.feature.settings.component.revealWhenFocused
+import com.thor.feature.settings.pane.ABOUT_ROWS
 import com.thor.feature.settings.pane.AboutPane
 import com.thor.feature.settings.pane.SettingsPageContent
 import com.thor.feature.settings.pane.rowCountFor
@@ -110,11 +111,10 @@ fun SettingsScreen(
         }
     }
 
-    // Re-read on entering the Diagnostics page: the user changes this in the
-    // system chooser, so the answer can only have changed while we were paused.
-    LaunchedEffect(openPage) {
-        if (openPage == SettingsPage.DIAGNOSTICS) viewModel.refreshDefaultLauncher()
-        // The grant can only change while THOR is away, so it is re-read on open.
+    // Re-read on arriving where the answer is shown: both are changed in a system
+    // screen, so they can only have changed while the launcher was paused.
+    LaunchedEffect(openPage, category) {
+        if (category == SettingsCategory.ABOUT) viewModel.refreshDefaultLauncher()
         if (openPage == SettingsPage.NOTIFICATIONS) viewModel.refreshNotificationAccess()
     }
 
@@ -135,7 +135,9 @@ fun SettingsScreen(
                 it.platformId == null
             },
         )
-        category == SettingsCategory.ABOUT -> 0
+        // About is a pane rather than a list of pages, and it now carries the
+        // diagnostics controls, so it has rows of its own to walk.
+        category == SettingsCategory.ABOUT -> ABOUT_ROWS
         else -> pages.size
     }
     LaunchedEffect(visibleRowCount) {
@@ -168,20 +170,23 @@ fun SettingsScreen(
                 alphaOverride = 0.92f,
                 level = SurfaceLevel.RAISED,
             ) {
+                /*
+                 * Every category on screen at once, without a scroll.
+                 *
+                 * It used to scroll, and scrolling a navigation rail is the wrong
+                 * shape of control: the list is short, fixed and known in advance,
+                 * so a category below the fold was one the user had no reason to
+                 * believe existed. `revealWhenFocused` kept it *reachable* by the
+                 * controller, which is not the same as visible.
+                 *
+                 * The rows share the space left under the heading instead, so the
+                 * rail fits whatever the list happens to hold — adding a category
+                 * makes each one shorter rather than pushing the last one out of
+                 * sight.
+                 */
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                    /*
-                     * Scrollable so every consolidated category remains reachable
-                     * at larger accessibility scales.
-                     *
-                     * `revealWhenFocused` on each row asks its nearest scrollable
-                     * ancestor to bring it into view — so without one here, the
-                     * categories past the fold would be selectable and invisible,
-                     * which is the fault that made half of Settings unreachable
-                     * in the first place.
-                     */
-                        .verticalScroll(rememberScrollState())
                         .padding(vertical = dimens.spacing),
                 ) {
                 Text(
@@ -212,14 +217,16 @@ fun SettingsScreen(
                     ),
                 )
                 SettingsCategory.navigationEntries.forEach { entry ->
-                    CategoryRow(
-                        category = entry,
-                        selected = entry == category,
-                        // The cursor ring only shows while the rail holds input,
-                        // so it is obvious which column presses are moving in.
-                        cursorHere = entry == category && focusOnRail && openPage == null,
-                        onClick = { viewModel.selectCategory(entry) },
-                    )
+                    Box(modifier = Modifier.weight(1f, fill = false)) {
+                        CategoryRow(
+                            category = entry,
+                            selected = entry == category,
+                            // The cursor ring only shows while the rail holds
+                            // input, so it is obvious which column presses move in.
+                            cursorHere = entry == category && focusOnRail && openPage == null,
+                            onClick = { viewModel.selectCategory(entry) },
+                        )
+                    }
                 }
                 }
             }
@@ -254,7 +261,34 @@ fun SettingsScreen(
                         .verticalScroll(rememberScrollState()),
                 ) {
                     when {
-                        category == SettingsCategory.ABOUT -> AboutPane(settings = settings)
+                        /*
+                         * About is a pane rather than a page, and still needs the
+                         * activation broadcast.
+                         *
+                         * A row learns that Confirm was pressed by watching
+                         * `LocalRowActivation` — the shell bumps a counter and
+                         * whichever row is focused acts on it. Only the page
+                         * branch below used to provide it, which was fine while
+                         * About held nothing but text. It holds the diagnostics
+                         * controls now, and without this every one of them ignored
+                         * the controller: pressing A on "Replay the walkthrough"
+                         * did nothing at all, and neither did reset.
+                         */
+                        category == SettingsCategory.ABOUT -> CompositionLocalProvider(
+                            LocalRowActivation provides activationTick,
+                            LocalRowStep provides horizontalStep,
+                            LocalHorizontalRowRegistration provides horizontalRowRegistration,
+                        ) {
+                            AboutPane(
+                                settings = settings,
+                                focusedRow = focusedRow,
+                                viewModel = viewModel,
+                                isDefaultLauncher = isDefaultLauncher,
+                                keyCaptureEnabled = keyCaptureEnabled,
+                                capturedKeys = capturedKeys,
+                                platformCount = platformOptions.size,
+                            )
+                        }
 
                         openPage != null -> CompositionLocalProvider(
                             LocalRowActivation provides activationTick,
