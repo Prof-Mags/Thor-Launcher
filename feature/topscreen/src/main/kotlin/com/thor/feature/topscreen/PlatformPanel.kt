@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -247,19 +245,39 @@ fun PlatformDetailPanel(
 
             if (recent.isNotEmpty()) {
                 Section(label = "RECENTLY PLAYED") {
-                    LazyRow(
+                    /*
+                     * Three covers across, sized by the panel rather than by a
+                     * fixed height.
+                     *
+                     * This was a `LazyRow` of six 110dp-tall covers, and six of
+                     * those are far wider than this column — so the row was
+                     * always clipped mid-cover with no indication it scrolled,
+                     * and the number actually visible changed with the grid
+                     * preset. Three, weighted, fit by construction at any width.
+                     *
+                     * Padded to [RECENT_COUNT] so a platform with one played
+                     * game does not stretch its cover across the whole column;
+                     * the block keeps one shape whichever folder is highlighted,
+                     * which is the same reason the statistics row above always
+                     * draws all four cells.
+                     */
+                    Row(
                         horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        items(recent, key = GameEntry::id) { game ->
+                        recent.forEach { game ->
                             ArtworkImage(
                                 model = game.metadata.artwork.cellImage,
                                 contentDescription = game.title,
                                 fallbackText = game.title,
                                 modifier = Modifier
-                                    .height(SHELF_HEIGHT.dp)
+                                    .weight(1f)
                                     .aspectRatio(3f / 4f)
                                     .clip(ThorTheme.shapes.small),
                             )
+                        }
+                        repeat(RECENT_COUNT - recent.size) {
+                            Spacer(modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -402,5 +420,5 @@ private const val PANEL_ALPHA = 0.82f
 /** Tightened so the name sits close under the wordmark rather than adrift. */
 private const val LOGO_HEIGHT = 44
 private const val LOGO_MAX_WIDTH = 320
-private const val RECENT_COUNT = 6
-private const val SHELF_HEIGHT = 110
+/** Covers on the recently-played shelf; the row is built to fit exactly this many. */
+private const val RECENT_COUNT = 3

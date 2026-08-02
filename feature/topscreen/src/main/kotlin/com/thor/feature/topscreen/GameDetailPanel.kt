@@ -17,9 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,6 +40,7 @@ import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AchievementSummary
+import com.thor.core.model.ArtworkSet
 import com.thor.core.model.GameEntry
 import com.thor.core.model.Platform
 import com.thor.core.ui.component.ArtworkImage
@@ -431,41 +429,51 @@ private fun ScreenshotStrip(
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = "SCREENSHOTS",
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-        )
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            itemsIndexed(urls, key = { _, url -> url }) { index, url ->
-                val isSelected = index == selected
-                Box(
-                    modifier = Modifier
-                        .width(THUMB_WIDTH.dp)
-                        .aspectRatio(16f / 9f)
-                        .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
-                        .border(
-                            width = if (isSelected) 2.dp else 1.dp,
-                            color = if (isSelected) {
-                                colors.cursor
-                            } else {
-                                colors.outline.copy(alpha = 0.4f)
-                            },
-                            shape = RoundedCornerShape(dimens.cornerRadiusSmall),
-                        )
-                        .clickable { onSelected(index) },
-                ) {
-                    ArtworkImage(
-                        model = url,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
+    /*
+     * Three across, sized by the panel rather than by a fixed thumbnail width.
+     *
+     * This was a `LazyRow` of 96dp thumbnails, which is wider than a third of
+     * this column at every grid preset — so the third screenshot was always
+     * partly off the edge, and a strip the user could not tell was scrollable
+     * looked like a strip with two screenshots in it. Weights make the row fit
+     * by construction at any panel width.
+     *
+     * Padded out to [ArtworkSet.MAX_SCREENSHOTS] so the slots keep their size
+     * when a game has fewer: two screenshots sharing the full width would render
+     * half again as large as three, and the block would change shape as the
+     * cursor moved between games.
+     */
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        urls.forEachIndexed { index, url ->
+            val isSelected = index == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
+                    .border(
+                        width = if (isSelected) 2.dp else 1.dp,
+                        color = if (isSelected) {
+                            colors.cursor
+                        } else {
+                            colors.outline.copy(alpha = 0.4f)
+                        },
+                        shape = RoundedCornerShape(dimens.cornerRadiusSmall),
                     )
-                }
+                    .clickable { onSelected(index) },
+            ) {
+                ArtworkImage(
+                    model = url,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
+        }
+        repeat(ArtworkSet.MAX_SCREENSHOTS - urls.size) {
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }
@@ -501,7 +509,6 @@ private const val PANEL_ALPHA = 0.82f
 private const val UNKNOWN_VALUE = "—"
 
 private const val DESCRIPTION_LINES = 5
-private const val THUMB_WIDTH = 96
 
 /** Logos vary from wide banners to tall crests; both must fit uncropped. */
 private const val LOGO_MIN_HEIGHT = 44
