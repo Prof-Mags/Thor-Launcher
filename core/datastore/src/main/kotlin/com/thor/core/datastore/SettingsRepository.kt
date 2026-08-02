@@ -161,6 +161,16 @@ class SettingsRepository @Inject constructor(
         edit { it.copy(tutorialCompleted = completed) }
     }
 
+    /** Records that the first-run permission list has been shown. */
+    suspend fun setPermissionsPromptSeen(seen: Boolean) {
+        edit { it.copy(permissionsPromptSeen = seen) }
+    }
+
+    /** Records that the start-up sequence has played, so it plays once. */
+    suspend fun setIntroPlayed(played: Boolean) {
+        edit { it.copy(introPlayed = played) }
+    }
+
     /** Replaces everything — used by restore and by settings import. */
     suspend fun replaceAll(settings: ThorSettings) {
         edit { settings.copy(schemaVersion = ThorSettings.CURRENT_SCHEMA_VERSION) }

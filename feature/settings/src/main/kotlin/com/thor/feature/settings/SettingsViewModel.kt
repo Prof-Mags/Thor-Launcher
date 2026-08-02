@@ -818,6 +818,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launchSafely(TAG) { settingsRepository.setTutorialCompleted(false) }
     }
 
+    /** Records that the first-run permission list has been shown. */
+    fun dismissPermissionsPrompt() {
+        viewModelScope.launchSafely(TAG) { settingsRepository.setPermissionsPromptSeen(true) }
+    }
+
     fun scanLibrary() {
         syncManager.requestFullScan()
     }

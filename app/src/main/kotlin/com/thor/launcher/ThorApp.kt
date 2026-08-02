@@ -111,12 +111,14 @@ import com.thor.feature.search.SearchScreen
 import com.thor.feature.search.SearchViewModel
 import com.thor.feature.settings.SettingsCategory
 import com.thor.feature.settings.SettingsScreen
+import com.thor.feature.settings.tutorial.PermissionsScreen
 import com.thor.feature.settings.tutorial.ThorTutorial
 import com.thor.feature.settings.tutorial.TutorialScreen
+import com.thor.feature.settings.tutorial.rememberPermissionItems
 import com.thor.feature.topscreen.TopScreen
 
 /** Which full-screen overlay, if any, is showing on the info surface. */
-private enum class Overlay { NONE, SETTINGS, SEARCH, TUTORIAL }
+private enum class Overlay { NONE, SETTINGS, SEARCH, TUTORIAL, PERMISSIONS }
 
 /**
  * The shell's surfaces named as the focus rule names them.
@@ -281,6 +283,26 @@ fun ThorApp(
     val shortcutPanel by viewModel.shortcutPanel.collectAsState()
     val keyboard by viewModel.keyboard.collectAsState()
     val introVisible by viewModel.introVisible.collectAsState()
+
+    /*
+     * Permission state, for the first-run list.
+     *
+     * Collected here as well as inside the settings screen because the list is
+     * drawn by the shell, on the grid panel. Re-asked whenever the launcher is
+     * resumed, since granting any of these happens in an Android screen the
+     * launcher is not on — coming back is the only moment the answer can have
+     * changed.
+     */
+    val isDefaultLauncher by settingsViewModel.isDefaultLauncher.collectAsState()
+    val pointerServiceEnabled by settingsViewModel.pointerServiceEnabled.collectAsState()
+    val notificationAccessGranted by settingsViewModel.notificationAccessGranted.collectAsState()
+
+    LifecycleResumeEffect(settingsViewModel) {
+        settingsViewModel.refreshDefaultLauncher()
+        settingsViewModel.refreshPointerService()
+        settingsViewModel.refreshNotificationAccess()
+        onPauseOrDispose { }
+    }
     val recording by viewModel.recording.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val navCursor by viewModel.navCursor.collectAsState()
@@ -300,6 +322,7 @@ fun ThorApp(
     val moviesDetail by moviesViewModel.detail.collectAsState()
     val moviesSources by moviesViewModel.sources.collectAsState()
     val moviesPlayback by moviesViewModel.playback.collectAsState()
+    val moviesSettings by moviesViewModel.settings.collectAsState()
 
     // Read live rather than captured: the collector below outlives any one value.
     val selectedTabNow: () -> LauncherTab = { viewModel.selectedTab.value }
@@ -538,10 +561,41 @@ fun ThorApp(
          * intro, which is the outermost surface and swallows everything while it
          * runs — opening underneath it would spend the first pages unseen.
          */
-        LaunchedEffect(settings.tutorialCompleted, settingsLoaded, introVisible) {
-            if (settingsLoaded && !introVisible && !settings.tutorialCompleted) {
-                tutorialPage = 0
-                overlay = Overlay.TUTORIAL
+        /*
+         * First run, in order: permissions, then the walkthrough.
+         *
+         * The permission list comes first because it is the part that has to
+         * happen at a keyboard-and-settings sort of moment, and the walkthrough
+         * reads better once the launcher is actually set up. Each is remembered
+         * separately — replaying the tour later is not a request to be asked
+         * about accessibility again.
+         */
+        LaunchedEffect(
+            settings.permissionsPromptSeen,
+            settings.tutorialCompleted,
+            settingsLoaded,
+            introVisible,
+        ) {
+            if (!settingsLoaded || introVisible) return@LaunchedEffect
+            when {
+                !settings.permissionsPromptSeen -> overlay = Overlay.PERMISSIONS
+                !settings.tutorialCompleted -> {
+                    /*
+                     * Put the launcher back to its resting state first.
+                     *
+                     * The walkthrough is read against the home screen, and it is
+                     * reached from deep inside Settings — so without this it
+                     * would open over an open settings page, describing the grid
+                     * while the grid is nowhere in sight. Everything else Home
+                     * does is wanted here too: menus closed, folders closed, back
+                     * to the first page and the Home section.
+                     */
+                    tutorialPage = 0
+                    viewModel.goHome()
+                    settingsViewModel.resetFocus()
+                    touchedSurface = InputSurface.BOTTOM
+                    overlay = Overlay.TUTORIAL
+                }
             }
         }
 
@@ -621,6 +675,26 @@ fun ThorApp(
                  * merely intended: there is no surface, section or panel that can
                  * take a press before this does, so no button leaves early.
                  */
+                /*
+                 * The permission list, modal for the same reason the walkthrough
+                 * is: it sits over a live grid, and any press that fell through
+                 * would launch whatever the cursor happened to be on.
+                 *
+                 * Confirm is the only command it takes. Its rows are granted by
+                 * touch, because each opens an Android settings screen and the
+                 * pad has nothing useful to do with a list of doors.
+                 */
+                if (overlay == Overlay.PERMISSIONS) {
+                    if (event.command == ControllerCommand.CONFIRM) {
+                        overlay = Overlay.NONE
+                        settingsViewModel.dismissPermissionsPrompt()
+                        feedback.play(FeedbackCue.CONFIRM)
+                    } else {
+                        feedback.play(FeedbackCue.REJECT)
+                    }
+                    return@collect
+                }
+
                 if (overlay == Overlay.TUTORIAL) {
                     val lastPage = ThorTutorial.PAGES.lastIndex
                     when (event.command) {
@@ -790,7 +864,7 @@ fun ThorApp(
                      * `else` here would let a future overlay inherit that bug in
                      * silence; this way the compiler asks.
                      */
-                    Overlay.TUTORIAL -> Unit
+                    Overlay.TUTORIAL, Overlay.PERMISSIONS -> Unit
 
                     Overlay.SETTINGS -> {
                         if (event.command == ControllerCommand.BACK) {
@@ -878,7 +952,18 @@ fun ThorApp(
         val introMotion = ThorTheme.materials.animationsEnabled &&
             !settings.performance.performanceMode
 
-        if (introVisible && settingsLoaded) {
+        /*
+         * Already seen it, so there is nothing to play.
+         *
+         * Ended rather than never started, because the intro is what covers the
+         * launcher until the settings it is drawn with have loaded — the surface
+         * has to be there first and go afterwards, not be absent from the start.
+         */
+        LaunchedEffect(settingsLoaded, settings.introPlayed) {
+            if (settingsLoaded && settings.introPlayed) viewModel.finishIntro()
+        }
+
+        if (introVisible && settingsLoaded && !settings.introPlayed) {
             LaunchedEffect(Unit) {
                 var openingStream: Int? = null
                 val openingSound = launch {
@@ -937,11 +1022,13 @@ fun ThorApp(
                             ),
                         )
                     }
-                    viewModel.finishIntro()
+                    // Recorded here, at the end of a run that actually finished,
+                    // so it plays once rather than once per cold start.
+                    viewModel.completeIntro()
                 } finally {
                     openingSound.cancel()
-                    // ui_boot is 1.5 seconds long. A quick skip must not leave it
-                    // playing over the launcher after the overlay has gone.
+                    // ui_boot is 1.5 seconds long, and must not be left playing
+                    // over the launcher once the overlay has gone.
                     feedback.stopSound(openingStream)
                 }
             }
@@ -987,10 +1074,27 @@ fun ThorApp(
             }
         }
 
-        // Every keystroke goes straight to the focused field, so it fills in live on
-        // whichever panel it is drawn on while the keyboard stays on this one.
+        /*
+         * Every keystroke goes straight to the field being filled in, so it fills
+         * in live on whichever panel it is drawn on while the keyboard stays on
+         * this one.
+         *
+         * Which field that is depends on whether one of Loki's own claimed the
+         * keyboard. If it did, the text goes there. If nothing did, the keyboard
+         * was raised by the pointer over another app — so the text goes outward
+         * instead, to whatever field the cursor last tapped in that app.
+         *
+         * They cannot both fire: a field inside Loki is not one Android holds
+         * input focus on, and a field in another app cannot claim Loki's text
+         * focus. `focusedId` is the one question that separates them.
+         */
         LaunchedEffect(keyboard.text, keyboard.visible) {
-            if (keyboard.visible) textInput.setText(keyboard.text)
+            if (!keyboard.visible) return@LaunchedEffect
+            if (textInput.focusedId != null) {
+                textInput.setText(keyboard.text)
+            } else {
+                mouse.setTypedText(keyboard.text)
+            }
         }
 
         /*
@@ -1275,6 +1379,11 @@ fun ThorApp(
                         },
                     )
 
+                    // Drawn on the grid panel instead; see `bottomContent`. This
+                    // one is answered by touching its rows, so it belongs on the
+                    // panel the user is holding rather than on the one they read.
+                    Overlay.PERMISSIONS -> Unit
+
                     Overlay.NONE -> Unit
                 }
             }
@@ -1472,6 +1581,7 @@ fun ThorApp(
                             focusedSource = moviesSection.focusedSource,
                             focusedAction = moviesSection.focusedAction,
                             hasNextEpisode = moviesViewModel.nextEpisode() != null,
+                            skipSeconds = moviesSettings.skipSeconds,
                             onPlayerAction = moviesSection::perform,
                             onSeek = moviesSection::seekTo,
                             onSourcePicked = moviesSection::pickSource,
@@ -1555,6 +1665,61 @@ fun ThorApp(
                 onAction = viewModel::onShortcut,
                 onDismiss = viewModel::closeShortcutPanel,
             )
+
+            /*
+             * The permission list, on the panel being held.
+             *
+             * Every other overlay is drawn on the information panel, which is the
+             * launcher's reading surface. This one is the exception: its rows are
+             * pressed rather than read, each opening an Android settings screen,
+             * so it belongs under the thumbs.
+             *
+             * Placed here, near the end, because this is a `Box` and a `Box` draws
+             * its children in order. It was first, which put the entire grid on
+             * top of it — the list was composed, was never visible, and could not
+             * be dismissed, so the flag saying it had been seen never got written.
+             * That also kept the walkthrough from ever showing: the first-run
+             * check offers permissions before the walkthrough, so an offer that
+             * could not be answered blocked everything behind it.
+             */
+            /*
+             * The grid clears itself while the walkthrough is up.
+             *
+             * The tutorial is drawn on the information panel and describes the
+             * grid from there, so leaving a full grid of icons on this one gives
+             * the reader a screen of things to look at instead of the thing being
+             * explained — and every one of them is a cell the cursor is no longer
+             * allowed to move to, since the walkthrough holds every button.
+             *
+             * A cover rather than emptying the state: nothing about the library
+             * changes, and it comes back exactly as it was.
+             */
+            if (overlay == Overlay.TUTORIAL) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(ThorTheme.colors.background),
+                )
+            }
+
+            if (overlay == Overlay.PERMISSIONS) {
+                PermissionsScreen(
+                    items = rememberPermissionItems(
+                        isDefaultLauncher = isDefaultLauncher,
+                        pointerServiceEnabled = pointerServiceEnabled,
+                        notificationAccessGranted = notificationAccessGranted,
+                        onSetDefaultLauncher = settingsViewModel::requestDefaultLauncher,
+                        onOpenPointerSettings = settingsViewModel::openPointerServiceSettings,
+                        onOpenNotificationSettings =
+                            settingsViewModel::openNotificationAccessSettings,
+                    ),
+                    onDone = {
+                        overlay = Overlay.NONE
+                        settingsViewModel.dismissPermissionsPrompt()
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
             // Above everything on this panel, including the keyboard: at cold start
             // nothing else is open, and if anything were, the intro is what the user
@@ -1675,7 +1840,9 @@ fun ThorApp(
          */
         LaunchedEffect(mouse) {
             mouse.keyboardRequests.drop(1).collect {
-                viewModel.openKeyboard(label = "Type", initial = "")
+                // Seeded with whatever the tapped field already held, so editing a
+                // URL that is already there edits it rather than replacing it.
+                viewModel.openKeyboard(label = "Type", initial = mouse.keyboardSeed)
             }
         }
 

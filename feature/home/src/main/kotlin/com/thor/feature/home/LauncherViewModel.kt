@@ -419,19 +419,38 @@ class LauncherViewModel @Inject constructor(
     /**
      * Whether the start-up sequence is still running.
      *
-     * Held in the view model precisely because of its lifetime: it survives
-     * configuration changes and dies with the process, which is exactly "once per
-     * cold start". A `remember` in the composition would replay it on every rotation
-     * or display change, and a flag in settings would replay it never.
+     * Still held here rather than in the composition, so a rotation or a display
+     * change cannot replay it mid-run. What has changed is what ends it for good:
+     * this used to be scoped to the process on the reasoning that a launcher is
+     * returned to dozens of times a day and its process survives all of them.
      *
-     * A launcher is returned to dozens of times a day — pressing Home must not play
-     * an intro, and it does not, because the process is still alive.
+     * On this handheld it does not. The launcher is killed to make room for the
+     * game it just started, so coming back with Home is frequently a *cold* start
+     * — a new process, a new view model, and an intro that had every right to
+     * play again. From the front that is an intro that plays at random, several
+     * times a day, on a button that means "take me home".
+     *
+     * So it is recorded instead, and plays once: on the first run, beside the
+     * permission list and the walkthrough, which is the only time it is telling
+     * the user anything they have not already seen.
      */
     private val _introVisible = MutableStateFlow(true)
     val introVisible: StateFlow<Boolean> = _introVisible.asStateFlow()
 
     fun finishIntro() {
         _introVisible.value = false
+    }
+
+    /**
+     * Ends the intro and records that it has run.
+     *
+     * Written when the sequence *completes* rather than when it starts, so a
+     * process killed halfway through it still gets to show it properly next time
+     * rather than losing it to a run nobody saw the end of.
+     */
+    fun completeIntro() {
+        _introVisible.value = false
+        viewModelScope.launchSafely(TAG) { settingsRepository.setIntroPlayed(true) }
     }
 
     // ---- On-screen keyboard ------------------------------------------------
@@ -1068,12 +1087,11 @@ class LauncherViewModel @Inject constructor(
             return
         }
 
-        // Any button skips the intro, and does nothing else — a press meant to
-        // dismiss it should not also launch whatever the cursor happens to be on.
-        if (_introVisible.value) {
-            finishIntro()
-            return
-        }
+        // Swallowed while the intro runs, and no longer ends it: the sequence
+        // plays to its own end now. Still swallowed, because a live grid sits
+        // underneath and a press falling through would launch whatever the
+        // cursor happens to be on.
+        if (_introVisible.value) return
 
         /*
          * The shortcut button is global, not a binding some other surface can

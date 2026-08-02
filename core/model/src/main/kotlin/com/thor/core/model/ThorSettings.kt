@@ -47,6 +47,26 @@ data class ThorSettings(
      * several times a day.
      */
     val tutorialCompleted: Boolean = false,
+    /**
+     * Whether the first-run list of permissions has been shown.
+     *
+     * Separate from [tutorialCompleted] because they are asked at different
+     * moments and one is not evidence of the other: the permission list appears
+     * before the walkthrough, and someone who replays the walkthrough later is
+     * not asking to be prompted for accessibility again.
+     */
+    val permissionsPromptSeen: Boolean = false,
+    /**
+     * Whether the start-up sequence has ever been played.
+     *
+     * Stored, which the intro's own note used to argue against: a flag in
+     * settings "would replay it never", and once per cold start was the intended
+     * behaviour. That reasoning holds on a device whose launcher process stays
+     * alive, and this is not one — the process is killed to make room for
+     * whatever is being played, so returning Home is routinely a cold start, and
+     * "once per cold start" turned out to mean several times a day.
+     */
+    val introPlayed: Boolean = false,
     /** Bumped by migrations in `SettingsSerializer`. */
     val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
 ) {
@@ -124,26 +144,32 @@ data class PersonalizationSettings(
  */
 @Serializable
 enum class CornerStyle(val label: String) {
-    /** Each theme's own radius, from sharp Retro to very round Vision. */
-    THEME("Theme default"),
+    /**
+     * Every corner square, including the ones that are normally circles.
+     *
+     * First because it is the default, and a list whose default is third asks
+     * the reader to hunt for where they already are. Declaration order is the
+     * order these are offered in.
+     */
+    SQUARE("Square"),
 
     /** Every corner rounded, generously and identically. */
     ROUNDED("Rounded"),
 
-    /** Every corner square, including the ones that are normally circles. */
-    SQUARE("Square"),
+    /** Each theme's own radius, from hard-edged presets to very round ones. */
+    THEME("Theme default"),
 }
 
 @Serializable
 enum class AnimatedWallpaper(val label: String) {
+    /** Stacked flowing bands, and what a fresh install opens on. */
+    WAVES("Waves"),
+
     NONE("Static"),
 
     /** Multi-point mesh gradient — soft overlapping colour fields. */
     MESH("Mesh"),
     AURORA("Aurora"),
-
-    /** Stacked flowing bands. */
-    WAVES("Waves"),
 
     /** Large defocused orbs drifting at different depths. */
     BOKEH("Bokeh"),
