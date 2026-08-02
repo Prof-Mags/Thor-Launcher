@@ -24,19 +24,22 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 enum class ThemeId(val displayName: String) {
+    // ---- Dark ----------------------------------------------------------
+    // Material first, because it is what a fresh install opens on: a gallery
+    // whose default sits six cards along asks the reader to hunt for where they
+    // already are.
+    MATERIAL_YOU("Material"),
+    DARK("Midnight"),
+    OBSIDIAN("Obsidian"),
+    OLED_BLACK("OLED"),
+    STEAM("Slate"),
+
     // ---- Colourful -----------------------------------------------------
     NEON("Neon"),
     CYBER("Cyber"),
     EMBER("Ember"),
     LAGOON("Lagoon"),
     ORCHID("Orchid"),
-
-    // ---- Dark ----------------------------------------------------------
-    MATERIAL_YOU("Material"),
-    DARK("Midnight"),
-    OBSIDIAN("Obsidian"),
-    OLED_BLACK("OLED"),
-    STEAM("Slate"),
 
     // ---- Light ---------------------------------------------------------
     LIGHT("Daylight"),
@@ -174,11 +177,99 @@ data class ThemeSpec(
          * Every bundled theme, in menu order.
          *
          * Ordered by [ThemeFamily] and five to each, so the gallery reads as
-         * three shelves rather than as one long row — the colourful ones first,
-         * because they are what the set is for, then the neutrals, then the
-         * lights.
+         * three shelves rather than as one long row: the neutrals first, because
+         * the default is one of them and the first card should be where the
+         * reader already is, then the colourful ones, then the lights.
          */
         val ALL: List<ThemeSpec> = listOf(
+            // ---- Dark ----------------------------------------------------
+            ThemeSpec(
+                id = ThemeId.MATERIAL_YOU, isDark = true, family = ThemeFamily.DARK,
+                primaryArgb = 0xFFB6C6FF, secondaryArgb = 0xFFC6C8DE,
+                accentEndArgb = 0xFFDCE1FF,
+                backgroundArgb = 0xFF101218, surfaceArgb = 0xFF181A20,
+                surfaceElevatedArgb = 0xFF22242B, surfaceHighestArgb = 0xFF2D2F37,
+                onBackgroundArgb = 0xFFE5E4E9, onSurfaceArgb = 0xFFD2D1D7,
+                onSurfaceVariantArgb = 0xFF9594A0,
+                cursorArgb = 0xFFB6C6FF, glowArgb = 0x5CB6C6FF,
+                outlineArgb = 0xFF474751, errorArgb = 0xFFFFB4AB,
+                cornerRadiusDp = 24, surfaceAlpha = 0.94f, blurRadiusDp = 18,
+                grain = 0.03f, defaultWallpaper = AnimatedWallpaper.MESH,
+                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
+                soundPack = SoundPack.SOFT,
+                // The strongest elevation tint in the set, which is the whole
+                // idea this preset is named for. It is also what a fresh install
+                // opens on, so it is the one that has to look considered with no
+                // wallpaper chosen and nothing in the library yet.
+                surface = SurfaceTreatment.TINTED.copy(elevationTint = 0.11f),
+                backgroundDepth = 0.09f,
+            ),
+            ThemeSpec(
+                id = ThemeId.DARK, isDark = true, family = ThemeFamily.DARK,
+                primaryArgb = 0xFF5B93FF, secondaryArgb = 0xFF9D7BFF,
+                accentEndArgb = 0xFF7FD4FF,
+                backgroundArgb = 0xFF0B0E14, surfaceArgb = 0xFF12161F,
+                surfaceElevatedArgb = 0xFF1A2029, surfaceHighestArgb = 0xFF232A35,
+                onBackgroundArgb = 0xFFEDF1F8, onSurfaceArgb = 0xFFDCE3EE,
+                onSurfaceVariantArgb = 0xFF98A3B5,
+                cursorArgb = 0xFF6BA4FF, glowArgb = 0x705B93FF,
+                outlineArgb = 0xFF2B3543, errorArgb = 0xFFFF6B6B,
+                cornerRadiusDp = 20, surfaceAlpha = 0.88f, blurRadiusDp = 28,
+                grain = 0.035f, defaultWallpaper = AnimatedWallpaper.MESH,
+                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
+                soundPack = SoundPack.SOFT,
+            ),
+            ThemeSpec(
+                id = ThemeId.OBSIDIAN, isDark = true, family = ThemeFamily.DARK,
+                primaryArgb = 0xFFC8CEDA, secondaryArgb = 0xFF8E97A8,
+                accentEndArgb = 0xFFFFFFFF,
+                backgroundArgb = 0xFF0C0D10, surfaceArgb = 0xFF14161A,
+                surfaceElevatedArgb = 0xFF1D2025, surfaceHighestArgb = 0xFF272B32,
+                onBackgroundArgb = 0xFFF2F4F8, onSurfaceArgb = 0xFFE0E4EB,
+                onSurfaceVariantArgb = 0xFF9AA1AE,
+                cursorArgb = 0xFFE8ECF3, glowArgb = 0x55FFFFFF,
+                outlineArgb = 0xFF2C3037, errorArgb = 0xFFFF7A7A,
+                cornerRadiusDp = 18, surfaceAlpha = 0.9f, blurRadiusDp = 24,
+                grain = 0.05f, defaultWallpaper = AnimatedWallpaper.BOKEH,
+                motion = MotionStyle.FLUID, fontFamily = FontChoice.SYSTEM,
+                soundPack = SoundPack.MINIMAL,
+            ),
+            ThemeSpec(
+                id = ThemeId.OLED_BLACK, isDark = true, family = ThemeFamily.DARK,
+                primaryArgb = 0xFF25E0FF, secondaryArgb = 0xFF8A6BFF,
+                accentEndArgb = 0xFF6BFFE0,
+                backgroundArgb = 0xFF000000, surfaceArgb = 0xFF060708,
+                surfaceElevatedArgb = 0xFF0E1012, surfaceHighestArgb = 0xFF16191C,
+                onBackgroundArgb = 0xFFF4F6F8, onSurfaceArgb = 0xFFE2E6EA,
+                onSurfaceVariantArgb = 0xFF8C949C,
+                cursorArgb = 0xFF25E0FF, glowArgb = 0x9025E0FF,
+                outlineArgb = 0xFF1C2024, errorArgb = 0xFFFF5C5C,
+                cornerRadiusDp = 14, surfaceAlpha = 1.0f, blurRadiusDp = 0,
+                // No grain on a true-black theme: noise over #000 is the one
+                // place it reads as sensor dirt rather than as texture.
+                grain = 0f, defaultWallpaper = AnimatedWallpaper.STARFIELD,
+                motion = MotionStyle.SNAPPY, fontFamily = FontChoice.SYSTEM,
+                soundPack = SoundPack.MINIMAL,
+                // Flat and unlit, for the same reason it carries no grain: any
+                // wash or sheen over #000 is banding on an OLED panel.
+                surface = SurfaceTreatment.FLAT, backgroundDepth = 0f,
+            ),
+            ThemeSpec(
+                id = ThemeId.STEAM, isDark = true, family = ThemeFamily.DARK,
+                primaryArgb = 0xFF6FC3F7, secondaryArgb = 0xFF4E7BA8,
+                accentEndArgb = 0xFF9BE0FF,
+                backgroundArgb = 0xFF0E141C, surfaceArgb = 0xFF161F2B,
+                surfaceElevatedArgb = 0xFF1F2C3C, surfaceHighestArgb = 0xFF2A3A4E,
+                onBackgroundArgb = 0xFFDCE7F0, onSurfaceArgb = 0xFFC5D4E2,
+                onSurfaceVariantArgb = 0xFF8497A9,
+                cursorArgb = 0xFF6FC3F7, glowArgb = 0x7A6FC3F7,
+                outlineArgb = 0xFF2D3F53, errorArgb = 0xFFE07A6B,
+                cornerRadiusDp = 8, surfaceAlpha = 0.94f, blurRadiusDp = 16,
+                grain = 0.045f, defaultWallpaper = AnimatedWallpaper.GRADIENT_DRIFT,
+                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
+                soundPack = SoundPack.MINIMAL,
+            ),
+
             // ---- Colourful -----------------------------------------------
             // All five are dark-grounded and carry a heavy `backgroundDepth`:
             // the ground is washed toward the theme's own accent, which is what
@@ -274,94 +365,6 @@ data class ThemeSpec(
                 motion = MotionStyle.FLUID, fontFamily = FontChoice.SYSTEM,
                 soundPack = SoundPack.SOFT,
                 backgroundDepth = 0.16f,
-            ),
-
-            // ---- Dark ----------------------------------------------------
-            ThemeSpec(
-                id = ThemeId.MATERIAL_YOU, isDark = true, family = ThemeFamily.DARK,
-                primaryArgb = 0xFFB6C6FF, secondaryArgb = 0xFFC6C8DE,
-                accentEndArgb = 0xFFDCE1FF,
-                backgroundArgb = 0xFF101218, surfaceArgb = 0xFF181A20,
-                surfaceElevatedArgb = 0xFF22242B, surfaceHighestArgb = 0xFF2D2F37,
-                onBackgroundArgb = 0xFFE5E4E9, onSurfaceArgb = 0xFFD2D1D7,
-                onSurfaceVariantArgb = 0xFF9594A0,
-                cursorArgb = 0xFFB6C6FF, glowArgb = 0x5CB6C6FF,
-                outlineArgb = 0xFF474751, errorArgb = 0xFFFFB4AB,
-                cornerRadiusDp = 24, surfaceAlpha = 0.94f, blurRadiusDp = 18,
-                grain = 0.03f, defaultWallpaper = AnimatedWallpaper.MESH,
-                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.SOFT,
-                // The strongest elevation tint in the set, which is the whole
-                // idea this preset is named for. It is also what a fresh install
-                // opens on, so it is the one that has to look considered with no
-                // wallpaper chosen and nothing in the library yet.
-                surface = SurfaceTreatment.TINTED.copy(elevationTint = 0.11f),
-                backgroundDepth = 0.09f,
-            ),
-            ThemeSpec(
-                id = ThemeId.DARK, isDark = true, family = ThemeFamily.DARK,
-                primaryArgb = 0xFF5B93FF, secondaryArgb = 0xFF9D7BFF,
-                accentEndArgb = 0xFF7FD4FF,
-                backgroundArgb = 0xFF0B0E14, surfaceArgb = 0xFF12161F,
-                surfaceElevatedArgb = 0xFF1A2029, surfaceHighestArgb = 0xFF232A35,
-                onBackgroundArgb = 0xFFEDF1F8, onSurfaceArgb = 0xFFDCE3EE,
-                onSurfaceVariantArgb = 0xFF98A3B5,
-                cursorArgb = 0xFF6BA4FF, glowArgb = 0x705B93FF,
-                outlineArgb = 0xFF2B3543, errorArgb = 0xFFFF6B6B,
-                cornerRadiusDp = 20, surfaceAlpha = 0.88f, blurRadiusDp = 28,
-                grain = 0.035f, defaultWallpaper = AnimatedWallpaper.MESH,
-                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.SOFT,
-            ),
-            ThemeSpec(
-                id = ThemeId.OBSIDIAN, isDark = true, family = ThemeFamily.DARK,
-                primaryArgb = 0xFFC8CEDA, secondaryArgb = 0xFF8E97A8,
-                accentEndArgb = 0xFFFFFFFF,
-                backgroundArgb = 0xFF0C0D10, surfaceArgb = 0xFF14161A,
-                surfaceElevatedArgb = 0xFF1D2025, surfaceHighestArgb = 0xFF272B32,
-                onBackgroundArgb = 0xFFF2F4F8, onSurfaceArgb = 0xFFE0E4EB,
-                onSurfaceVariantArgb = 0xFF9AA1AE,
-                cursorArgb = 0xFFE8ECF3, glowArgb = 0x55FFFFFF,
-                outlineArgb = 0xFF2C3037, errorArgb = 0xFFFF7A7A,
-                cornerRadiusDp = 18, surfaceAlpha = 0.9f, blurRadiusDp = 24,
-                grain = 0.05f, defaultWallpaper = AnimatedWallpaper.BOKEH,
-                motion = MotionStyle.FLUID, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.MINIMAL,
-            ),
-            ThemeSpec(
-                id = ThemeId.OLED_BLACK, isDark = true, family = ThemeFamily.DARK,
-                primaryArgb = 0xFF25E0FF, secondaryArgb = 0xFF8A6BFF,
-                accentEndArgb = 0xFF6BFFE0,
-                backgroundArgb = 0xFF000000, surfaceArgb = 0xFF060708,
-                surfaceElevatedArgb = 0xFF0E1012, surfaceHighestArgb = 0xFF16191C,
-                onBackgroundArgb = 0xFFF4F6F8, onSurfaceArgb = 0xFFE2E6EA,
-                onSurfaceVariantArgb = 0xFF8C949C,
-                cursorArgb = 0xFF25E0FF, glowArgb = 0x9025E0FF,
-                outlineArgb = 0xFF1C2024, errorArgb = 0xFFFF5C5C,
-                cornerRadiusDp = 14, surfaceAlpha = 1.0f, blurRadiusDp = 0,
-                // No grain on a true-black theme: noise over #000 is the one
-                // place it reads as sensor dirt rather than as texture.
-                grain = 0f, defaultWallpaper = AnimatedWallpaper.STARFIELD,
-                motion = MotionStyle.SNAPPY, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.MINIMAL,
-                // Flat and unlit, for the same reason it carries no grain: any
-                // wash or sheen over #000 is banding on an OLED panel.
-                surface = SurfaceTreatment.FLAT, backgroundDepth = 0f,
-            ),
-            ThemeSpec(
-                id = ThemeId.STEAM, isDark = true, family = ThemeFamily.DARK,
-                primaryArgb = 0xFF6FC3F7, secondaryArgb = 0xFF4E7BA8,
-                accentEndArgb = 0xFF9BE0FF,
-                backgroundArgb = 0xFF0E141C, surfaceArgb = 0xFF161F2B,
-                surfaceElevatedArgb = 0xFF1F2C3C, surfaceHighestArgb = 0xFF2A3A4E,
-                onBackgroundArgb = 0xFFDCE7F0, onSurfaceArgb = 0xFFC5D4E2,
-                onSurfaceVariantArgb = 0xFF8497A9,
-                cursorArgb = 0xFF6FC3F7, glowArgb = 0x7A6FC3F7,
-                outlineArgb = 0xFF2D3F53, errorArgb = 0xFFE07A6B,
-                cornerRadiusDp = 8, surfaceAlpha = 0.94f, blurRadiusDp = 16,
-                grain = 0.045f, defaultWallpaper = AnimatedWallpaper.GRADIENT_DRIFT,
-                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.MINIMAL,
             ),
 
             // ---- Light ---------------------------------------------------
