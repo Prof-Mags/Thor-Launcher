@@ -1,7 +1,7 @@
 package com.thor.core.ui.component
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -43,7 +43,6 @@ import kotlin.math.roundToInt
 fun ThorIntro(
     progress: Float,
     motion: Boolean,
-    onSkip: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -79,7 +78,15 @@ fun ThorIntro(
             .fillMaxSize()
             .graphicsLayer { alpha = overlayAlpha }
             .background(colors.background)
-            .clickable(onClick = onSkip),
+            /*
+             * Takes every touch and gives none of them back.
+             *
+             * Not a skip: the sequence runs to its own end. This is here so a tap
+             * aimed at the launcher underneath cannot reach it — the intro covers
+             * a live grid, and a press landing on a cell nobody can see would
+             * launch something.
+             */
+            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
     ) {
         Column(
             modifier = Modifier.align(Alignment.Center),
@@ -246,8 +253,11 @@ fun ThorIntro(
                     }
                 }
 
+                // The percentage above already reports progress, so this line
+                // reports *state* instead — and no longer offers a way out, because
+                // there is not one.
                 Text(
-                    text = if (ready) "SYSTEM READY" else "PRESS ANY KEY TO SKIP",
+                    text = if (ready) "SYSTEM READY" else "STARTING",
                     style = MaterialTheme.typography.labelSmall,
                     letterSpacing = 1.sp,
                     textAlign = TextAlign.Center,

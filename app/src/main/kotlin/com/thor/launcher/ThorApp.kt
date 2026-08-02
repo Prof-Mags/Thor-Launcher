@@ -111,10 +111,12 @@ import com.thor.feature.search.SearchScreen
 import com.thor.feature.search.SearchViewModel
 import com.thor.feature.settings.SettingsCategory
 import com.thor.feature.settings.SettingsScreen
+import com.thor.feature.settings.tutorial.ThorTutorial
+import com.thor.feature.settings.tutorial.TutorialScreen
 import com.thor.feature.topscreen.TopScreen
 
 /** Which full-screen overlay, if any, is showing on the info surface. */
-private enum class Overlay { NONE, SETTINGS, SEARCH }
+private enum class Overlay { NONE, SETTINGS, SEARCH, TUTORIAL }
 
 /**
  * The shell's surfaces named as the focus rule names them.
@@ -180,6 +182,15 @@ fun ThorApp(
     // Reported upward by the settings screen so controller navigation can be
     // clamped to the rows the current pane actually rendered.
     var settingsRowCount by remember { mutableIntStateOf(0) }
+
+    /**
+     * Which page of the walkthrough is showing.
+     *
+     * Held by the shell rather than by the screen, so the same command stream
+     * that drives every other overlay drives this one — and so the page cannot
+     * advance without the launcher knowing which page it is on.
+     */
+    var tutorialPage by remember { mutableIntStateOf(0) }
 
     /*
      * The surface the user last touched, which is the *lock*: it holds until the
@@ -519,6 +530,22 @@ fun ThorApp(
         }
 
         /*
+         * The walkthrough, on a first run and whenever it is asked for again.
+         *
+         * Keyed on the stored flag rather than raised once at startup, so the
+         * Diagnostics "Replay" row is the whole of replaying it: clearing the flag
+         * brings this back with no second path to keep in step. Waits for the
+         * intro, which is the outermost surface and swallows everything while it
+         * runs — opening underneath it would spend the first pages unseen.
+         */
+        LaunchedEffect(settings.tutorialCompleted, settingsLoaded, introVisible) {
+            if (settingsLoaded && !introVisible && !settings.tutorialCompleted) {
+                tutorialPage = 0
+                overlay = Overlay.TUTORIAL
+            }
+        }
+
+        /*
          * Tells the pointer to stand aside while THOR's keyboard is up.
          *
          * Distinct from [textInputActive] above, which is about the *platform's*
@@ -568,12 +595,16 @@ fun ThorApp(
          */
         LaunchedEffect(inputRouter) {
             inputRouter.events.collect { event ->
-                // The intro is the outermost surface. Every button dismisses it
-                // before Movies, Stream, overlays, or the grid can act underneath.
-                if (viewModel.introVisible.value) {
-                    viewModel.finishIntro()
-                    return@collect
-                }
+                /*
+                 * The intro is the outermost surface, and it runs to its own end.
+                 *
+                 * Every button is swallowed here rather than acted on: the
+                 * sequence used to be dismissible by any press, and no longer is,
+                 * but the swallowing is the half that still matters. A live grid
+                 * sits underneath, so a press that fell through would move a
+                 * cursor nobody can see or launch whatever it landed on.
+                 */
+                if (viewModel.introVisible.value) return@collect
 
                 /*
                  * The keyboard, when it is up, is every button.
@@ -728,6 +759,58 @@ fun ThorApp(
                         }
                     }
 
+                    /*
+                     * The walkthrough is paged, and every button is spoken for.
+                     *
+                     * Nothing here reaches the launcher underneath: it is read on
+                     * a first run, over a grid that is already live, and a press
+                     * that fell through would launch whatever it landed on.
+                     */
+                    Overlay.TUTORIAL -> {
+                        val lastPage = ThorTutorial.PAGES.lastIndex
+                        when (event.command) {
+                            ControllerCommand.CONFIRM,
+                            ControllerCommand.NAVIGATE_RIGHT,
+                            -> {
+                                if (tutorialPage >= lastPage) {
+                                    overlay = Overlay.NONE
+                                    settingsViewModel.completeTutorial()
+                                    feedback.play(FeedbackCue.SUCCESS)
+                                } else {
+                                    tutorialPage++
+                                    feedback.play(FeedbackCue.NAVIGATE)
+                                }
+                            }
+
+                            // Back steps a page at a time and only leaves from the
+                            // first, so a mis-press costs a page rather than the
+                            // whole walkthrough.
+                            ControllerCommand.BACK,
+                            ControllerCommand.NAVIGATE_LEFT,
+                            -> {
+                                if (tutorialPage == 0) {
+                                    overlay = Overlay.NONE
+                                    settingsViewModel.completeTutorial()
+                                    feedback.play(FeedbackCue.BACK)
+                                } else {
+                                    tutorialPage--
+                                    feedback.play(FeedbackCue.BACK)
+                                }
+                            }
+
+                            // The way out from anywhere, for anyone who already
+                            // knows the launcher. Start, which everywhere else
+                            // opens the Start panel.
+                            ControllerCommand.OPEN_SIDE_MENU -> {
+                                overlay = Overlay.NONE
+                                settingsViewModel.completeTutorial()
+                                feedback.play(FeedbackCue.BACK)
+                            }
+
+                            else -> Unit
+                        }
+                    }
+
                     Overlay.SEARCH -> {
                         // Without this the app drawer opens from a dock slot
                         // and can only be closed again — the results list is
@@ -858,7 +941,6 @@ fun ThorApp(
                 ThorIntro(
                     progress = introProgress.value,
                     motion = introMotion,
-                    onSkip = viewModel::finishIntro,
                 )
             }
         }
@@ -1160,6 +1242,14 @@ fun ThorApp(
                         },
                         onDismiss = { overlay = Overlay.NONE },
                         viewModel = searchViewModel,
+                    )
+
+                    Overlay.TUTORIAL -> TutorialScreen(
+                        pageIndex = tutorialPage,
+                        onDismiss = {
+                            overlay = Overlay.NONE
+                            settingsViewModel.completeTutorial()
+                        },
                     )
 
                     Overlay.NONE -> Unit

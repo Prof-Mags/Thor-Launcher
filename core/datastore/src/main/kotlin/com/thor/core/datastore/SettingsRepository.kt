@@ -156,6 +156,11 @@ class SettingsRepository @Inject constructor(
         edit { it.copy(developer = transform(it.developer)) }
     }
 
+    /** Records that the walkthrough has been seen, or clears it to show it again. */
+    suspend fun setTutorialCompleted(completed: Boolean) {
+        edit { it.copy(tutorialCompleted = completed) }
+    }
+
     /** Replaces everything — used by restore and by settings import. */
     suspend fun replaceAll(settings: ThorSettings) {
         edit { settings.copy(schemaVersion = ThorSettings.CURRENT_SCHEMA_VERSION) }

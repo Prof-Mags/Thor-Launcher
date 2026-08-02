@@ -36,6 +36,17 @@ data class ThorSettings(
      * every copied file on disk with no way to know what they belonged to.
      */
     val iconPacks: List<IconPack> = emptyList(),
+    /**
+     * Whether the walkthrough has been seen.
+     *
+     * Top level rather than inside a settings group for the same reason
+     * [iconPacks] is: it records something that happened, not a preference. It is
+     * also why it is stored at all — a walkthrough that reappeared on every cold
+     * start would be an obstacle rather than an introduction, and the launcher's
+     * process is killed often enough on a handheld that "once per run" would mean
+     * several times a day.
+     */
+    val tutorialCompleted: Boolean = false,
     /** Bumped by migrations in `SettingsSerializer`. */
     val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
 ) {

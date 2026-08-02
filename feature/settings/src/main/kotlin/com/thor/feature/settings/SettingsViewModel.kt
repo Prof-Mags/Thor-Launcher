@@ -796,6 +796,28 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launchSafely(TAG) { settingsRepository.resetToDefaults() }
     }
 
+    /**
+     * Records that the walkthrough has been read.
+     *
+     * Written whichever way it was left — finished, backed out of, or closed —
+     * because all three mean the same thing: the user has seen it and does not
+     * need it again unasked.
+     */
+    fun completeTutorial() {
+        viewModelScope.launchSafely(TAG) { settingsRepository.setTutorialCompleted(true) }
+    }
+
+    /**
+     * Clears the record so the walkthrough shows again.
+     *
+     * The shell watches the same flag that raises it on a first run, so putting
+     * it back is the whole of "replay" — there is no second path to keep in step
+     * with the first.
+     */
+    fun replayTutorial() {
+        viewModelScope.launchSafely(TAG) { settingsRepository.setTutorialCompleted(false) }
+    }
+
     fun scanLibrary() {
         syncManager.requestFullScan()
     }

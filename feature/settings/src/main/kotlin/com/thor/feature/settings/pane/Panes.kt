@@ -201,7 +201,7 @@ fun rowCountFor(
     SettingsPage.PERFORMANCE -> 3
     SettingsPage.NOTIFICATIONS -> NOTIFICATIONS_ROWS
     SettingsPage.ACCESSIBILITY -> 5
-    SettingsPage.DIAGNOSTICS -> 4
+    SettingsPage.DIAGNOSTICS -> 5
 }
 
 // ---------------------------------------------------------------- Appearance
@@ -1339,11 +1339,19 @@ private fun DiagnosticsPage(
         onClick = viewModel::requestDefaultLauncher,
     )
     RowDivider()
+    ActionRow(
+        title = "Walkthrough",
+        subtitle = "The first-run tour of every screen and setting",
+        focused = focusedRow == 1,
+        trailingLabel = "Replay",
+        onClick = viewModel::replayTutorial,
+    )
+    RowDivider()
     SwitchRow(
         title = "Verbose logging",
         subtitle = "Writes detailed output to logcat",
         checked = settings.developer.verboseLogging,
-        focused = focusedRow == 1,
+        focused = focusedRow == 2,
         onCheckedChange = { on -> viewModel.updateDeveloper { it.copy(verboseLogging = on) } },
     )
     RowDivider()
@@ -1352,7 +1360,7 @@ private fun DiagnosticsPage(
         subtitle = "Reports what each button sends, without acting on it. " +
             "Use Back to leave.",
         checked = keyCaptureEnabled,
-        focused = focusedRow == 2,
+        focused = focusedRow == 3,
         onCheckedChange = viewModel::setKeyCapture,
     )
 
@@ -1383,7 +1391,7 @@ private fun DiagnosticsPage(
     ActionRow(
         title = "Reset all settings",
         subtitle = "Restores every option to its default. Library data is untouched.",
-        focused = focusedRow == 3,
+        focused = focusedRow == 4,
         destructive = true,
         trailingLabel = "RESET",
         onClick = viewModel::resetToDefaults,
