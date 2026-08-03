@@ -207,6 +207,7 @@ fun TopScreen(
                 expanded = status.shadeOpen,
                 onToggleExpanded = statusActions.onToggleShade,
                 onGrantAccess = statusActions.onGrantAccess,
+                onOpenAppInfo = statusActions.onOpenAppInfo,
                 onNotificationOpened = statusActions.onNotificationOpened,
                 onNotificationDismissed = statusActions.onNotificationDismissed,
                 onDismissAll = statusActions.onDismissAll,

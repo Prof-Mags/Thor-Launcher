@@ -29,6 +29,7 @@ data class ShellStatus(
 class ShellStatusActions(
     val onToggleShade: () -> Unit = {},
     val onGrantAccess: () -> Unit = {},
+    val onOpenAppInfo: () -> Unit = {},
     val onNotificationOpened: (String) -> Unit = {},
     val onNotificationDismissed: (String) -> Unit = {},
     val onDismissAll: () -> Unit = {},

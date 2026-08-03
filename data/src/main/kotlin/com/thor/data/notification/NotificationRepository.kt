@@ -3,6 +3,7 @@ package com.thor.data.notification
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import com.thor.core.common.log.ThorLog
 import com.thor.core.model.LauncherNotification
@@ -94,6 +95,21 @@ class NotificationRepository @Inject constructor(
     fun accessSettingsIntent(): Intent =
         Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    /**
+     * Opens this app's own App info page.
+     *
+     * Needed because of restricted settings. Android 13 refuses notification
+     * listener and accessibility access to any app installed from outside a
+     * store, and shows "currently disabled for security" on the very page
+     * [accessSettingsIntent] opens — with no hint of what to do about it. The
+     * unlock is an overflow item on App info, so sending the user there is the
+     * only route through, and a launcher is sideloaded by definition.
+     */
+    fun appInfoIntent(): Intent = Intent(
+        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        Uri.fromParts("package", context.packageName, null),
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     fun attach(host: Host) {
         this.host = host

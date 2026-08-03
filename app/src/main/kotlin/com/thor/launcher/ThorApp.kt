@@ -440,6 +440,7 @@ fun ThorApp(
         ShellStatusActions(
             onToggleShade = profileStatusViewModel::toggleShade,
             onGrantAccess = profileStatusViewModel::requestNotificationAccess,
+            onOpenAppInfo = profileStatusViewModel::openAppInfo,
             onNotificationOpened = profileStatusViewModel::openNotification,
             onNotificationDismissed = profileStatusViewModel::dismissNotification,
             onDismissAll = profileStatusViewModel::dismissAllNotifications,

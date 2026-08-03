@@ -86,6 +86,18 @@ class ProfileStatusViewModel @Inject constructor(
             .onFailure { ThorLog.w(TAG, "No notification access settings page", it) }
     }
 
+    /**
+     * Opens this app's App info page.
+     *
+     * Where the restricted-settings unlock lives. Android 13 refuses this
+     * permission to anything installed outside a store and says only that it is
+     * disabled for security, with no route to the overflow item that lifts it.
+     */
+    fun openAppInfo() {
+        runCatching { context.startActivity(notifications.appInfoIntent()) }
+            .onFailure { ThorLog.w(TAG, "No app info page", it) }
+    }
+
     fun refreshAccess() = notifications.refresh()
 
     fun openNotification(key: String) = notifications.open(key)

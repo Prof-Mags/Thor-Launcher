@@ -63,6 +63,7 @@ fun ProfileNotificationCluster(
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
     onGrantAccess: () -> Unit,
+    onOpenAppInfo: () -> Unit,
     onNotificationOpened: (String) -> Unit,
     onNotificationDismissed: (String) -> Unit,
     onDismissAll: () -> Unit,
@@ -97,6 +98,7 @@ fun ProfileNotificationCluster(
                 access = access,
                 accent = accent,
                 onGrantAccess = onGrantAccess,
+                onOpenAppInfo = onOpenAppInfo,
                 onNotificationOpened = onNotificationOpened,
                 onNotificationDismissed = onNotificationDismissed,
                 onDismissAll = onDismissAll,
@@ -223,6 +225,7 @@ private fun NotificationShade(
     access: NotificationAccess,
     accent: Color,
     onGrantAccess: () -> Unit,
+    onOpenAppInfo: () -> Unit,
     onNotificationOpened: (String) -> Unit,
     onNotificationDismissed: (String) -> Unit,
     onDismissAll: () -> Unit,
@@ -259,7 +262,11 @@ private fun NotificationShade(
             Spacer(modifier = Modifier.height(7.dp))
 
             when (access) {
-                NotificationAccess.Denied -> AccessPrompt(accent = accent, onGrant = onGrantAccess)
+                NotificationAccess.Denied -> AccessPrompt(
+                    accent = accent,
+                    onGrant = onGrantAccess,
+                    onOpenAppInfo = onOpenAppInfo,
+                )
                 NotificationAccess.Connecting -> ShadeMessage(
                     title = "Connecting",
                     detail = "Waiting for Android to hand over the notification feed.",
@@ -295,9 +302,16 @@ private fun NotificationShade(
  * it and no dialog an app can raise, only a page in Android's settings the user
  * has to visit. So this states what is missing, what it is for, and opens that
  * page — anything less leaves an empty panel that looks broken.
+ *
+ * The second half is about restricted settings. Android 13 refuses this
+ * permission outright to anything installed from outside a store and says only
+ * "currently disabled for security" on the page it just sent the user to, with
+ * no hint that the unlock is an overflow item on App info. A launcher is
+ * sideloaded by definition, so that is not an edge case here — it is what
+ * happens to everybody the first time, and the panel had better say so.
  */
 @Composable
-private fun AccessPrompt(accent: Color, onGrant: () -> Unit) {
+private fun AccessPrompt(accent: Color, onGrant: () -> Unit, onOpenAppInfo: () -> Unit) {
     val colors = ThorTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Text(
@@ -313,20 +327,57 @@ private fun AccessPrompt(accent: Color, onGrant: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = colors.onSurfaceVariant,
         )
+        PromptButton(label = "GRANT ACCESS", background = accent, onClick = onGrant)
+
         Box(
             modifier = Modifier
-                .clip(ThorTheme.shapes.pill)
-                .background(accent)
-                .clickable(onClick = onGrant)
-                .padding(horizontal = 15.dp, vertical = 8.dp),
-        ) {
-            Text(
-                text = "GRANT ACCESS",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White,
-                fontWeight = FontWeight.Black,
-            )
-        }
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(colors.outline.copy(alpha = .3f)),
+        )
+
+        Text(
+            text = "Says \"disabled for security\"?",
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurface,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = "Android blocks this permission for apps installed outside the " +
+                "Play Store. Open App info, tap the ⋮ menu at the top right, choose " +
+                "\"Allow restricted settings\", then come back and grant access.",
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+        )
+        PromptButton(
+            label = "OPEN APP INFO",
+            background = colors.surfaceHighest,
+            content = colors.onSurface,
+            onClick = onOpenAppInfo,
+        )
+    }
+}
+
+@Composable
+private fun PromptButton(
+    label: String,
+    background: Color,
+    content: Color = Color.White,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .clip(ThorTheme.shapes.pill)
+            .background(background)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 15.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = content,
+            fontWeight = FontWeight.Black,
+        )
     }
 }
 
