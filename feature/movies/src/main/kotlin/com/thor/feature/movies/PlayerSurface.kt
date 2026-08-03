@@ -91,6 +91,7 @@ fun PlayerSurface(
     player: ThorPlayer,
     playback: Playback,
     status: PlayerStatus,
+    showStateOverlay: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var surface by remember { mutableStateOf<TextureView?>(null) }
@@ -142,7 +143,7 @@ fun PlayerSurface(
             )
         }
 
-        if (status.shouldShowOverlay()) {
+        if (showStateOverlay && status.shouldShowOverlay()) {
             PlaybackStateOverlay(
                 playback = playback,
                 status = status,

@@ -57,6 +57,8 @@ data class StreamUiState(
     val pairing: PairingState = PairingState.Idle,
     /** What is in the "add a PC by address" field. */
     val newAddress: String = "",
+    /** Monotonic request consumed by Couch Mode's controller-focusable address field. */
+    val addressFocusRequest: Long = 0L,
     /**
      * Set while the PC is being asked to share its screen.
      *
@@ -463,6 +465,11 @@ class StreamViewModel @Inject constructor(
                 _uiState.value.newAddress.isNotBlank() -> addTypedHost()
                 else -> _uiState.value.focusedHostAction?.let(::performHostAction)
             }
+            true
+        }
+
+        ControllerCommand.SEARCH -> {
+            _uiState.update { it.copy(addressFocusRequest = it.addressFocusRequest + 1L) }
             true
         }
 

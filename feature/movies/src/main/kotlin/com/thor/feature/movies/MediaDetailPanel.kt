@@ -154,7 +154,7 @@ fun MediaDetailPanel(
 }
 
 @Composable
-private fun InformationPanel(
+internal fun InformationPanel(
     detail: DetailState,
     modifier: Modifier = Modifier,
 ) {

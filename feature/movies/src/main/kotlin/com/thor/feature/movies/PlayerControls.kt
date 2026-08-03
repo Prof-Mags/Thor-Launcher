@@ -147,6 +147,58 @@ fun PlayerControls(
     }
 }
 
+/**
+ * Couch Mode's controls live over the full-width video instead of permanently
+ * taking a second panel. The gradient preserves the picture above the deck and
+ * keeps every controller and touch action available at the bottom of the player.
+ */
+@Composable
+fun CouchPlayerControlsOverlay(
+    playback: Playback,
+    status: PlayerStatus,
+    focusedAction: PlayerAction,
+    hasNextEpisode: Boolean,
+    skipSeconds: Int,
+    onAction: (PlayerAction) -> Unit,
+    onSeek: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color.Transparent,
+                        Color.Black.copy(alpha = 0.78f),
+                        Color.Black.copy(alpha = 0.96f),
+                    ),
+                ),
+            )
+            .padding(start = 28.dp, top = 72.dp, end = 28.dp, bottom = 20.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            NowPlayingHeader(playback = playback, status = status)
+            TimelinePanel(status = status, onSeek = onSeek)
+            TransportDeck(
+                status = status,
+                focusedAction = focusedAction,
+                hasNextEpisode = hasNextEpisode,
+                skipSeconds = skipSeconds,
+                onAction = onAction,
+            )
+            PlaybackTools(
+                status = status,
+                focusedAction = focusedAction,
+                onAction = onAction,
+            )
+        }
+    }
+}
+
 @Composable
 private fun NowPlayingHeader(playback: Playback, status: PlayerStatus) {
     val colors = ThorTheme.colors

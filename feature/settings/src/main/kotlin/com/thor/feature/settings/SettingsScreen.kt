@@ -62,6 +62,8 @@ import com.thor.feature.settings.pane.rowCountFor
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
+    /** Uses the shared couch shell instead of presenting as a standalone overlay. */
+    couchMode: Boolean = false,
     /**
      * Reports how many focusable rows the visible surface has, so the host can
      * clamp controller navigation. Only this screen knows what it rendered.
@@ -145,17 +147,22 @@ fun SettingsScreen(
 
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val screenBackground = if (couchMode) {
+        Modifier.background(colors.background)
+    } else {
+        Modifier.background(
+            Brush.horizontalGradient(
+                colors = listOf(colors.surfaceElevated, colors.background),
+            ),
+        )
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(colors.surfaceElevated, colors.background),
-                    ),
-                )
-                .padding(dimens.spacingSmall),
+                .then(screenBackground)
+                .padding(if (couchMode) dimens.spacing else dimens.spacingSmall),
             horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
         ) {
             // ---- Category rail ---------------------------------------------
@@ -187,13 +194,15 @@ fun SettingsScreen(
                         .fillMaxSize()
                         .padding(vertical = dimens.spacing),
                 ) {
-                Text(
-                    text = "Loki",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.cursor,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = dimens.spacingLarge),
-                )
+                if (!couchMode) {
+                    Text(
+                        text = "Loki",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.cursor,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = dimens.spacingLarge),
+                    )
+                }
                 Text(
                     text = "Settings",
                     style = MaterialTheme.typography.headlineSmall,

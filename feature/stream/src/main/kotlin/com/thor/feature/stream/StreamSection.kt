@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +50,7 @@ import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.model.HostStatus
 import com.thor.core.model.StreamHost
 import com.thor.core.ui.input.ThorInputField
+import com.thor.core.ui.input.LocalThorTextInput
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.data.stream.LaunchStage
@@ -483,6 +485,189 @@ fun StreamBottomPanel(
                 onAddressChanged = onAddressChanged,
                 onAddHost = onAddHost,
                 modifier = Modifier.weight(1f - SELECTED_PANEL_WEIGHT).fillMaxHeight(),
+            )
+        }
+    }
+}
+
+/**
+ * Remote play laid out for one television instead of two handheld panels.
+ * The host list remains visible beside the selected PC and every visible action
+ * is the same controller-driven action exposed by [StreamUiState.hostActions].
+ */
+@Composable
+fun StreamCouchScreen(
+    state: StreamUiState,
+    clientName: String,
+    onHostSelected: (Int) -> Unit,
+    onAddressChanged: (String) -> Unit,
+    onAddHost: () -> Unit,
+    onRefreshHost: (StreamHost) -> Unit,
+    onStartStream: () -> Unit,
+    onPairHost: () -> Unit,
+    onCancelPairing: () -> Unit,
+    onStopStream: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ThorTheme.colors
+    val dimens = ThorTheme.dimens
+
+    Row(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.horizontalGradient(
+                    listOf(colors.background, colors.surfaceElevated.copy(alpha = 0.56f)),
+                ),
+            )
+            .padding(dimens.spacingSmall),
+        horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(0.88f)
+                .fillMaxHeight()
+                .clip(ThorTheme.shapes.panel)
+                .border(1.dp, colors.outline.copy(alpha = 0.24f), ThorTheme.shapes.panel),
+        ) {
+            val listState = rememberLazyListState()
+            LaunchedEffect(state.cursor, state.hosts.size) {
+                if (state.hosts.isNotEmpty()) {
+                    listState.animateScrollToItem(state.cursor.coerceIn(0, state.hosts.lastIndex))
+                }
+            }
+            Column(
+                modifier = Modifier.fillMaxSize().padding(dimens.spacingSmall),
+                verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+            ) {
+                StreamHeader(state)
+                if (state.hosts.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Rounded.Computer,
+                                contentDescription = null,
+                                tint = colors.onSurfaceVariant,
+                                modifier = Modifier.size(54.dp),
+                            )
+                            Text(
+                                text = "No PCs available",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = colors.onSurface,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(top = 10.dp),
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize().weight(1f),
+                        contentPadding = PaddingValues(vertical = 2.dp),
+                        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+                    ) {
+                        itemsIndexed(
+                            items = state.hosts,
+                            key = { _, host -> host.address },
+                        ) { index, host ->
+                            HostCard(
+                                host = host,
+                                status = state.statusOf(host),
+                                selected = index == state.cursor,
+                                connecting = state.connecting && index == state.cursor,
+                                onClick = { onHostSelected(index) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1.12f).fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+        ) {
+            SelectedHostPanel(
+                state = state,
+                clientName = clientName,
+                onRefreshHost = onRefreshHost,
+                onStartStream = onStartStream,
+                onPairHost = onPairHost,
+                onCancelPairing = onCancelPairing,
+                onStopStream = onStopStream,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            )
+            CouchManualHostBar(
+                address = state.newAddress,
+                focusRequest = state.addressFocusRequest,
+                onAddressChanged = onAddressChanged,
+                onAddHost = onAddHost,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CouchManualHostBar(
+    address: String,
+    focusRequest: Long,
+    onAddressChanged: (String) -> Unit,
+    onAddHost: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ThorTheme.colors
+    val textInput = LocalThorTextInput.current
+    val currentOnAddressChanged = rememberUpdatedState(onAddressChanged)
+
+    LaunchedEffect(focusRequest) {
+        if (focusRequest > 0L) {
+            textInput.focus(
+                id = COUCH_ADDRESS_FIELD_ID,
+                label = "PC address",
+                initial = address,
+            ) { edited -> currentOnAddressChanged.value(edited) }
+        }
+    }
+
+    GlassSurface(modifier = modifier, shape = ThorTheme.shapes.panel) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(ThorTheme.shapes.small)
+                    .background(colors.cursor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Add,
+                    contentDescription = null,
+                    tint = colors.cursor,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            ThorInputField(
+                id = COUCH_ADDRESS_FIELD_ID,
+                label = "Add PC",
+                value = address,
+                onValueChange = onAddressChanged,
+                placeholder = "PC address",
+                modifier = Modifier.weight(1f),
+            )
+            StreamActionButton(
+                label = "ADD",
+                icon = Icons.Rounded.Add,
+                enabled = address.isNotBlank(),
+                primary = true,
+                onClick = onAddHost,
+                modifier = Modifier.width(94.dp),
             )
         }
     }
@@ -1099,3 +1284,4 @@ private val BUSY = Color(0xFFFFB300)
 
 private const val SELECTED_PANEL_WEIGHT = 0.61f
 private const val ADDRESS_FIELD_ID = "stream-host-address"
+private const val COUCH_ADDRESS_FIELD_ID = "stream-couch-host-address"

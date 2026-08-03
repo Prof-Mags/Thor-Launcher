@@ -16,7 +16,21 @@ data class ThorDisplayInfo(
     val isPresentationCapable: Boolean,
 ) {
     val aspectRatio: Float get() = if (heightPx == 0) 1f else widthPx.toFloat() / heightPx
+
+    /**
+     * The panel's width in dp, which is the width its layout is decided in.
+     *
+     * Pixels alone do not describe a screen to a composition — dp does, and dp is
+     * pixels over density. Anything re-drawing this panel somewhere else, at some
+     * other size, needs this figure to reproduce the layout rather than merely the
+     * picture; see the recording frame.
+     */
+    val widthDp: Float
+        get() = if (densityDpi <= 0) widthPx.toFloat() else widthPx * DP_PER_INCH / densityDpi
 }
+
+/** Android's baseline: 160dpi is where one dp equals one pixel. */
+private const val DP_PER_INCH = 160f
 
 /**
  * What the launcher currently has to work with.

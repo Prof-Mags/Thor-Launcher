@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +81,7 @@ import com.thor.core.ui.feedback.FeedbackCue
 import com.thor.core.ui.component.ThorKeyboard
 import com.thor.core.ui.component.ThorIntro
 import com.thor.core.ui.component.ConsoleMockup
+import com.thor.core.ui.component.recordingFrameSize
 import com.thor.core.ui.input.LocalThorTextInput
 import com.thor.core.ui.input.ThorTextInputState
 import com.thor.core.ui.feedback.rememberThorFeedback
@@ -92,9 +94,12 @@ import com.thor.feature.home.LauncherViewModel
 import com.thor.feature.home.component.EditEntryDialog
 import com.thor.feature.home.component.EmptySection
 import com.thor.feature.movies.MoviesBottomPanel
+import com.thor.feature.movies.MoviesCouchScreen
+import com.thor.feature.movies.MoviesMode
 import com.thor.feature.movies.MoviesTopPanel
 import com.thor.feature.movies.MoviesViewModel
 import com.thor.feature.stream.StreamBottomPanel
+import com.thor.feature.stream.StreamCouchScreen
 import com.thor.feature.stream.StreamTopPanel
 import com.thor.feature.stream.StreamEffect
 import com.thor.feature.stream.StreamViewModel
@@ -104,6 +109,7 @@ import com.thor.feature.movies.perform
 import com.thor.feature.movies.pickSource
 import com.thor.feature.movies.pickSeason
 import com.thor.feature.movies.pickEpisode
+import com.thor.feature.movies.pickTitle
 import com.thor.core.model.LauncherTab
 import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.ShortcutPanel
@@ -339,6 +345,11 @@ fun ThorApp(
     val recording by viewModel.recording.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val navCursor by viewModel.navCursor.collectAsState()
+    val couchFocus by viewModel.couchFocus.collectAsState()
+    val couchPlatformIndex by viewModel.couchPlatformIndex.collectAsState()
+    val couchQuickDetailsEntryId by viewModel.couchQuickDetailsEntryId.collectAsState()
+    val couchQuickDetailsActionIndex by viewModel.couchQuickDetailsActionIndex.collectAsState()
+    val couchSettingsFocused by viewModel.couchSettingsFocused.collectAsState()
     val context = LocalContext.current
 
     /*
@@ -381,6 +392,7 @@ fun ThorApp(
     // in decides which window has to hold focus for it.
     val secondary = displays.firstOrNull { !it.isPrimary && it.isPresentationCapable }
     val mode = resolveMode(settings.display.mode, secondary != null)
+    val couchModeNow = rememberUpdatedState(mode == DualScreenMode.COUCH)
 
     /*
      * ---- Focus -----------------------------------------------------------------
@@ -886,7 +898,11 @@ fun ThorApp(
                  * section that swallowed everything would be a trap with a film
                  * playing in it.
                  */
-                if (selectedTabNow() == LauncherTab.MOVIES && !overlayIsOpenNow()) {
+                if (
+                    selectedTabNow() == LauncherTab.MOVIES &&
+                    viewModel.navCursor.value == null &&
+                    !overlayIsOpenNow()
+                ) {
                     if (moviesSection.handleCommand(event.command)) {
                         feedback.play(event.command.toCue())
                         return@collect
@@ -896,7 +912,11 @@ fun ThorApp(
                 // Offered the same way, and declines the same way: Up and Down
                 // walk the list of PCs, everything else falls through to the
                 // shell so the nav bar and Home keep working.
-                if (selectedTabNow() == LauncherTab.STREAM && !overlayIsOpenNow()) {
+                if (
+                    selectedTabNow() == LauncherTab.STREAM &&
+                    viewModel.navCursor.value == null &&
+                    !overlayIsOpenNow()
+                ) {
                     if (streamViewModel.handleCommand(event.command)) {
                         feedback.play(event.command.toCue())
                         return@collect
@@ -963,12 +983,23 @@ fun ThorApp(
 
                 // The grid handles everything unless the info surface is the active
                 // one, which it is exactly while it is showing something.
-                val target =
-                    if (activeSurfaceNow() == InputSurface.BOTTOM) Overlay.NONE else overlay
+                val target = if (couchModeNow.value) {
+                    // Couch Mode composes every overlay into its one visible
+                    // window, so the active surface must not erase its routing.
+                    overlay
+                } else if (activeSurfaceNow() == InputSurface.BOTTOM) {
+                    Overlay.NONE
+                } else {
+                    overlay
+                }
 
                 when (target) {
                     Overlay.NONE -> {
-                        viewModel.onCommand(event.command, event.accelerated)
+                        viewModel.onCommand(
+                            command = event.command,
+                            accelerated = event.accelerated,
+                            couchMode = couchModeNow.value,
+                        )
                         feedback.play(event.command.toCue())
                     }
 
@@ -986,7 +1017,27 @@ fun ThorApp(
                     Overlay.PERMISSIONS -> Unit
 
                     Overlay.SETTINGS -> {
-                        if (event.command == ControllerCommand.BACK) {
+                        if (couchModeNow.value && (
+                                event.command == ControllerCommand.CYCLE_IMAGE_PREVIOUS ||
+                                    event.command == ControllerCommand.CYCLE_IMAGE_NEXT
+                                )
+                        ) {
+                            // Settings is the final destination in the same bumper
+                            // sequence as Stream, Home, and Movies.
+                            if (settingsViewModel.isAddingPlatform) {
+                                settingsViewModel.cancelAddPlatform()
+                            }
+                            val delta = if (
+                                event.command == ControllerCommand.CYCLE_IMAGE_PREVIOUS
+                            ) -1 else 1
+                            val settingsStillSelected =
+                                viewModel.cycleCouchDestination(delta, fromSettings = true)
+                            if (!settingsStillSelected) {
+                                overlay = Overlay.NONE
+                                settingsViewModel.resetFocus()
+                            }
+                            feedback.play(FeedbackCue.PAGE)
+                        } else if (event.command == ControllerCommand.BACK) {
                             // Back unwinds one level at a time: an open page
                             // first, then the overlay. Closing outright from a
                             // page would lose the user's place in the rail.
@@ -995,6 +1046,7 @@ fun ThorApp(
                             } else if (settingsViewModel.isAtTopLevel) {
                                 overlay = Overlay.NONE
                                 settingsViewModel.resetFocus()
+                                if (couchModeNow.value) viewModel.leaveNavBar()
                             } else {
                                 settingsViewModel.closePage()
                             }
@@ -1458,10 +1510,12 @@ fun ThorApp(
                 exit = fadeOut(),
             ) {
                 when (overlay) {
-                    Overlay.SETTINGS -> SettingsScreen(
-                        onRowCountChanged = { settingsRowCount = it },
-                        viewModel = settingsViewModel,
-                    )
+                    Overlay.SETTINGS -> if (mode != DualScreenMode.COUCH) {
+                        SettingsScreen(
+                            onRowCountChanged = { settingsRowCount = it },
+                            viewModel = settingsViewModel,
+                        )
+                    }
 
                     Overlay.SEARCH -> SearchScreen(
                         onEntrySelected = { entry ->
@@ -1531,6 +1585,7 @@ fun ThorApp(
                         player = moviesViewModel.player,
                         status = moviesStatus,
                         onTypeSelected = moviesViewModel::switchType,
+                        onItemSelected = moviesSection::pickTitle,
                     )
                     infoOverlays()
                     if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay()
@@ -1618,43 +1673,87 @@ fun ThorApp(
                         // matching collection in the info panel above.
                         val moviesStatus by moviesViewModel.playerStatus.collectAsState()
 
-                        MoviesBottomPanel(
-                            mode = moviesSection.mode,
-                            detail = moviesDetail,
-                            sources = moviesSources,
-                            playback = moviesPlayback,
-                            status = moviesStatus,
-                            focusedSource = moviesSection.focusedSource,
-                            focusedAction = moviesSection.focusedAction,
-                            hasNextEpisode = moviesViewModel.nextEpisode() != null,
-                            skipSeconds = moviesSettings.skipSeconds,
-                            onPlayerAction = moviesSection::perform,
-                            onSeek = moviesSection::seekTo,
-                            onSourcePicked = moviesSection::pickSource,
-                            onSeasonSelected = moviesSection::pickSeason,
-                            onEpisodeSelected = moviesSection::pickEpisode,
-                            query = moviesState.query,
-                            onQueryChanged = moviesViewModel::onQueryChanged,
-                            searchRequested = moviesSection.searchRequested,
-                            onSearchFocused = moviesSection::onSearchFocused,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        if (mode == DualScreenMode.COUCH) {
+                            MoviesCouchScreen(
+                                mode = moviesSection.mode,
+                                state = moviesState,
+                                detail = moviesDetail,
+                                sources = moviesSources,
+                                playback = moviesPlayback,
+                                player = moviesViewModel.player,
+                                status = moviesStatus,
+                                focusedSource = moviesSection.focusedSource,
+                                focusedAction = moviesSection.focusedAction,
+                                hasNextEpisode = moviesViewModel.nextEpisode() != null,
+                                skipSeconds = moviesSettings.skipSeconds,
+                                onTypeSelected = moviesViewModel::switchType,
+                                onItemSelected = moviesSection::pickTitle,
+                                onPlayerAction = moviesSection::perform,
+                                onSeek = moviesSection::seekTo,
+                                onSourcePicked = moviesSection::pickSource,
+                                onSeasonSelected = moviesSection::pickSeason,
+                                onEpisodeSelected = moviesSection::pickEpisode,
+                                query = moviesState.query,
+                                onQueryChanged = moviesViewModel::onQueryChanged,
+                                searchRequested = moviesSection.searchRequested,
+                                onSearchFocused = moviesSection::onSearchFocused,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            MoviesBottomPanel(
+                                mode = moviesSection.mode,
+                                detail = moviesDetail,
+                                sources = moviesSources,
+                                playback = moviesPlayback,
+                                status = moviesStatus,
+                                focusedSource = moviesSection.focusedSource,
+                                focusedAction = moviesSection.focusedAction,
+                                hasNextEpisode = moviesViewModel.nextEpisode() != null,
+                                skipSeconds = moviesSettings.skipSeconds,
+                                onPlayerAction = moviesSection::perform,
+                                onSeek = moviesSection::seekTo,
+                                onSourcePicked = moviesSection::pickSource,
+                                onSeasonSelected = moviesSection::pickSeason,
+                                onEpisodeSelected = moviesSection::pickEpisode,
+                                query = moviesState.query,
+                                onQueryChanged = moviesViewModel::onQueryChanged,
+                                searchRequested = moviesSection.searchRequested,
+                                onSearchFocused = moviesSection::onSearchFocused,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     } else if (tab == LauncherTab.STREAM) {
                         val streamState by streamViewModel.uiState.collectAsState()
                         val clientName by streamViewModel.clientName.collectAsState()
 
-                        StreamBottomPanel(
-                            state = streamState,
-                            clientName = clientName,
-                            onAddressChanged = streamViewModel::onAddressChanged,
-                            onAddHost = streamViewModel::addTypedHost,
-                            onRefreshHost = streamViewModel::refresh,
-                            onStartStream = streamViewModel::shareScreen,
-                            onPairHost = streamViewModel::pair,
-                            onCancelPairing = streamViewModel::cancelPairing,
-                            onStopStream = streamViewModel::stopHostSession,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        if (mode == DualScreenMode.COUCH) {
+                            StreamCouchScreen(
+                                state = streamState,
+                                clientName = clientName,
+                                onHostSelected = streamViewModel::selectHost,
+                                onAddressChanged = streamViewModel::onAddressChanged,
+                                onAddHost = streamViewModel::addTypedHost,
+                                onRefreshHost = streamViewModel::refresh,
+                                onStartStream = streamViewModel::shareScreen,
+                                onPairHost = streamViewModel::pair,
+                                onCancelPairing = streamViewModel::cancelPairing,
+                                onStopStream = streamViewModel::stopHostSession,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            StreamBottomPanel(
+                                state = streamState,
+                                clientName = clientName,
+                                onAddressChanged = streamViewModel::onAddressChanged,
+                                onAddHost = streamViewModel::addTypedHost,
+                                onRefreshHost = streamViewModel::refresh,
+                                onStartStream = streamViewModel::shareScreen,
+                                onPairHost = streamViewModel::pair,
+                                onCancelPairing = streamViewModel::cancelPairing,
+                                onStopStream = streamViewModel::stopHostSession,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     } else {
                         EmptySection(tab = tab, modifier = Modifier.fillMaxSize())
                     }
@@ -1724,7 +1823,49 @@ fun ThorApp(
                 onFolderClosed = viewModel::closeFolder,
                 selectedTab = selectedTab,
                 navCursor = navCursor,
-                onTabSelected = viewModel::selectTab,
+                onTabSelected = { tab ->
+                    if (mode == DualScreenMode.COUCH && overlay == Overlay.SETTINGS) {
+                        overlay = Overlay.NONE
+                        settingsViewModel.resetFocus()
+                    }
+                    viewModel.selectTab(tab)
+                    if (mode == DualScreenMode.COUCH) viewModel.leaveNavBar()
+                },
+                couchFocus = couchFocus,
+                couchPlatformIndex = couchPlatformIndex,
+                couchQuickDetailsEntryId = couchQuickDetailsEntryId,
+                couchQuickDetailsActionIndex = couchQuickDetailsActionIndex,
+                couchSettingsFocused = couchSettingsFocused,
+                couchSettingsSelected = mode == DualScreenMode.COUCH &&
+                    overlay == Overlay.SETTINGS,
+                couchClockStyle = settings.personalization.clockStyle,
+                showCouchStatusBar = settings.personalization.showStatusBar,
+                couchUiScale = settings.display.couchUiScale,
+                onCouchEntryFocused = viewModel::focusCouchEntry,
+                onCouchEntrySelected = viewModel::launchEntry,
+                onCouchEntryLongPressed = viewModel::openContextMenu,
+                onCouchPlatformSelected = viewModel::selectCouchPlatform,
+                onCouchDetailsPlay = { entry ->
+                    viewModel.closeCouchQuickDetails()
+                    viewModel.launchEntry(entry)
+                },
+                onCouchDetailsFavorite = viewModel::toggleFavorite,
+                onCouchDetailsMore = { entry ->
+                    viewModel.closeCouchQuickDetails()
+                    viewModel.openContextMenu(entry)
+                },
+                onCouchDetailsDismissed = viewModel::closeCouchQuickDetails,
+                onCouchSettingsSelected = viewModel::openCouchSettings,
+                couchFullscreenSection = selectedTab == LauncherTab.MOVIES &&
+                    moviesSection.mode == MoviesMode.PLAYING,
+                couchSettingsContent = {
+                    SettingsScreen(
+                        onRowCountChanged = { settingsRowCount = it },
+                        viewModel = settingsViewModel,
+                        couchMode = true,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                },
                 // The other half of the Movies section: describe, choose, or
                 // control, matching whatever its top panel is showing.
                 sectionContent = sectionHost,
@@ -1893,23 +2034,34 @@ fun ThorApp(
         }
 
         /*
-         * The shape of a recording, taken from the panels themselves.
+         * The shape of a recording: the two panels stacked, inside a device body.
          *
-         * Width follows the wider panel, height is both panels stacked plus room for
-         * the console body around them — so the video is the device's own proportions
-         * rather than a guess, whatever hardware this is running on.
+         * Width follows the wider panel; the height comes from
+         * [recordingFrameSize], which derives both from the same constants the body
+         * lays out with. That shared derivation is the point. The height used to be
+         * a flat 22% allowance written here while the body used its own separate
+         * fractions over there, and the two disagreed — the frame was taller than
+         * the layout needed and each panel was drawn narrower than the frame, so
+         * neither composition was ever handed the box its real screen has. Both
+         * laid out for a smaller screen and showed correspondingly less.
          */
         val primaryPanel = displays.firstOrNull { it.isPrimary }
         LaunchedEffect(primaryPanel, secondary) {
             val top = primaryPanel ?: return@LaunchedEffect
             val bottom = secondary ?: top
-            val width = maxOf(top.widthPx, bottom.widthPx)
-            val scaled = { panel: com.thor.core.display.ThorDisplayInfo ->
-                (width / panel.aspectRatio).toInt()
-            }
+
+            // Wider than either panel, because the console is wider than its screens:
+            // the frame is sized so the lid's screen gets its panel's own pixels,
+            // and brought back inside the encoder's range if that overshoots.
+            val frame = recordingFrameSize(
+                panelWidthPx = maxOf(top.widthPx, bottom.widthPx),
+                topAspect = top.aspectRatio,
+                bottomAspect = bottom.aspectRatio,
+            )
+
             viewModel.setCaptureGeometry(
-                width = width,
-                height = ((scaled(top) + scaled(bottom)) * CAPTURE_BODY_ALLOWANCE).toInt(),
+                width = frame.width,
+                height = frame.height,
                 densityDpi = top.densityDpi,
             )
         }
@@ -2028,6 +2180,48 @@ fun ThorApp(
             displayId = primaryPanel?.displayId,
             onHoverFeedback = { feedback.play(FeedbackCue.NAVIGATE) },
         ) {
+        /*
+         * The recording's own display, whatever the screen mode is.
+         *
+         * A third window, on a display the launcher created for itself, whose output
+         * is the video encoder's input surface. It renders the same two surfaces the
+         * panels do — from the same state, so it cannot drift — one above the other
+         * at full size. Nothing is captured from the screens; they are simply drawn
+         * again somewhere that happens to be a file.
+         *
+         * Outside the `when` below, which is where it used to live — inside the
+         * dual-display arm, so starting a recording in any other mode produced a
+         * display nothing was ever composed onto and a file with nothing in it.
+         * What the panels are *doing* is the same in every mode; only where they are
+         * drawn differs, and this draws them somewhere else regardless.
+         */
+        (recording as? RecordingState.Active)?.let { active ->
+            SecondaryDisplay(
+                displayId = active.displayId,
+                enabled = { true },
+                takesFocus = { false },
+            ) {
+                secondWindow {
+                    // Falls back to the top panel rather than to a constant: with one
+                    // screen the recording is that screen twice over, which is at
+                    // least the right proportions and the right layout.
+                    val recordedBottom = secondary ?: primaryPanel
+
+                    ConsoleMockup(
+                        topAspect = primaryPanel?.aspectRatio ?: DEFAULT_PANEL_ASPECT,
+                        bottomAspect = recordedBottom?.aspectRatio ?: DEFAULT_PANEL_ASPECT,
+                        // The real screens' dp widths, which is what lets each panel
+                        // be laid out as itself and merely drawn smaller. See the
+                        // density note in [StackedPanels].
+                        topWidthDp = primaryPanel?.widthDp ?: DEFAULT_PANEL_WIDTH_DP,
+                        bottomWidthDp = recordedBottom?.widthDp ?: DEFAULT_PANEL_WIDTH_DP,
+                        topPanel = topContent,
+                        bottomPanel = { bottomContent(Modifier.fillMaxSize()) },
+                    )
+                }
+            }
+        }
+
         when (mode) {
             DualScreenMode.DUAL_DISPLAY -> {
                 val gridWindowContent: @Composable () -> Unit = {
@@ -2068,33 +2262,6 @@ fun ThorApp(
                                 .claimsInputFor(InputSurface.TOP),
                         ) {
                             topContent()
-                        }
-                    }
-                }
-
-                /*
-                 * The recording's own display.
-                 *
-                 * A third window, on a display the launcher created for itself, whose
-                 * output is the video encoder's input surface. It renders the same two
-                 * surfaces the panels do — from the same state, so it cannot drift —
-                 * inside a console body. Nothing is captured from the screens; they are
-                 * simply drawn again somewhere that happens to be a file.
-                 */
-                (recording as? RecordingState.Active)?.let { active ->
-                    SecondaryDisplay(
-                        displayId = active.displayId,
-                        enabled = { true },
-                        takesFocus = { false },
-                    ) {
-                        secondWindow {
-                        ConsoleMockup(
-                            topAspect = displays.firstOrNull { it.isPrimary }?.aspectRatio
-                                ?: DEFAULT_PANEL_ASPECT,
-                            bottomAspect = secondary?.aspectRatio ?: DEFAULT_PANEL_ASPECT,
-                            topPanel = topContent,
-                            bottomPanel = { bottomContent(Modifier.fillMaxSize()) },
-                        )
                         }
                     }
                 }
@@ -2445,11 +2612,11 @@ private const val INTRO_REDUCED_MS = 300
 /** The shape a panel is assumed to be before the displays have reported in. */
 private const val DEFAULT_PANEL_ASPECT = 16f / 10f
 
+/** A plausible handheld panel, for the moment before any display has reported. */
+private const val DEFAULT_PANEL_WIDTH_DP = 640f
+
 /** Recording red, fixed rather than themed: it means one thing everywhere. */
 private val RECORDING_DOT = Color(0xFFE5484D)
-
-/** Extra height for the console body drawn around the two panels. */
-private const val CAPTURE_BODY_ALLOWANCE = 1.22f
 
 /** How long a transient message stays up, and how far it sits above the dock. */
 private const val MESSAGE_DURATION_MS = 3_000L

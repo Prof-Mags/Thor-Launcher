@@ -53,6 +53,7 @@ fun ArtworkImage(
     fallbackText: String? = null,
     fallbackTint: Color = ThorTheme.colors.primary,
     contentScale: ContentScale = ContentScale.Crop,
+    alignment: Alignment = Alignment.Center,
     crossfadeMillis: Int = ThorTheme.motion.detailMillis,
 ) {
     val context = LocalContext.current
@@ -69,13 +70,23 @@ fun ArtworkImage(
      * effect by the public route: the first layout pass reports the bounds, the
      * request is rebuilt once against them, and every decode afterwards is at
      * the size actually drawn.
-     */
+    */
     var targetSize by remember(model) { mutableStateOf(Size.ORIGINAL) }
-    val request = remember(model, crossfadeMillis, targetSize) {
+    // A Fit/Inside draw must also ask Coil for a fitted decode. Always decoding
+    // with FILL could crop the bitmap before Compose received it, so changing
+    // only ContentScale still left screenshot and logo edges missing.
+    val requestScale = if (
+        contentScale == ContentScale.Fit || contentScale == ContentScale.Inside
+    ) {
+        Scale.FIT
+    } else {
+        Scale.FILL
+    }
+    val request = remember(model, crossfadeMillis, targetSize, requestScale) {
         ImageRequest.Builder(context)
             .data(model)
             .crossfade(crossfadeMillis)
-            .scale(Scale.FILL)
+            .scale(requestScale)
             .size(targetSize)
             // Hardware bitmaps are bound to the rendering context that uploaded
             // them. The grid is drawn inside a Presentation on the secondary
@@ -110,6 +121,7 @@ fun ArtworkImage(
             painter = painter,
             contentDescription = contentDescription,
             contentScale = contentScale,
+            alignment = alignment,
             // Where the bounds come from. Reported from the target the image is
             // actually drawn into, so a cell asks for a cell-sized decode and
             // the top panel asks for a panel-sized one.

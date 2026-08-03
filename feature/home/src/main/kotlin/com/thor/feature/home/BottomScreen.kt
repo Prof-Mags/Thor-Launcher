@@ -19,6 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,8 +29,10 @@ import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AnimatedWallpaper
+import com.thor.core.model.ClockStyle
 import com.thor.core.model.DockSettings
 import com.thor.core.model.GameEntry
+import com.thor.core.model.GridEntry
 import com.thor.core.model.LauncherAction
 import com.thor.core.model.SortOrder
 import com.thor.core.ui.component.AnimatedWallpaperBackground
@@ -46,6 +49,11 @@ import com.thor.feature.home.component.SortDialog
 import com.thor.feature.home.component.BottomNavBar
 import com.thor.feature.home.component.EmptySection
 import com.thor.feature.home.couch.CouchScreen
+import com.thor.feature.home.couch.CouchFocus
+import com.thor.feature.home.couch.CouchPlatformMenu
+import com.thor.feature.home.couch.CouchPlatformSummary
+import com.thor.feature.home.couch.CouchQuickDetails
+import com.thor.feature.home.couch.couchPlatforms
 import com.thor.core.model.PanelLayout
 import com.thor.feature.home.component.dockHeightFor
 import com.thor.core.model.LauncherFeatures.DOCK_ENABLED
@@ -100,6 +108,28 @@ fun BottomScreen(
     /** The tab the controller cursor is on, or null when it is in the content. */
     navCursor: LauncherTab?,
     onTabSelected: (LauncherTab) -> Unit,
+    /** Focus and actions for Couch Mode's rail library. */
+    couchFocus: CouchFocus = CouchFocus(),
+    couchPlatformIndex: Int = 0,
+    couchQuickDetailsEntryId: String? = null,
+    couchQuickDetailsActionIndex: Int = 0,
+    couchSettingsFocused: Boolean = false,
+    couchSettingsSelected: Boolean = false,
+    couchClockStyle: ClockStyle = ClockStyle.DIGITAL_24,
+    showCouchStatusBar: Boolean = true,
+    couchUiScale: Float = 1f,
+    onCouchEntryFocused: (rail: Int, item: Int) -> Unit = { _, _ -> },
+    onCouchEntrySelected: (GridEntry) -> Unit = {},
+    onCouchEntryLongPressed: (GridEntry) -> Unit = {},
+    onCouchPlatformSelected: (Int) -> Unit = {},
+    onCouchDetailsPlay: (GridEntry) -> Unit = {},
+    onCouchDetailsFavorite: (GridEntry) -> Unit = {},
+    onCouchDetailsMore: (GridEntry) -> Unit = {},
+    onCouchDetailsDismissed: () -> Unit = {},
+    onCouchSettingsSelected: () -> Unit = {},
+    couchFullscreenSection: Boolean = false,
+    /** Settings content hosted beneath Couch Mode's single shared top bar. */
+    couchSettingsContent: (@Composable () -> Unit)? = null,
     /**
      * Content for a section other than Home.
      *
@@ -164,6 +194,24 @@ fun BottomScreen(
     val adaptiveTint = (state.selection as? GameEntry)
         ?.let { game -> state.platformsById[game.platformId] }
         ?.let { platform -> Color(platform.accentArgb) }
+    val couchPlatformSummaries = remember(couchMode, state.entriesById) {
+        if (!couchMode) {
+            emptyMap()
+        } else {
+            state.entriesById.values.asSequence()
+                .filterIsInstance<GameEntry>()
+                .filterNot(GridEntry::isHidden)
+                .groupBy(GameEntry::platformId)
+                .mapValues { (_, games) ->
+                    val preview = games
+                        .maxByOrNull { it.stats.lastPlayedEpochMs ?: Long.MIN_VALUE }
+                        ?.metadata
+                        ?.artwork
+                        ?.let { it.boxArt ?: it.backgroundImage }
+                    CouchPlatformSummary(gameCount = games.size, previewUri = preview)
+                }
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         /*
@@ -182,14 +230,25 @@ fun BottomScreen(
         if (couchMode) {
             CouchScreen(
                 state = state,
+                focus = couchFocus,
                 tabs = tabs,
                 selectedTab = selectedTab,
                 navCursor = navCursor,
+                settingsFocused = couchSettingsFocused,
+                settingsSelected = couchSettingsSelected,
+                platformIndex = couchPlatformIndex,
+                clockStyle = couchClockStyle,
+                showStatusBar = showCouchStatusBar,
+                uiScale = couchUiScale,
                 onTabSelected = onTabSelected,
-                onCellTapped = onCellTapped,
-                onCellLongPressed = onCellLongPressed,
-                onPageChanged = onPageChanged,
+                onSettingsSelected = onCouchSettingsSelected,
+                onPlatformSelected = onCouchPlatformSelected,
+                onEntryFocused = onCouchEntryFocused,
+                onEntrySelected = onCouchEntrySelected,
+                onEntryLongPressed = onCouchEntryLongPressed,
+                fullscreenSection = couchFullscreenSection,
                 sectionContent = sectionContent,
+                settingsContent = couchSettingsContent,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -360,6 +419,19 @@ fun BottomScreen(
             )
         }
 
+        val couchDetailsEntry = couchQuickDetailsEntryId?.let(state.entriesById::get)
+        CouchQuickDetails(
+            visible = couchMode && selectedTab.isHome && couchDetailsEntry != null,
+            entry = couchDetailsEntry,
+            platform = (couchDetailsEntry as? GameEntry)
+                ?.let { state.platformsById[it.platformId] },
+            focusedAction = couchQuickDetailsActionIndex,
+            onPlay = { couchDetailsEntry?.let(onCouchDetailsPlay) },
+            onToggleFavorite = { couchDetailsEntry?.let(onCouchDetailsFavorite) },
+            onMore = { couchDetailsEntry?.let(onCouchDetailsMore) },
+            onDismiss = onCouchDetailsDismissed,
+        )
+
         SortDialog(
             visible = sortPicker.visible,
             currentOrder = sortPicker.order,
@@ -370,12 +442,26 @@ fun BottomScreen(
             onDismiss = onSortDismissed,
         )
 
-        SideMenu(
-            visible = state.sideMenuOpen,
-            focusedAction = focusedMenuAction,
-            onAction = onMenuAction,
-            onDismiss = onMenuDismissed,
-        )
+        if (couchMode && selectedTab.isHome) {
+            CouchPlatformMenu(
+                visible = state.sideMenuOpen,
+                platforms = state.couchPlatforms(),
+                summaries = couchPlatformSummaries,
+                focusedIndex = state.sideMenuIndex,
+                onPlatformSelected = { index ->
+                    onCouchPlatformSelected(index)
+                    onMenuDismissed()
+                },
+                onDismiss = onMenuDismissed,
+            )
+        } else {
+            SideMenu(
+                visible = state.sideMenuOpen,
+                focusedAction = focusedMenuAction,
+                onAction = onMenuAction,
+                onDismiss = onMenuDismissed,
+            )
+        }
 
         FolderPickerDialog(
             state = folderPicker,

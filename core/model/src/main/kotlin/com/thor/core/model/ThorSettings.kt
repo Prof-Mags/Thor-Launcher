@@ -396,8 +396,16 @@ data class DisplaySettings(
     val swapScreens: Boolean = false,
     /** Fraction of a single display given to the top surface in split mode. */
     val splitRatio: Float = 0.5f,
+    /** Physical scale of Couch Mode's navigation, hero, shelves and section UIs. */
+    val couchUiScale: Float = DEFAULT_COUCH_UI_SCALE,
     val keepTopScreenAwake: Boolean = true,
-)
+) {
+    companion object {
+        const val MIN_COUCH_UI_SCALE = 0.75f
+        const val MAX_COUCH_UI_SCALE = 1.25f
+        const val DEFAULT_COUCH_UI_SCALE = 1.0f
+    }
+}
 
 @Serializable
 enum class DualScreenMode(val label: String) {

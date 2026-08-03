@@ -19,11 +19,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,12 +49,14 @@ import com.thor.core.model.WatchProgress
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
+import kotlinx.coroutines.launch
 
 /** The catalogue on the top display. */
 @Composable
 fun MoviesBrowseScreen(
     state: MoviesUiState,
     onTypeSelected: (MediaType) -> Unit = {},
+    onItemSelected: (row: Int, column: Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -99,6 +106,7 @@ fun MoviesBrowseScreen(
                         Shelf(
                             row = row,
                             focusedColumn = state.cursor.column.takeIf { index == state.cursor.row },
+                            onItemSelected = { column -> onItemSelected(index, column) },
                         )
                     }
                 }
@@ -188,10 +196,15 @@ private fun BrowseMessage(text: String) {
 }
 
 @Composable
-private fun Shelf(row: MediaRow, focusedColumn: Int?) {
+private fun Shelf(
+    row: MediaRow,
+    focusedColumn: Int?,
+    onItemSelected: (column: Int) -> Unit,
+) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(focusedColumn) {
         if (focusedColumn != null && row.items.isNotEmpty()) {
@@ -227,23 +240,106 @@ private fun Shelf(row: MediaRow, focusedColumn: Int?) {
             )
         }
 
-        LazyRow(
-            state = listState,
-            contentPadding = PaddingValues(horizontal = dimens.spacing),
-            horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-        ) {
-            itemsIndexed(
-                items = row.items,
-                key = { index, _ -> "${row.id}:${row.entryKeyAt(index) ?: index}" },
-            ) { index, item ->
-                PosterCell(
-                    item = item,
-                    focused = index == focusedColumn,
-                    progress = row.progressAt(index),
-                )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            LazyRow(
+                state = listState,
+                contentPadding = PaddingValues(
+                    horizontal = dimens.spacing + CATALOGUE_ARROW_GUTTER.dp,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+            ) {
+                itemsIndexed(
+                    items = row.items,
+                    key = { index, _ -> "${row.id}:${row.entryKeyAt(index) ?: index}" },
+                ) { index, item ->
+                    PosterCell(
+                        item = item,
+                        focused = index == focusedColumn,
+                        progress = row.progressAt(index),
+                        onClick = { onItemSelected(index) },
+                    )
+                }
             }
+
+            CatalogueArrow(
+                pointsRight = false,
+                enabled = listState.canScrollBackward,
+                onClick = {
+                    scope.launch {
+                        listState.animateScrollToItem(
+                            cataloguePageTarget(listState, row.items.size, -1),
+                        )
+                    }
+                },
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = 5.dp),
+            )
+            CatalogueArrow(
+                pointsRight = true,
+                enabled = listState.canScrollForward,
+                onClick = {
+                    scope.launch {
+                        listState.animateScrollToItem(
+                            cataloguePageTarget(listState, row.items.size, 1),
+                        )
+                    }
+                },
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 5.dp),
+            )
         }
     }
+}
+
+@Composable
+private fun CatalogueArrow(
+    pointsRight: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ThorTheme.colors
+    val shape = ThorTheme.shapes.small
+    val hover = rememberPointerHover()
+    val lit = enabled && hover.isHovered
+
+    Box(
+        modifier = modifier
+            .size(CATALOGUE_ARROW_SIZE.dp)
+            .pointerHover(hover)
+            .thorCursor(focused = lit, shape = shape)
+            .clip(shape)
+            .background(
+                when {
+                    lit -> colors.cursor
+                    enabled -> colors.surfaceHighest.copy(alpha = 0.94f)
+                    else -> colors.surfaceElevated.copy(alpha = 0.52f)
+                },
+            )
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = if (pointsRight) Icons.Rounded.ChevronRight
+            else Icons.Rounded.ChevronLeft,
+            contentDescription = if (pointsRight) "Next titles" else "Previous titles",
+            tint = when {
+                lit -> contrastingContentColor(colors.cursor)
+                enabled -> colors.onSurface
+                else -> colors.onSurfaceVariant.copy(alpha = 0.42f)
+            },
+            modifier = Modifier.size(27.dp),
+        )
+    }
+}
+
+private fun cataloguePageTarget(
+    state: androidx.compose.foundation.lazy.LazyListState,
+    itemCount: Int,
+    direction: Int,
+): Int {
+    if (itemCount <= 1) return 0
+    val visibleCount = state.layoutInfo.visibleItemsInfo.size.coerceAtLeast(2)
+    val pageSize = (visibleCount - 1).coerceAtLeast(1)
+    return (state.firstVisibleItemIndex + direction * pageSize).coerceIn(0, itemCount - 1)
 }
 
 @Composable
@@ -251,6 +347,7 @@ private fun PosterCell(
     item: MediaItem,
     focused: Boolean,
     progress: WatchProgress? = null,
+    onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
     val shape = ThorTheme.shapes.small
@@ -261,7 +358,9 @@ private fun PosterCell(
     // horizontal constraints; without it a long title becomes the item's width
     // and looks like an enormous gap before the next poster.
     Column(
-        modifier = Modifier.width(POSTER_CARD_WIDTH.dp),
+        modifier = Modifier
+            .width(POSTER_CARD_WIDTH.dp)
+            .clickable(onClick = onClick),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Box(
@@ -388,3 +487,5 @@ fun MediaTypeTabs(
 
 private const val POSTER_RATIO = 2f / 3f
 private const val POSTER_CARD_WIDTH = 112
+private const val CATALOGUE_ARROW_GUTTER = 27
+private const val CATALOGUE_ARROW_SIZE = 38

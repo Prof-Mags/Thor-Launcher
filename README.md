@@ -88,18 +88,22 @@ Everything moves to the **top screen** and the bottom panel goes **dark**. It is
 
 | | |
 |:--|:--|
-| **Upright tiles** | Games and system folders as box art, the shape box art actually is |
-| **Sections along the top** | Where a television puts its navigation, with page dots on the right |
-| **Full-bleed artwork** | The focused game's own art fills the screen behind everything |
-| **One line of detail** | Title, system, year and play time — what's readable from a sofa |
+| **Horizontal content rails** | Continue playing, favourites, the selected platform, apps and custom collections without empty grid cells |
+| **Platform sub-navigation** | LT and RT switch systems in place and immediately replace the game shelf; generated platform folders are not opened |
+| **Sections along the top** | Controller-first Home, Movies, Stream and Settings navigation where a television puts it |
+| **Living hero artwork** | The focused title crossfades into cinematic backdrop drift, platform-coloured ambience and scraped logo treatment |
+| **Console status cluster** | The Couch header carries the configured clock and live battery status without duplicating polling logic |
+| **Single-screen Movies and Stream** | Catalogue, details, sources, hosts and live actions stay together on the television |
 
-The grid underneath is untouched. Same pages, same placements, same cursor — an icon is in the cell you put it in here too, and moving one here moves it everywhere.
+The handheld grid is not shown in Couch Mode. Couch Mode builds fast content rails directly from the library, maintains its own controller focus, and caches its platform shelves so switching systems never walks the handheld grid. Empty placements and handheld density never leak into the television interface.
 
 Nothing is taken away either: the app drawer, menus, keyboard, search and settings all work exactly as they do on the handheld layout.
 
 **Settings → System & accessibility → Dual screen → Screen mode → Couch mode**
 
-**Pinch to a lower density** once you're in it — three rows of covers on a television is a wall of stamps, two is a shelf.
+The same page includes **Couch UI size**, adjustable from 75% to 125% with touch or controller Left/Right, so the television interface can be tuned for viewing distance without changing the handheld layout.
+
+Movies and PC streaming also switch to dedicated one-screen dashboards in Couch Mode; the darkened handheld panel is never needed to finish an action.
 
 <br>
 

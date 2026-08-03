@@ -35,6 +35,10 @@ import com.thor.feature.home.component.EntryEdits
 import com.thor.feature.home.component.FolderPickerState
 import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.contextActionsFor
+import com.thor.feature.home.couch.CouchFocus
+import com.thor.feature.home.couch.CouchRail
+import com.thor.feature.home.couch.buildCouchRails
+import com.thor.feature.home.couch.couchPlatforms
 import com.thor.data.launcher.LaunchFailure
 import com.thor.data.launcher.LaunchResult
 import com.thor.data.repository.GridLayoutRepository
@@ -183,17 +187,94 @@ class LauncherViewModel @Inject constructor(
      * press, and a bar where moving *is* selecting would tear the whole section
      * down and rebuild it on every press of Right.
      *
-     * Null is the grid holding the cursor, which is only possible on Home — the
-     * other sections have no cursor target of their own yet, so the bar keeps it.
+     * Null means section content holds the cursor: the handheld grid, Couch
+     * Mode's rails, the Movies catalogue, or the Stream host dashboard.
      */
     private val _navCursor = MutableStateFlow<LauncherTab?>(null)
     val navCursor: StateFlow<LauncherTab?> = _navCursor.asStateFlow()
+
+    /** Independent focus for Couch Mode's content rails; never mapped to grid cells. */
+    private val _couchFocus = MutableStateFlow(CouchFocus())
+    val couchFocus: StateFlow<CouchFocus> = _couchFocus.asStateFlow()
+
+    /** Entry shown in Couch Mode's on-demand Y-button details overlay. */
+    private val _couchQuickDetailsEntryId = MutableStateFlow<String?>(null)
+    val couchQuickDetailsEntryId: StateFlow<String?> =
+        _couchQuickDetailsEntryId.asStateFlow()
+
+    /** Controller cursor for Play, Favourite, More, and Close in the Y panel. */
+    private val _couchQuickDetailsActionIndex = MutableStateFlow(0)
+    val couchQuickDetailsActionIndex: StateFlow<Int> =
+        _couchQuickDetailsActionIndex.asStateFlow()
+
+    /** Last highlighted item in every Couch rail, including each platform rail. */
+    private val couchItemByRailId = mutableMapOf<String, Int>()
+
+    /** Platform shown by Couch Mode's LT/RT library strip. */
+    private val _couchPlatformIndex = MutableStateFlow(0)
+    val couchPlatformIndex: StateFlow<Int> = _couchPlatformIndex.asStateFlow()
+
+    /** Settings is a real final item in Couch Mode's top navigation. */
+    private val _couchSettingsFocused = MutableStateFlow(false)
+    val couchSettingsFocused: StateFlow<Boolean> = _couchSettingsFocused.asStateFlow()
+
+    // Rail construction sorts the library. Cache by the immutable collection
+    // instances carried through LauncherUiState so a held D-pad never re-sorts
+    // hundreds or thousands of games on every repeat event.
+    private var couchEntriesRef: Map<String, GridEntry>? = null
+    private var couchFolderRef: List<GridEntry>? = null
+    private var couchFolderId: String? = null
+    private var couchPlatformsRef: Map<String, Platform>? = null
+    private var couchSelectedPlatformId: String? = null
+    private var cachedCouchRails: List<CouchRail> = emptyList()
+    private var couchPlatformEntriesRef: Map<String, GridEntry>? = null
+    private var couchPlatformDefinitionsRef: Map<String, Platform>? = null
+    private var cachedCouchPlatforms: List<Platform> = emptyList()
+
+    private fun availableCouchPlatforms(state: LauncherUiState): List<Platform> {
+        if (
+            couchPlatformEntriesRef === state.entriesById &&
+            couchPlatformDefinitionsRef === state.platformsById
+        ) {
+            return cachedCouchPlatforms
+        }
+        couchPlatformEntriesRef = state.entriesById
+        couchPlatformDefinitionsRef = state.platformsById
+        return state.couchPlatforms().also { cachedCouchPlatforms = it }
+    }
+
+    private fun couchRails(state: LauncherUiState): List<CouchRail> {
+        val platforms = availableCouchPlatforms(state)
+        val safePlatformIndex = _couchPlatformIndex.value.coerceIn(
+            0,
+            (platforms.size - 1).coerceAtLeast(0),
+        )
+        if (platforms.isNotEmpty() && safePlatformIndex != _couchPlatformIndex.value) {
+            _couchPlatformIndex.value = safePlatformIndex
+        }
+        val selectedPlatformId = platforms.getOrNull(safePlatformIndex)?.id
+        if (
+            couchEntriesRef === state.entriesById &&
+            couchFolderRef === state.openFolderContents &&
+            couchFolderId == state.openFolderId &&
+            couchPlatformsRef === state.platformsById &&
+            couchSelectedPlatformId == selectedPlatformId
+        ) {
+            return cachedCouchRails
+        }
+        couchEntriesRef = state.entriesById
+        couchFolderRef = state.openFolderContents
+        couchFolderId = state.openFolderId
+        couchPlatformsRef = state.platformsById
+        couchSelectedPlatformId = selectedPlatformId
+        return buildCouchRails(state, selectedPlatformId).also { cachedCouchRails = it }
+    }
 
     /** True while the controller is on the nav bar rather than in the content. */
     private val isNavBarFocused: Boolean get() = _navCursor.value != null
 
     /**
-     * Moves the cursor down out of the grid and onto the bar.
+     * Moves the cursor out of content and onto the section bar.
      *
      * The bar is reached by walking into it, not by a dedicated button: pressing
      * Down past the bottom row is what every ten-foot interface does, and it is
@@ -202,6 +283,7 @@ class LauncherViewModel @Inject constructor(
      * no-op instead of a section change nobody asked for.
      */
     fun enterNavBar() {
+        _couchSettingsFocused.value = false
         _navCursor.value = _selectedTab.value
     }
 
@@ -230,6 +312,7 @@ class LauncherViewModel @Inject constructor(
                     // or at any tab at all once the bar itself stops being drawn.
                     if (sections.size < 2 || _navCursor.value !in sections) {
                         _navCursor.value = null
+                        _couchSettingsFocused.value = false
                     }
                 }
         }
@@ -238,20 +321,21 @@ class LauncherViewModel @Inject constructor(
     /**
      * Returns the cursor to the content above.
      *
-     * Refused on a section that has no content to hold a cursor — leaving the bar
-     * there would strand input on a surface with nothing focusable on it, which is
-     * the same dead end the dock used to be.
+     * Movies and Stream own controller cursors as well, so every section can
+     * receive focus after the bar has selected it.
      */
     fun leaveNavBar() {
-        if (_selectedTab.value.isHome) _navCursor.value = null
+        _navCursor.value = null
+        _couchSettingsFocused.value = false
     }
 
     /** Selects a section, from a tap or from Confirm on the bar. */
     fun selectTab(tab: LauncherTab) {
         _selectedTab.value = tab
-        // The cursor follows the selection, and stays on the bar: the sections
-        // other than Home have nothing else to focus, and on Home the user is one
-        // press of Up away from the grid.
+        _couchSettingsFocused.value = false
+        closeCouchQuickDetails()
+        // The cursor follows the selection and stays on the bar until the user
+        // deliberately enters that section's content.
         _navCursor.value = tab
         // A section change closes what was raised over the previous one, so
         // switching to Movies and back does not restore a menu nobody left open.
@@ -278,19 +362,51 @@ class LauncherViewModel @Inject constructor(
      */
     private fun enabledExtensionIds(): Set<String> = uiState.value.enabledExtensions
 
-    private fun onNavBarCommand(command: ControllerCommand) {
+    private fun onNavBarCommand(command: ControllerCommand, couchMode: Boolean) {
         val focused = _navCursor.value ?: return
+        val tabs = LauncherTab.visible(enabledExtensionIds())
+        if (couchMode && _couchSettingsFocused.value) {
+            when (command) {
+                ControllerCommand.NAVIGATE_LEFT -> {
+                    _couchSettingsFocused.value = false
+                    _navCursor.value = tabs.lastOrNull() ?: LauncherTab.DEFAULT
+                }
+
+                ControllerCommand.NAVIGATE_RIGHT -> {
+                    _couchSettingsFocused.value = false
+                    _navCursor.value = tabs.firstOrNull() ?: LauncherTab.DEFAULT
+                }
+
+                ControllerCommand.CONFIRM -> emit(LauncherEffect.OpenSettings)
+                ControllerCommand.NAVIGATE_DOWN,
+                ControllerCommand.BACK,
+                -> leaveNavBar()
+
+                ControllerCommand.GO_HOME -> goHome()
+                ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
+                else -> Unit
+            }
+            return
+        }
         when (command) {
-            ControllerCommand.NAVIGATE_LEFT ->
+            ControllerCommand.NAVIGATE_LEFT -> if (couchMode && focused == tabs.firstOrNull()) {
+                _couchSettingsFocused.value = true
+            } else {
                 _navCursor.value = LauncherTab.step(focused, -1, enabledExtensionIds())
+            }
 
-            ControllerCommand.NAVIGATE_RIGHT ->
+            ControllerCommand.NAVIGATE_RIGHT -> if (couchMode && focused == tabs.lastOrNull()) {
+                _couchSettingsFocused.value = true
+            } else {
                 _navCursor.value = LauncherTab.step(focused, 1, enabledExtensionIds())
+            }
 
-            // Up is the way back into the content, and Back does the same thing:
-            // a bar at the bottom of the screen has nothing below it, so both of
-            // the "leave here" buttons should agree.
-            ControllerCommand.NAVIGATE_UP, ControllerCommand.BACK -> leaveNavBar()
+            // The handheld bar sits below content, while Couch Mode's bar sits
+            // above it. Back leaves either orientation without making the user
+            // remember which direction applies.
+            ControllerCommand.NAVIGATE_UP -> if (!couchMode) leaveNavBar()
+
+            ControllerCommand.BACK -> leaveNavBar()
 
             ControllerCommand.CONFIRM -> selectTab(focused)
 
@@ -311,7 +427,9 @@ class LauncherViewModel @Inject constructor(
              * worse than one that does nothing.
              */
             ControllerCommand.NAVIGATE_DOWN ->
-                if (controlSettings.value.wrapNavigation && _selectedTab.value.isHome) {
+                if (couchMode) {
+                    leaveNavBar()
+                } else if (controlSettings.value.wrapNavigation && _selectedTab.value.isHome) {
                     _navCursor.value = null
                     cursor.value = CursorPosition(0, cursor.value.column)
                 }
@@ -1058,7 +1176,11 @@ class LauncherViewModel @Inject constructor(
     // ---------------------------------------------------------------- input
 
     /** Routes a controller command. */
-    fun onCommand(command: ControllerCommand, accelerated: Boolean) {
+    fun onCommand(
+        command: ControllerCommand,
+        accelerated: Boolean,
+        couchMode: Boolean = false,
+    ) {
         // Overlays are modal and claim input in the order they stack, so the
         // grid never moves underneath an open panel. Without this the cursor
         // drifts while a menu is up and the selection has silently changed by
@@ -1129,8 +1251,30 @@ class LauncherViewModel @Inject constructor(
             return
         }
         if (sideMenuOpen.value) {
-            onSideMenuCommand(command)
+            onSideMenuCommand(command, couchMode)
             return
+        }
+        if (couchMode && _couchQuickDetailsEntryId.value != null) {
+            onCouchQuickDetailsCommand(command)
+            return
+        }
+
+        // In Couch Mode the bumpers always step the shared top-level destinations,
+        // regardless of which section currently owns the content cursor.
+        if (couchMode) {
+            when (command) {
+                ControllerCommand.CYCLE_IMAGE_PREVIOUS -> {
+                    cycleCouchDestination(-1)
+                    return
+                }
+
+                ControllerCommand.CYCLE_IMAGE_NEXT -> {
+                    cycleCouchDestination(1)
+                    return
+                }
+
+                else -> Unit
+            }
         }
 
         /*
@@ -1142,7 +1286,7 @@ class LauncherViewModel @Inject constructor(
          * not what the buttons are for.
          */
         if (isNavBarFocused) {
-            onNavBarCommand(command)
+            onNavBarCommand(command, couchMode)
             return
         }
 
@@ -1150,11 +1294,16 @@ class LauncherViewModel @Inject constructor(
         // this point would act on a surface the user cannot see.
         if (!_selectedTab.value.isHome) {
             when (command) {
-                ControllerCommand.NAVIGATE_DOWN, ControllerCommand.BACK -> enterNavBar()
+                ControllerCommand.NAVIGATE_UP, ControllerCommand.BACK -> enterNavBar()
                 ControllerCommand.GO_HOME -> goHome()
                 ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
                 else -> Unit
             }
+            return
+        }
+
+        if (couchMode) {
+            onCouchHomeCommand(command)
             return
         }
 
@@ -1185,6 +1334,237 @@ class LauncherViewModel @Inject constructor(
             ControllerCommand.CANCEL_EDIT -> cancelEdit()
             ControllerCommand.SEARCH -> emit(LauncherEffect.OpenSearch)
         }
+    }
+
+    /** Routes Home commands through Couch Mode's rails instead of hidden grid cells. */
+    private fun onCouchHomeCommand(command: ControllerCommand) {
+        val state = uiState.value
+        if (!state.isFolderOpen) {
+            when (command) {
+                ControllerCommand.PAGE_PREVIOUS -> {
+                    stepCouchPlatform(-1)
+                    return
+                }
+
+                ControllerCommand.PAGE_NEXT -> {
+                    stepCouchPlatform(1)
+                    return
+                }
+
+                else -> Unit
+            }
+        }
+        val rails = couchRails(state)
+        if (rails.isEmpty()) {
+            when (command) {
+                ControllerCommand.NAVIGATE_UP, ControllerCommand.BACK -> enterNavBar()
+                ControllerCommand.OPEN_SIDE_MENU -> toggleCouchPlatformMenu()
+                ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
+                ControllerCommand.OPEN_APP_DRAWER -> openAppDrawer()
+                ControllerCommand.SEARCH -> emit(LauncherEffect.OpenSearch)
+                ControllerCommand.GO_HOME -> goHome()
+                else -> Unit
+            }
+            return
+        }
+
+        val currentRail = _couchFocus.value.rail.coerceIn(0, rails.lastIndex)
+        val currentItems = rails[currentRail].entries
+        val currentItem = _couchFocus.value.item.coerceIn(
+            0,
+            (currentItems.size - 1).coerceAtLeast(0),
+        )
+        val focusedEntry = currentItems.getOrNull(currentItem)
+
+        fun moveRail(delta: Int) {
+            val nextRail = (currentRail + delta).coerceIn(0, rails.lastIndex)
+            if (nextRail == currentRail && delta < 0) {
+                enterNavBar()
+            } else {
+                val remembered = couchItemByRailId[rails[nextRail].id] ?: 0
+                setCouchFocus(rails, nextRail, remembered)
+            }
+        }
+
+        when (command) {
+            ControllerCommand.NAVIGATE_LEFT ->
+                setCouchFocus(rails, currentRail, currentItem - 1)
+
+            ControllerCommand.NAVIGATE_RIGHT ->
+                setCouchFocus(rails, currentRail, currentItem + 1)
+
+            ControllerCommand.NAVIGATE_UP -> moveRail(-1)
+            ControllerCommand.NAVIGATE_DOWN -> moveRail(1)
+            ControllerCommand.PAGE_PREVIOUS,
+            ControllerCommand.PAGE_NEXT,
+            -> Unit
+            ControllerCommand.CONFIRM -> focusedEntry?.let(::launchEntry)
+            ControllerCommand.CONTEXT_MENU -> focusedEntry?.let(::openCouchQuickDetails)
+            ControllerCommand.TOGGLE_FAVORITE -> focusedEntry?.let(::toggleFavorite)
+            ControllerCommand.BACK -> if (state.isFolderOpen) closeFolder() else enterNavBar()
+            ControllerCommand.OPEN_SIDE_MENU -> toggleCouchPlatformMenu()
+            ControllerCommand.OPEN_APP_DRAWER -> openAppDrawer()
+            ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
+            ControllerCommand.GO_HOME -> goHome()
+            ControllerCommand.SEARCH -> emit(LauncherEffect.OpenSearch)
+            ControllerCommand.PICK_UP,
+            ControllerCommand.CANCEL_EDIT,
+            ControllerCommand.CYCLE_IMAGE_PREVIOUS,
+            ControllerCommand.CYCLE_IMAGE_NEXT,
+            -> Unit
+        }
+    }
+
+    /** Touch/pointer focus follows the same rail cursor the controller drives. */
+    fun focusCouchEntry(rail: Int, item: Int) {
+        val rails = couchRails(uiState.value)
+        setCouchFocus(rails, rail, item)
+    }
+
+    private fun setCouchFocus(rails: List<CouchRail>, rail: Int, item: Int) {
+        if (rails.isEmpty()) {
+            _couchFocus.value = CouchFocus()
+            return
+        }
+        val safeRail = rail.coerceIn(0, rails.lastIndex)
+        val selectedRail = rails[safeRail]
+        val safeItem = item.coerceIn(0, (selectedRail.entries.size - 1).coerceAtLeast(0))
+        couchItemByRailId[selectedRail.id] = safeItem
+        _couchFocus.value = CouchFocus(safeRail, safeItem)
+    }
+
+    /** Selects a platform from Couch Mode's strip and reveals its game rail. */
+    fun selectCouchPlatform(index: Int) {
+        val state = uiState.value
+        if (state.isFolderOpen) return
+        val platforms = availableCouchPlatforms(state)
+        if (platforms.isEmpty()) return
+        val safeIndex = index.coerceIn(0, platforms.lastIndex)
+        _couchPlatformIndex.value = safeIndex
+        val platformId = platforms[safeIndex].id
+        val rails = couchRails(state)
+        val platformRail = rails.indexOfFirst { it.id == "platform:$platformId" }
+        if (platformRail >= 0) {
+            val rememberedItem = couchItemByRailId[rails[platformRail].id] ?: 0
+            setCouchFocus(rails, platformRail, rememberedItem)
+        }
+    }
+
+    private fun openCouchQuickDetails(entry: GridEntry) {
+        _couchQuickDetailsActionIndex.value = 0
+        _couchQuickDetailsEntryId.value = entry.id
+    }
+
+    fun closeCouchQuickDetails() {
+        _couchQuickDetailsEntryId.value = null
+        _couchQuickDetailsActionIndex.value = 0
+    }
+
+    private fun onCouchQuickDetailsCommand(command: ControllerCommand) {
+        val entry = _couchQuickDetailsEntryId.value
+            ?.let(uiState.value.entriesById::get)
+        if (entry == null) {
+            closeCouchQuickDetails()
+            return
+        }
+        when (command) {
+            ControllerCommand.NAVIGATE_LEFT,
+            ControllerCommand.NAVIGATE_UP,
+            -> _couchQuickDetailsActionIndex.value =
+                (_couchQuickDetailsActionIndex.value - 1).mod(COUCH_DETAIL_ACTION_COUNT)
+
+            ControllerCommand.NAVIGATE_RIGHT,
+            ControllerCommand.NAVIGATE_DOWN,
+            -> _couchQuickDetailsActionIndex.value =
+                (_couchQuickDetailsActionIndex.value + 1).mod(COUCH_DETAIL_ACTION_COUNT)
+
+            ControllerCommand.CONFIRM -> when (_couchQuickDetailsActionIndex.value) {
+                COUCH_DETAIL_PLAY -> {
+                    closeCouchQuickDetails()
+                    launchEntry(entry)
+                }
+
+                COUCH_DETAIL_FAVOURITE -> toggleFavorite(entry)
+                COUCH_DETAIL_MORE -> {
+                    closeCouchQuickDetails()
+                    openContextMenu(entry)
+                }
+
+                COUCH_DETAIL_CLOSE -> closeCouchQuickDetails()
+            }
+
+            ControllerCommand.TOGGLE_FAVORITE -> toggleFavorite(entry)
+
+            // A second Y reaches the complete legacy action menu. The first Y
+            // remains the fast, sofa-readable information view.
+            ControllerCommand.CONTEXT_MENU -> {
+                closeCouchQuickDetails()
+                openContextMenu(entry)
+            }
+
+            ControllerCommand.OPEN_SIDE_MENU -> {
+                closeCouchQuickDetails()
+                toggleCouchPlatformMenu()
+            }
+
+            ControllerCommand.OPEN_APP_DRAWER -> {
+                closeCouchQuickDetails()
+                openAppDrawer()
+            }
+
+            ControllerCommand.SEARCH -> {
+                closeCouchQuickDetails()
+                emit(LauncherEffect.OpenSearch)
+            }
+
+            ControllerCommand.GO_HOME -> goHome()
+            ControllerCommand.BACK -> closeCouchQuickDetails()
+            else -> Unit
+        }
+    }
+
+    /** L2/R2 wrap through installed platforms without opening generated folders. */
+    private fun stepCouchPlatform(delta: Int) {
+        val platforms = availableCouchPlatforms(uiState.value)
+        if (platforms.isEmpty()) return
+        val current = _couchPlatformIndex.value.coerceIn(0, platforms.lastIndex)
+        selectCouchPlatform((current + delta).mod(platforms.size))
+    }
+
+    /** Opens Settings from the dedicated Couch Mode nav destination. */
+    fun openCouchSettings() {
+        closeCouchQuickDetails()
+        _navCursor.value = _selectedTab.value
+        _couchSettingsFocused.value = true
+        emit(LauncherEffect.OpenSettings)
+    }
+
+    /**
+     * Steps the one Couch navigation sequence: Stream, Home, Movies, Settings.
+     *
+     * @return true when the new destination is Settings, which lets the host keep
+     * its Settings overlay state in sync while the screen itself remains in the
+     * normal couch content shell.
+     */
+    fun cycleCouchDestination(delta: Int, fromSettings: Boolean = false): Boolean {
+        val tabs = LauncherTab.visible(enabledExtensionIds())
+        if (tabs.isEmpty()) return false
+        val settingsIndex = tabs.size
+        val currentIndex = if (fromSettings) {
+            settingsIndex
+        } else {
+            tabs.indexOf(_selectedTab.value).takeIf { it >= 0 }
+                ?: tabs.indexOf(LauncherTab.DEFAULT).coerceAtLeast(0)
+        }
+        val nextIndex = (currentIndex + delta).mod(tabs.size + 1)
+        if (nextIndex == settingsIndex) {
+            openCouchSettings()
+            return true
+        }
+
+        selectTab(tabs[nextIndex])
+        leaveNavBar()
+        return false
     }
 
     /** Down from the grid: one row, or out of the grid and onto the bar. */
@@ -1493,6 +1873,9 @@ class LauncherViewModel @Inject constructor(
         // to it on page four of the grid.
         _selectedTab.value = LauncherTab.DEFAULT
         _navCursor.value = null
+        _couchSettingsFocused.value = false
+        _couchFocus.value = CouchFocus()
+        closeCouchQuickDetails()
 
         sideMenuOpen.value = false
         closeFolder()
@@ -1507,10 +1890,10 @@ class LauncherViewModel @Inject constructor(
         closeSortPicker()
     }
 
-    fun toggleFavorite() {
-        val entry = uiState.value.selection ?: return
+    fun toggleFavorite(entry: GridEntry? = uiState.value.selection) {
+        val target = entry ?: return
         viewModelScope.launchSafely(TAG) {
-            libraryRepository.setFavorite(entry.id, !entry.isFavorite)
+            libraryRepository.setFavorite(target.id, !target.isFavorite)
         }
     }
 
@@ -1795,10 +2178,14 @@ class LauncherViewModel @Inject constructor(
         }
 
         when (command) {
-            ControllerCommand.NAVIGATE_UP ->
+            ControllerCommand.NAVIGATE_UP,
+            ControllerCommand.NAVIGATE_LEFT,
+            ->
                 contextMenuIndex.value = (contextMenuIndex.value - 1 + actions.size) % actions.size
 
-            ControllerCommand.NAVIGATE_DOWN ->
+            ControllerCommand.NAVIGATE_DOWN,
+            ControllerCommand.NAVIGATE_RIGHT,
+            ->
                 contextMenuIndex.value = (contextMenuIndex.value + 1) % actions.size
 
             ControllerCommand.CONFIRM ->
@@ -2406,6 +2793,12 @@ class LauncherViewModel @Inject constructor(
         sideMenuOpen.value = !sideMenuOpen.value
     }
 
+    /** Opens Couch Home's platform drawer with its cursor on the active platform. */
+    private fun toggleCouchPlatformMenu() {
+        sideMenuIndex.value = _couchPlatformIndex.value
+        sideMenuOpen.value = !sideMenuOpen.value
+    }
+
     fun closeSideMenu() {
         sideMenuOpen.value = false
     }
@@ -2421,7 +2814,43 @@ class LauncherViewModel @Inject constructor(
      * here, because two of the four actions open a settings category that only
      * the host composable knows how to route to.
      */
-    private fun onSideMenuCommand(command: ControllerCommand) {
+    private fun onSideMenuCommand(command: ControllerCommand, couchMode: Boolean) {
+        if (couchMode && _selectedTab.value.isHome) {
+            val platforms = availableCouchPlatforms(uiState.value)
+            if (platforms.isEmpty()) {
+                if (command == ControllerCommand.BACK ||
+                    command == ControllerCommand.OPEN_SIDE_MENU
+                ) {
+                    closeSideMenu()
+                }
+                return
+            }
+
+            sideMenuIndex.value = sideMenuIndex.value.coerceIn(0, platforms.lastIndex)
+            when (command) {
+                ControllerCommand.NAVIGATE_UP,
+                ControllerCommand.PAGE_PREVIOUS,
+                -> sideMenuIndex.value =
+                    (sideMenuIndex.value - 1 + platforms.size) % platforms.size
+
+                ControllerCommand.NAVIGATE_DOWN,
+                ControllerCommand.PAGE_NEXT,
+                -> sideMenuIndex.value = (sideMenuIndex.value + 1) % platforms.size
+
+                ControllerCommand.CONFIRM -> {
+                    selectCouchPlatform(sideMenuIndex.value)
+                    closeSideMenu()
+                }
+
+                ControllerCommand.BACK,
+                ControllerCommand.OPEN_SIDE_MENU,
+                -> closeSideMenu()
+
+                else -> Unit
+            }
+            return
+        }
+
         val actions = SideMenuAction.entries
         when (command) {
             ControllerCommand.NAVIGATE_UP ->
@@ -2598,6 +3027,11 @@ class LauncherViewModel @Inject constructor(
         const val TAG = "Launcher"
         const val STOP_TIMEOUT_MS = 5_000L
         const val DOCK_SLOTS = 5
+        const val COUCH_DETAIL_PLAY = 0
+        const val COUCH_DETAIL_FAVOURITE = 1
+        const val COUCH_DETAIL_MORE = 2
+        const val COUCH_DETAIL_CLOSE = 3
+        const val COUCH_DETAIL_ACTION_COUNT = 4
 
         /** As much of a platform message as fits on a panel beside a sentence. */
         const val DETAIL_LIMIT = 120

@@ -5,8 +5,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -17,15 +18,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,451 +30,274 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.thor.core.designsystem.component.GlassSurface
-import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.theme.ThorTheme
-import com.thor.core.model.AchievementSummary
-import com.thor.core.model.ArtworkSet
 import com.thor.core.model.GameEntry
 import com.thor.core.model.Platform
 import com.thor.core.ui.component.ArtworkImage
 import java.util.concurrent.TimeUnit
 
-/**
- * The information panel for a highlighted game.
- *
- * A single translucent column pinned to the left, with the artwork or preview
- * clip filling the rest of the panel behind it. Every block inside shares the
- * same width and gutter so the column reads as one surface rather than as
- * floating fragments — the previous version scattered its sections across the
- * full panel width and lined none of them up.
- *
- * Every field keeps its slot whether or not the game has a value for it. Omitting
- * the empty ones re-flowed the panel for each title — the same fact appeared in a
- * different place for every game, so nothing could be found by position.
- */
+/** Normal-mode game information presented as a media-first dossier. */
 @Composable
 fun GameDetailPanel(
     game: GameEntry,
     platform: Platform?,
-    /** Index of the screenshot currently shown, for the strip's selection. */
     selectedScreenshot: Int,
     onScreenshotSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val accent = platform?.let { Color(it.accentArgb) } ?: colors.cursor
     val artwork = game.metadata.artwork
 
     Row(modifier = modifier.fillMaxSize()) {
-        /*
-         * A column of cards, as the settings screen is.
-         *
-         * This was one bordered box with hairline rules inside it, which made
-         * every section look like a paragraph of the same document — the facts,
-         * the achievements and the screenshots all read as one undifferentiated
-         * block. Settings had already solved the same problem: a stack of raised
-         * cards, each with a small caption above it, so a section is a *thing*
-         * rather than a region between two lines.
-         *
-         * Using the same surface means it also inherits the theme's edge and
-         * shadow treatment, so this panel changes with a theme rather than
-         * keeping its own hardcoded border.
-         */
-        PanelCard(
+        DossierCard(
+            accent = accent,
             modifier = Modifier
-                .weight(PANEL_WEIGHT)
+                .weight(DOSSIER_PANEL_WEIGHT)
                 .fillMaxHeight()
                 .padding(dimens.spacing),
-        ) {
-            Section {
-                Header(game = game, artwork = artwork, colors = colors)
-                PlatformRow(game = game, platform = platform)
-            }
-
-            game.metadata.description?.takeIf(String::isNotBlank)?.let { description ->
-                Section(label = "ABOUT") {
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                        maxLines = DESCRIPTION_LINES,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+            masthead = {
+                GameMasthead(game = game, platform = platform, accent = accent)
+            },
+            body = {
+                DossierSection("YOUR ACTIVITY") {
+                    DossierStats {
+                        DossierStat(
+                            label = "Play time",
+                            value = formatDuration(game.stats.totalPlayMillis),
+                            accent = accent,
+                        )
+                        DossierStat(
+                            label = "Last played",
+                            value = game.stats.lastPlayedEpochMs?.let(::formatRelative) ?: "Never",
+                            accent = accent,
+                        )
+                        DossierStat(
+                            label = "Times played",
+                            value = game.stats.launchCount.takeIf { it > 0 }?.toString() ?: "Never",
+                            accent = accent,
+                        )
+                        DossierStat(
+                            label = "First played",
+                            value = game.stats.firstPlayedEpochMs?.let(::formatRelative) ?: "Never",
+                            accent = accent,
+                        )
+                    }
                 }
-            }
 
-            Section(label = "DETAILS") {
-                FactsGrid(game = game)
-            }
-
-            game.metadata.achievements?.let {
-                Section(label = "ACHIEVEMENTS") {
-                    AchievementBlock(summary = it)
+                game.metadata.description?.takeIf(String::isNotBlank)?.let { description ->
+                    DossierSection("ABOUT") {
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.onSurfaceVariant,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-            }
 
-            if (artwork.cappedScreenshots.size > 1) {
-                Section(label = "SCREENSHOTS") {
-                    ScreenshotStrip(
-                        urls = artwork.cappedScreenshots,
-                        selected = selectedScreenshot,
-                        onSelected = onScreenshotSelected,
-                    )
+                artwork.cappedScreenshots.takeIf(List<String>::isNotEmpty)?.let { screenshots ->
+                    DossierSection("MEDIA") {
+                        ScreenshotGallery(
+                            urls = screenshots,
+                            selected = selectedScreenshot,
+                            accent = accent,
+                            onSelected = onScreenshotSelected,
+                        )
+                    }
                 }
-            }
-        }
-
-        // Deliberately empty: the artwork or preview clip shows through here.
-        Spacer(modifier = Modifier.weight(1f - PANEL_WEIGHT))
-    }
-}
-
-@Composable
-private fun Header(
-    game: GameEntry,
-    artwork: com.thor.core.model.ArtworkSet,
-    colors: com.thor.core.designsystem.theme.ThorColors,
-) {
-    if (artwork.logo != null) {
-        ArtworkImage(
-            model = artwork.logo,
-            contentDescription = game.title,
-            // Fit, not crop: logos range from wide banners to tall crests and a
-            // wide one was having its ends sliced off.
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = LOGO_MIN_HEIGHT.dp, max = LOGO_MAX_HEIGHT.dp),
+            },
         )
-    } else {
-        Text(
-            text = game.title,
-            style = MaterialTheme.typography.headlineMedium,
-            color = colors.onBackground,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-        )
+
+        Spacer(modifier = Modifier.weight(1f - DOSSIER_PANEL_WEIGHT))
     }
 }
 
-/**
- * One card of the panel, with the caption settings puts above a group of rows.
- *
- * The caption is optional because the first card is the game's name and needs no
- * label — a heading over a title would be saying the same thing twice.
- *
- * Shared with the platform panel, so a folder and a game are built from the same
- * pieces and cannot drift apart as either is edited.
- */
 @Composable
-internal fun Section(
-    label: String? = null,
-    content: @Composable ColumnScope.() -> Unit,
-) {
+private fun GameMasthead(game: GameEntry, platform: Platform?, accent: Color) {
     val colors = ThorTheme.colors
-    val dimens = ThorTheme.dimens
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-    ) {
-        if (label != null) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                // Dimmed, as a settings group's caption is: it names what
-                // follows without competing with it.
-                color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-            )
-        }
-        content()
-    }
-}
-
-/**
- * The card both panels sit inside.
- *
- * One surface holding every section, rather than a card per section. A stack of
- * separate cards gave each group its own edge and shadow, which at five groups
- * read as five unrelated things scattered down the screen — the panel describes
- * a single subject and should look like one object.
- *
- * The gaps between sections do the separating instead, which is enough: a
- * caption and a clear space already say "new group" without an outline round
- * every one of them.
- */
-@Composable
-internal fun PanelCard(
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val dimens = ThorTheme.dimens
-
-    GlassSurface(
-        modifier = modifier,
-        shape = RoundedCornerShape(dimens.cornerRadius),
-        level = SurfaceLevel.RAISED,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(dimens.spacing)
-                .verticalScroll(rememberScrollState()),
-            // Wider than the gap inside a section, so a new group is visibly a
-            // new group even without a rule between them.
-            verticalArrangement = Arrangement.spacedBy(dimens.spacingLarge),
-            content = content,
-        )
-    }
-}
-
-/** Hairline rule separating blocks within the panel. */
-@Composable
-internal fun Divider() {
-    val colors = ThorTheme.colors
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            // height, not size: `size` fixes both axes, so it overrode the
-            // fillMaxWidth above it and left the rule zero pixels wide.
-            .height(1.dp)
-            .background(colors.outline.copy(alpha = 0.30f)),
-    )
-}
-
-@Composable
-private fun PlatformRow(game: GameEntry, platform: Platform?) {
-    val colors = ThorTheme.colors
+    val artwork = game.metadata.artwork
 
     Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        platform?.let { Badge(text = it.shortName, tint = Color(it.accentArgb)) }
-        game.metadata.releaseYear?.let { Badge(text = it.toString(), tint = colors.secondary) }
-        game.metadata.genres.firstOrNull()?.let { Badge(text = it, tint = colors.primary) }
+        val cover = artwork.boxArt ?: artwork.icon
+        Box(
+            modifier = Modifier
+                .width(MASTHEAD_COVER_WIDTH.dp)
+                .aspectRatio(2f / 3f)
+                .clip(ThorTheme.shapes.small)
+                .background(colors.surfaceHighest),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (cover != null) {
+                ArtworkImage(
+                    model = cover,
+                    contentDescription = game.title,
+                    fallbackText = game.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Text(
+                    text = game.title.take(1).uppercase(),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = accent,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+        }
 
-        game.metadata.rating?.let { rating ->
-            Spacer(modifier = Modifier.weight(1f))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Star,
-                    contentDescription = "Rating",
-                    tint = colors.cursor,
-                    modifier = Modifier.size(14.dp),
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (artwork.logo != null) {
+                ArtworkImage(
+                    model = artwork.logo,
+                    contentDescription = game.title,
+                    contentScale = ContentScale.Fit,
+                    alignment = Alignment.CenterStart,
+                    modifier = Modifier
+                        .fillMaxWidth(0.84f)
+                        .heightIn(min = 36.dp, max = 62.dp),
                 )
                 Text(
-                    text = "$rating",
-                    style = MaterialTheme.typography.labelMedium,
+                    text = game.title,
+                    style = MaterialTheme.typography.titleMedium,
                     color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else {
+                Text(
+                    text = game.title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-    }
-}
 
-@Composable
-private fun Badge(text: String, tint: Color) {
-    val dimens = ThorTheme.dimens
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        color = tint,
-        maxLines = 1,
-        modifier = Modifier
-            .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
-            .background(tint.copy(alpha = 0.16f))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-    )
-}
-
-/**
- * The facts table.
- *
- * Every slot is always present, in the same order, whether or not the game has a
- * value for it — an unknown field shows a dash. Omitting empty fields meant the
- * panel re-flowed for every game: "Developer" sat top-left for one title and
- * third-right for the next, so nothing could be found by position and the layout
- * looked unstable while moving the cursor along a shelf.
- *
- * Two even columns with a shared gutter, so labels and values line up down the
- * panel instead of each row finding its own width.
- */
-@Composable
-private fun FactsGrid(game: GameEntry) {
-    val metadata = game.metadata
-    val stats = game.stats
-
-    // Fixed order, fixed length. Add fields to the end rather than inserting, so
-    // a familiar layout does not shuffle.
-    val facts = listOf(
-        "Developer" to metadata.developer,
-        "Publisher" to metadata.publisher,
-        "Released" to (metadata.releaseDate ?: metadata.releaseYear?.toString()),
-        "Genre" to metadata.genres.firstOrNull(),
-        "Rating" to metadata.rating?.let { "$it / 100" },
-        "Play time" to formatDuration(stats.totalPlayMillis),
-        "Times played" to stats.launchCount.toString(),
-        "Last played" to stats.lastPlayedEpochMs?.let(::formatRelative),
-        "First played" to stats.firstPlayedEpochMs?.let(::formatRelative),
-        "Platform" to game.platformId.uppercase(),
-    )
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        facts.chunked(2).forEach { pair ->
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                pair.forEach { (label, value) ->
-                    Fact(label = label, value = value, modifier = Modifier.weight(1f))
+                platform?.let { DossierBadge(it.shortName, accent) }
+                game.metadata.releaseYear?.let {
+                    DossierBadge(it.toString(), colors.secondary)
                 }
-                // Keeps a trailing odd fact in the left column rather than
-                // letting it stretch across both.
-                if (pair.size == 1) Spacer(modifier = Modifier.weight(1f))
+                game.metadata.genres.firstOrNull()?.let {
+                    DossierBadge(it, colors.primary)
+                }
+                if (game.isFavorite) DossierBadge("FAVOURITE", colors.cursor)
+
+                game.metadata.rating?.let { rating ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Star,
+                            contentDescription = "Rating",
+                            tint = accent,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Text(
+                            text = "$rating",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.onSurface,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-/**
- * One labelled fact.
- *
- * A null value renders as a dash rather than collapsing the slot, which is what
- * keeps every game's panel identical in shape.
- */
 @Composable
-internal fun Fact(label: String, value: String?, modifier: Modifier = Modifier) {
-    val colors = ThorTheme.colors
-    val known = !value.isNullOrBlank()
-    Column(modifier = modifier) {
-        Text(
-            text = label.uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-            maxLines = 1,
-        )
-        Text(
-            text = if (known) value.orEmpty() else UNKNOWN_VALUE,
-            style = MaterialTheme.typography.bodySmall,
-            // Dimmed when unknown, so the eye skips the gaps instead of reading
-            // a wall of equally-weighted dashes.
-            color = if (known) colors.onSurface else colors.onSurfaceVariant.copy(alpha = 0.5f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun AchievementBlock(summary: AchievementSummary) {
-    val colors = ThorTheme.colors
-
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.EmojiEvents,
-                contentDescription = null,
-                tint = if (summary.isMastered) colors.cursor else colors.onSurfaceVariant,
-                modifier = Modifier.size(16.dp),
-            )
-            Text(
-                text = "${summary.earned} / ${summary.total} · " +
-                    "${summary.earnedPoints} pts",
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.onSurface,
-            )
-        }
-        LinearProgressIndicator(
-            progress = { summary.completionFraction },
-            color = colors.cursor,
-            trackColor = colors.surfaceElevated,
-            modifier = Modifier
-                .fillMaxWidth()
-                // Same trap: `size` here made the progress bar zero-width, so
-                // achievement completion rendered as nothing at all.
-                .height(5.dp)
-                .clip(CircleShape),
-        )
-    }
-}
-
-/**
- * Selectable thumbnails of the game's screenshots.
- *
- * Choosing one changes what fills the panel behind, so this is a picker rather
- * than a decorative carousel — which is why the current item carries a visible
- * selection instead of just scrolling past.
- */
-@Composable
-private fun ScreenshotStrip(
+private fun ScreenshotGallery(
     urls: List<String>,
     selected: Int,
+    accent: Color,
     onSelected: (Int) -> Unit,
 ) {
     val colors = ThorTheme.colors
-    val dimens = ThorTheme.dimens
+    val safeSelected = selected.coerceIn(0, urls.lastIndex)
 
-    /*
-     * Three across, sized by the panel rather than by a fixed thumbnail width.
-     *
-     * This was a `LazyRow` of 96dp thumbnails, which is wider than a third of
-     * this column at every grid preset — so the third screenshot was always
-     * partly off the edge, and a strip the user could not tell was scrollable
-     * looked like a strip with two screenshots in it. Weights make the row fit
-     * by construction at any panel width.
-     *
-     * Padded out to [ArtworkSet.MAX_SCREENSHOTS] so the slots keep their size
-     * when a game has fewer: two screenshots sharing the full width would render
-     * half again as large as three, and the block would change shape as the
-     * cursor moved between games.
-     */
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        urls.forEachIndexed { index, url ->
-            val isSelected = index == selected
-            Box(
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val previewHeight = (maxWidth * 9f / 16f).coerceIn(108.dp, 196.dp)
+        val thumbnailHeight = (previewHeight * 0.30f).coerceIn(38.dp, 54.dp)
+        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(previewHeight)
+                .clip(ThorTheme.shapes.small)
+                .background(colors.surfaceHighest),
+        ) {
+            ArtworkImage(
+                model = urls[safeSelected],
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .weight(1f)
-                    .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
-                    .border(
-                        width = if (isSelected) 2.dp else 1.dp,
-                        color = if (isSelected) {
-                            colors.cursor
-                        } else {
-                            colors.outline.copy(alpha = 0.4f)
-                        },
-                        shape = RoundedCornerShape(dimens.cornerRadiusSmall),
-                    )
-                    .clickable { onSelected(index) },
+                    .fillMaxSize()
+                    .padding(1.dp),
+            )
+            Text(
+                text = "${safeSelected + 1} / ${urls.size}",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .clip(ThorTheme.shapes.pill)
+                    .background(Color.Black.copy(alpha = 0.68f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+
+        if (urls.size > 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                ArtworkImage(
-                    model = url,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                urls.forEachIndexed { index, url ->
+                    val isSelected = index == safeSelected
+                    ArtworkImage(
+                        model = url,
+                        contentDescription = "Screenshot ${index + 1}",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(thumbnailHeight)
+                            .clip(ThorTheme.shapes.small)
+                            .background(colors.surfaceHighest)
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) accent else colors.outline.copy(alpha = 0.35f),
+                                shape = ThorTheme.shapes.small,
+                            )
+                            .clickable { onSelected(index) },
+                    )
+                }
             }
         }
-        repeat(ArtworkSet.MAX_SCREENSHOTS - urls.size) {
-            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }
-
-// ---------------------------------------------------------------- formatting
 
 internal fun formatDuration(millis: Long): String {
     if (millis <= 0) return "Never"
@@ -502,14 +321,4 @@ internal fun formatRelative(epochMs: Long): String {
     }
 }
 
-/** Share of the panel width given to the information column. */
-private const val PANEL_WEIGHT = 0.40f
-private const val PANEL_ALPHA = 0.82f
-/** Shown where a provider gave us nothing. */
-private const val UNKNOWN_VALUE = "—"
-
-private const val DESCRIPTION_LINES = 5
-
-/** Logos vary from wide banners to tall crests; both must fit uncropped. */
-private const val LOGO_MIN_HEIGHT = 44
-private const val LOGO_MAX_HEIGHT = 88
+private const val MASTHEAD_COVER_WIDTH = 60

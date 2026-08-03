@@ -469,6 +469,24 @@ class MoviesViewModel @Inject constructor(
         refreshDetail()
     }
 
+    /**
+     * Moves directly to a catalogue card selected by touch or pointer input.
+     *
+     * Returning the item lets the section choose its next panel from the exact
+     * same row snapshot, rather than waiting for the asynchronous detail fetch.
+     */
+    fun selectBrowseItem(row: Int, column: Int): MediaItem? {
+        val state = _uiState.value
+        val rows = state.visibleRows
+        val item = rows.getOrNull(row)?.items?.getOrNull(column) ?: return null
+
+        if (state.cursor.row != row || state.cursor.column != column) {
+            _uiState.update { it.copy(cursor = BrowseCursor(row, column)) }
+            refreshDetail()
+        }
+        return item
+    }
+
     private fun refreshDetail() {
         // A direct browse move is an explicit decision to abandon any pending
         // automatic episode transition. Flow-driven remaps are filtered before

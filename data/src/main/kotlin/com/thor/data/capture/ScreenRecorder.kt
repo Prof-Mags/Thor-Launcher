@@ -42,10 +42,10 @@ sealed interface RecordingState {
  *
  * So the launcher does not capture a screen at all: it draws a third copy of itself.
  * A private `VirtualDisplay` is created with the encoder's input surface as its
- * output, and the launcher renders a console mock-up onto it holding both panels.
- * The frames go straight from the compositor to the encoder, never through a bitmap,
- * and no permission is involved because the app owns both the display and its
- * contents.
+ * output, and the launcher renders both panels onto it, stacked, each at the full
+ * size of the screen it stands for. The frames go straight from the compositor to
+ * the encoder, never through a bitmap, and no permission is involved because the app
+ * owns both the display and its contents.
  *
  * The consequence is worth being clear about: this records **the launcher**, not the
  * screen. A game running on a panel is another app's window on a display this
@@ -77,8 +77,25 @@ class ScreenRecorder @Inject constructor(
     fun start(width: Int, height: Int, densityDpi: Int): RecordingState {
         if (isRecording) return _state.value
 
-        val videoWidth = width.coerceIn(MIN_DIMENSION, MAX_DIMENSION).roundToEven()
-        val videoHeight = height.coerceIn(MIN_DIMENSION, MAX_DIMENSION).roundToEven()
+        /*
+         * Scaled as a pair, never clamped apart.
+         *
+         * Each dimension used to be coerced into range on its own, and two panels
+         * stacked are tall enough for that to bite: the height hit the ceiling, the
+         * width did not, and the frame the launcher was asked to draw into was a
+         * different shape from the one it had measured for. Compose does not shrink
+         * a column to fit — it overflows — so the bottom panel was simply cut off,
+         * and a recording of two screens showed one and a half.
+         *
+         * One factor applied to both keeps the shape whatever the ceiling is, and
+         * the density goes with it: pixels and density together decide the dp box a
+         * composition is measured in, so scaling only the pixels would shrink the
+         * recorded launcher's layout rather than its resolution.
+         */
+        val scale = captureScale(width, height)
+        val videoWidth = (width * scale).toInt().roundToEven()
+        val videoHeight = (height * scale).toInt().roundToEven()
+        val videoDensity = (densityDpi * scale).toInt().coerceAtLeast(MIN_DENSITY)
 
         val uri = createOutputEntry() ?: return fail("Could not create the video file")
 
@@ -109,7 +126,7 @@ class ScreenRecorder @Inject constructor(
                 DISPLAY_NAME,
                 videoWidth,
                 videoHeight,
-                densityDpi.coerceAtLeast(MIN_DENSITY),
+                videoDensity,
                 newRecorder.surface,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION,
@@ -222,10 +239,44 @@ class ScreenRecorder @Inject constructor(
         const val DISPLAY_NAME = "Loki capture"
         const val OUTPUT_DIRECTORY = "Movies/Loki"
         const val FRAME_RATE = 30
-        const val MIN_DIMENSION = 240
-        const val MAX_DIMENSION = 2160
         const val MIN_DENSITY = 160
         const val MIN_BIT_RATE = 2_000_000L
         const val MAX_BIT_RATE = 24_000_000L
     }
 }
+
+/**
+ * One factor that brings both video dimensions inside the encoder's range.
+ *
+ * Shrinks when the longer side is over the ceiling — which two stacked panels reach
+ * on any device with 1080p screens — and grows when the shorter side is under the
+ * floor. Returns 1 when the frame already fits, so the ordinary case is recorded at
+ * exactly the panels' own resolution.
+ *
+ * Top level, and `internal`, so it can be tested without a `Context`: the rule it
+ * encodes is the one that broke the recorder, and it broke silently — a clamped
+ * dimension produces a valid file of the wrong shape, with no error anywhere.
+ */
+internal fun captureScale(
+    width: Int,
+    height: Int,
+    minDimension: Int = CAPTURE_MIN_DIMENSION,
+    maxDimension: Int = CAPTURE_MAX_DIMENSION,
+): Float {
+    if (width <= 0 || height <= 0) return 1f
+
+    val shrink = maxDimension.toFloat() / maxOf(width, height)
+    val grow = minDimension.toFloat() / minOf(width, height)
+
+    return when {
+        shrink < 1f -> shrink
+        grow > 1f -> grow
+        else -> 1f
+    }
+}
+
+/** Smallest side an encoder here is asked to accept. */
+internal const val CAPTURE_MIN_DIMENSION = 240
+
+/** Largest side. Two 1080p panels stacked land exactly on it. */
+internal const val CAPTURE_MAX_DIMENSION = 2160

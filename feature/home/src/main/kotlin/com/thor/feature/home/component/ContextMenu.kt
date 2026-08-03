@@ -7,6 +7,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -42,6 +45,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -285,6 +291,7 @@ fun EntryContextMenu(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ContextRow(
     action: ContextAction,
@@ -311,10 +318,19 @@ private fun ContextRow(
     // Lit by the controller cursor or by the pointer, indistinguishably.
     val hover = rememberPointerHover()
     val lit = focused || hover.isHovered
+    val requester = remember { BringIntoViewRequester() }
+
+    LaunchedEffect(focused) {
+        if (focused) {
+            withFrameNanos { }
+            runCatching { requester.bringIntoView() }
+        }
+    }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .bringIntoViewRequester(requester)
             .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
             .thorCursor(focused = lit, cornerRadius = dimens.cornerRadiusSmall)
             .pointerHover(hover)

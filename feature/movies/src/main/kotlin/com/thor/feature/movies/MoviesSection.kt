@@ -38,6 +38,7 @@ fun MoviesTopPanel(
     player: ThorPlayer,
     status: PlayerStatus,
     onTypeSelected: (MediaType) -> Unit = {},
+    onItemSelected: (row: Int, column: Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -51,6 +52,7 @@ fun MoviesTopPanel(
             MoviesBrowseScreen(
                 state = state,
                 onTypeSelected = onTypeSelected,
+                onItemSelected = onItemSelected,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -120,7 +122,7 @@ fun MoviesBottomPanel(
 
 /** A compact media toolbar backed by the launcher's custom text input. */
 @Composable
-private fun MediaSearchField(
+internal fun MediaSearchField(
     query: String,
     onQueryChanged: (String) -> Unit,
     requestFocus: Boolean,

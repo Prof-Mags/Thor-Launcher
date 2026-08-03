@@ -307,6 +307,16 @@ fun MoviesSectionState.pickEpisode(number: Int) {
     mode = MoviesMode.SOURCES
 }
 
+/**
+ * Opens a catalogue title selected by touch. The view model remains the single
+ * owner of the browse cursor, so the controller resumes from the tapped card.
+ */
+fun MoviesSectionState.pickTitle(row: Int, column: Int) {
+    val item = viewModel.selectBrowseItem(row, column) ?: return
+    focusedSource = 0
+    mode = if (item.isSeries) MoviesMode.EPISODES else MoviesMode.SOURCES
+}
+
 private fun MoviesSectionState.handlePlaying(command: ControllerCommand): Boolean = when (command) {
     ControllerCommand.NAVIGATE_LEFT -> { stepAction(-1); true }
     ControllerCommand.NAVIGATE_RIGHT -> { stepAction(1); true }
