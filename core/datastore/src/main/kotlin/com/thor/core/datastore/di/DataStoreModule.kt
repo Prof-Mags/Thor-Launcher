@@ -9,8 +9,12 @@ import com.thor.core.common.dispatchers.Dispatcher
 import com.thor.core.common.dispatchers.ThorDispatcher
 import com.thor.core.datastore.PlaybackStateSerializer
 import com.thor.core.datastore.PlaybackStore
+import com.thor.core.datastore.ProfileRegistrySerializer
+import com.thor.core.datastore.ProfileSettingsStore
+import com.thor.core.datastore.ProfileStore
 import com.thor.core.datastore.SettingsSerializer
 import com.thor.core.model.PlaybackState
+import com.thor.core.model.ProfileRegistry
 import com.thor.core.model.ThorSettings
 import dagger.Module
 import dagger.Provides
@@ -26,22 +30,44 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DataStoreModule {
 
-    private const val SETTINGS_FILE = "thor-settings.json"
     private const val PLAYBACK_FILE = "thor-playback.json"
+    private const val PROFILES_FILE = "thor-profiles.json"
 
+    /**
+     * Settings, resolved through whoever is signed in.
+     *
+     * The file lives inside the active profile's directory, so this is bound to
+     * [ProfileSettingsStore] rather than to a fixed path. Everything that
+     * injects `DataStore<ThorSettings>` keeps working unchanged and follows the
+     * profile automatically.
+     */
     @Provides
     @Singleton
     fun providesSettingsDataStore(
+        store: ProfileSettingsStore,
+    ): DataStore<ThorSettings> = store
+
+    /**
+     * The profile registry, at a fixed path.
+     *
+     * This is the one document that cannot be per-profile: it is what says which
+     * profile to load.
+     */
+    @Provides
+    @Singleton
+    @ProfileStore
+    fun providesProfileDataStore(
         @ApplicationContext context: Context,
         @Dispatcher(ThorDispatcher.IO) ioDispatcher: CoroutineDispatcher,
         @ApplicationScope scope: CoroutineScope,
-        serializer: SettingsSerializer,
-    ): DataStore<ThorSettings> = DataStoreFactory.create(
+        serializer: ProfileRegistrySerializer,
+    ): DataStore<ProfileRegistry> = DataStoreFactory.create(
         serializer = serializer,
-        // On corruption, fall back to defaults instead of throwing on every read.
-        corruptionHandler = ReplaceFileCorruptionHandler { ThorSettings.DEFAULT },
+        // Losing the registry must not brick the launcher — it re-seeds a
+        // default profile, which then adopts whatever data is on disk.
+        corruptionHandler = ReplaceFileCorruptionHandler { ProfileRegistry.EMPTY },
         scope = scope + ioDispatcher,
-        produceFile = { context.dataStoreFile(SETTINGS_FILE) },
+        produceFile = { context.dataStoreFile(PROFILES_FILE) },
     )
 
     /**

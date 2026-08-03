@@ -203,6 +203,24 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
+        <!--
+          Mirrors the system shade into the launcher's own notification panel.
+
+          Exported and permission-guarded because the system, not the launcher,
+          binds it — `BIND_NOTIFICATION_LISTENER_SERVICE` is what stops anything
+          else from doing so. It is inert until the user grants notification
+          access in Android's settings, which no app can grant itself.
+        -->
+        <service
+            android:name=".notification.LokiNotificationListener"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".capture.ProjectionConsentActivity"
             android:exported="false"
