@@ -78,6 +78,14 @@ fun TopScreen(
      * its hints are the only way to tell that a press will land here.
      */
     focused: Boolean = false,
+    /**
+     * Who is signed in and what the system is saying, or null to draw neither.
+     *
+     * Null on the couch and single-screen layouts, which have their own chrome
+     * and no room in the corner this occupies.
+     */
+    status: ShellStatus? = null,
+    statusActions: ShellStatusActions = ShellStatusActions(),
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -187,6 +195,25 @@ fun TopScreen(
         // grid as well, which put two clocks on screen at once.
         Column(modifier = Modifier.align(Alignment.TopCenter)) {
             LauncherStatusBar(clockStyle = clockStyle, visible = showStatusBar)
+        }
+
+        // Drawn last of the corner chrome so the opened shade lies over the
+        // panel rather than being clipped behind it.
+        if (status != null) {
+            ProfileNotificationCluster(
+                profile = status.profile,
+                avatarPath = status.avatarPath,
+                access = status.notifications,
+                expanded = status.shadeOpen,
+                onToggleExpanded = statusActions.onToggleShade,
+                onGrantAccess = statusActions.onGrantAccess,
+                onNotificationOpened = statusActions.onNotificationOpened,
+                onNotificationDismissed = statusActions.onNotificationDismissed,
+                onDismissAll = statusActions.onDismissAll,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(STATUS_CLUSTER_INSET.dp),
+            )
         }
 
         ControllerFocusEdge(
@@ -377,3 +404,6 @@ private val FOCUS_EDGE_WIDTH = 2.dp
 private val FOCUS_EDGE_RADIUS = 14.dp
 private val HINT_INSET = 18.dp
 private const val HINT_BACKGROUND_ALPHA = 0.86f
+
+/** Keeps the profile cluster clear of the screen edge and the clock. */
+private const val STATUS_CLUSTER_INSET = 10

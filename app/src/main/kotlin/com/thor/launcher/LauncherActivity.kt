@@ -11,6 +11,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.thor.core.datastore.SettingsRepository
+import com.thor.data.notification.NotificationRepository
 import com.thor.core.display.ThorDisplayMonitor
 import com.thor.core.display.hideSystemBars
 import com.thor.core.input.ControllerInputRouter
@@ -75,6 +76,9 @@ class LauncherActivity : ComponentActivity() {
 
     /** Reports whether THOR is the activity in front, for the launch watchdog. */
     @Inject lateinit var launcherForeground: LauncherForeground
+
+    /** Re-reads notification access when the launcher comes back to the front. */
+    @Inject lateinit var notifications: NotificationRepository
 
     /**
      * Where a recording gets its shape, filled in by the shell.
@@ -208,6 +212,10 @@ class LauncherActivity : ComponentActivity() {
         // focus: focus moves to the app on the *other* panel, and to the pointer's
         // own overlay, neither of which means the launcher has gone anywhere.
         mouse.setActivityVisible(true)
+        // Notification access is granted in Android's settings, so returning from
+        // them is the one moment the answer is known to have possibly changed and
+        // nothing has told us.
+        notifications.refresh()
     }
 
     override fun onPause() {

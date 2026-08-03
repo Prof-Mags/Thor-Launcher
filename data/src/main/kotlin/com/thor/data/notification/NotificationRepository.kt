@@ -39,6 +39,16 @@ class NotificationRepository @Inject constructor(
     private val posted = MutableStateFlow<List<LauncherNotification>>(emptyList())
     private val connected = MutableStateFlow(false)
 
+    /**
+     * Bumped to re-read the permission.
+     *
+     * Access is granted in Android's settings, so nothing tells the launcher it
+     * happened. Binding the service does emit, which covers the common case, but
+     * a user who grants access and comes straight back would otherwise sit on a
+     * stale prompt for as long as the bind takes.
+     */
+    private val refreshes = MutableStateFlow(0)
+
     @Volatile
     private var host: Host? = null
 
@@ -51,12 +61,17 @@ class NotificationRepository @Inject constructor(
      * Android's own settings, so the launcher is not told when it changes and
      * would otherwise keep showing the prompt after the user had said yes.
      */
-    val access = combine(posted, connected) { list, isConnected ->
+    val access = combine(posted, connected, refreshes) { list, isConnected, _ ->
         when {
             !isListenerEnabled() -> NotificationAccess.Denied
             !isConnected -> NotificationAccess.Connecting
             else -> NotificationAccess.Connected(list)
         }
+    }
+
+    /** Re-reads whether access has been granted. Cheap; a single settings lookup. */
+    fun refresh() {
+        refreshes.value += 1
     }
 
     val unreadCount = posted.map { list -> list.count(LauncherNotification::isClearable) }

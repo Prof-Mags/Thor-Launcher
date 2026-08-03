@@ -14,7 +14,9 @@ import com.thor.core.model.DeveloperSettings
 import com.thor.core.model.DisplaySettings
 import com.thor.core.model.DockSettings
 import com.thor.core.model.GridSpec
+import com.thor.core.model.LauncherProfile
 import com.thor.core.model.LibrarySettings
+import com.thor.core.model.ProfileRegistry
 import com.thor.core.model.MetadataSettings
 import com.thor.core.model.PerformanceSettings
 import com.thor.core.model.PersonalizationSettings
@@ -23,6 +25,7 @@ import com.thor.core.model.RomDirectory
 import com.thor.core.model.ThemeId
 import com.thor.core.model.ThemeSpec
 import com.thor.core.model.ThorSettings
+import android.net.Uri
 import android.content.Context
 import androidx.core.net.toUri
 import com.thor.core.model.ExtensionManifest
@@ -49,6 +52,7 @@ import com.thor.data.media.MediaRepository
 import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.ProviderStatus
 import com.thor.data.repository.GridLayoutRepository
+import com.thor.data.profile.ProfileRepository
 import com.thor.data.repository.LibraryRepository
 import com.thor.data.scanner.EmulatorRegistry
 import com.thor.data.sync.LibrarySyncManager
@@ -61,6 +65,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
@@ -96,10 +101,68 @@ class SettingsViewModel @Inject constructor(
     private val iconPackRepository: IconPackRepository,
     private val pointerService: PointerServiceManager,
     private val mediaRepository: MediaRepository,
+    private val profileRepository: ProfileRepository,
     mouse: MouseController,
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
+
+    // ---- Profiles ----------------------------------------------------------
+
+    /**
+     * Everyone on the device, and who is signed in.
+     *
+     * Read here rather than through the launcher shell because the page that
+     * edits them lives in settings, and because switching profile replaces the
+     * settings document this whole view model is built on — the registry is the
+     * one thing on this screen that outlives the switch.
+     */
+    val profiles: StateFlow<ProfileRegistry> = profileRepository.profiles
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProfileRegistry.EMPTY)
+
+    /** Absolute path of a profile's picture, or null for the drawn initial. */
+    fun avatarPathFor(profile: LauncherProfile): String? = profileRepository.avatarPath(profile)
+
+    fun switchProfile(id: String) {
+        viewModelScope.launch { profileRepository.switchTo(id) }
+    }
+
+    /**
+     * Adds a profile without switching to it.
+     *
+     * Deliberate: the row that creates one sits on a settings page belonging to
+     * the *current* profile, and switching underneath would replace the page
+     * being read. The new profile is one press away in the list above.
+     */
+    fun createProfile() {
+        viewModelScope.launch {
+            val taken = profileRepository.profiles.first().profiles.size
+            profileRepository.create(
+                name = "Player ${taken + 1}",
+                accentArgb = LauncherProfile.DEFAULT_ACCENT,
+            )
+        }
+    }
+
+    fun renameProfile(id: String, name: String) {
+        viewModelScope.launch { profileRepository.rename(id, name) }
+    }
+
+    fun setProfileAccent(id: String, accentArgb: Long) {
+        viewModelScope.launch { profileRepository.setAccent(id, accentArgb) }
+    }
+
+    fun setProfileAvatar(id: String, uri: String) {
+        viewModelScope.launch { profileRepository.setAvatar(id, Uri.parse(uri)) }
+    }
+
+    fun clearProfileAvatar(id: String) {
+        viewModelScope.launch { profileRepository.clearAvatar(id) }
+    }
+
+    fun deleteProfile(id: String) {
+        viewModelScope.launch { profileRepository.delete(id) }
+    }
 
     // ---- Extensions --------------------------------------------------------
 

@@ -133,6 +133,8 @@ import com.thor.feature.settings.tutorial.TutorialPanel
 import com.thor.feature.settings.tutorial.TutorialScreen
 import com.thor.feature.settings.tutorial.TutorialStep
 import com.thor.feature.settings.tutorial.rememberPermissionItems
+import com.thor.feature.topscreen.ShellStatus
+import com.thor.feature.topscreen.ShellStatusActions
 import com.thor.feature.topscreen.TopScreen
 
 /** Which full-screen overlay, if any, is showing on the info surface. */
@@ -415,6 +417,34 @@ fun ThorApp(
      */
     val moviesViewModel: MoviesViewModel = hiltViewModel()
     val streamViewModel: StreamViewModel = hiltViewModel()
+
+    /*
+     * The profile cluster's state.
+     *
+     * Held here rather than inside the panel because the shade has to close when
+     * the launcher leaves the foreground — a shade left open behind a game is
+     * the first thing seen on returning, over a panel about something else.
+     */
+    val profileStatusViewModel: ProfileStatusViewModel = hiltViewModel()
+    val activeProfile by profileStatusViewModel.profile.collectAsState()
+    val profileAvatarPath by profileStatusViewModel.avatarPath.collectAsState()
+    val notificationAccess by profileStatusViewModel.access.collectAsState()
+    val shadeOpen by profileStatusViewModel.shadeOpen.collectAsState()
+    val shellStatus = ShellStatus(
+        profile = activeProfile,
+        avatarPath = profileAvatarPath,
+        notifications = notificationAccess,
+        shadeOpen = shadeOpen,
+    )
+    val shellStatusActions = remember(profileStatusViewModel) {
+        ShellStatusActions(
+            onToggleShade = profileStatusViewModel::toggleShade,
+            onGrantAccess = profileStatusViewModel::requestNotificationAccess,
+            onNotificationOpened = profileStatusViewModel::openNotification,
+            onNotificationDismissed = profileStatusViewModel::dismissNotification,
+            onDismissAll = profileStatusViewModel::dismissAllNotifications,
+        )
+    }
     val moviesSection = rememberMoviesSection(moviesViewModel)
     val moviesState by moviesViewModel.uiState.collectAsState()
     val moviesDetail by moviesViewModel.detail.collectAsState()
@@ -1728,6 +1758,8 @@ fun ThorApp(
                     // overlay drawn over it has its own focus to show, and two focus
                     // treatments on one panel would contradict each other.
                     focused = activeSurface == InputSurface.TOP && !overlayIsOpen,
+                    status = shellStatus,
+                    statusActions = shellStatusActions,
                 )
                 infoOverlays()
 

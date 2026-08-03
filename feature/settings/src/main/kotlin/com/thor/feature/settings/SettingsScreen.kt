@@ -100,6 +100,11 @@ fun SettingsScreen(
     val indexerStatus by viewModel.indexerStatus.collectAsStateWithLifecycle()
     val addonStatus by viewModel.addonStatus.collectAsStateWithLifecycle()
     val extensionStatus by viewModel.extensionStatus.collectAsStateWithLifecycle()
+    val profileRegistry by viewModel.profiles.collectAsStateWithLifecycle()
+
+    // Recomputed with the registry: the picture row adds a "Remove" row beneath
+    // it, and a row count that misses it leaves the last row unreachable.
+    val activeProfileHasAvatar = profileRegistry.active?.let(viewModel::avatarPathFor) != null
     val pendingPlatformEmulators = pendingPlatform
         ?.let(viewModel::installedEmulatorsFor)
         .orEmpty()
@@ -136,6 +141,8 @@ fun SettingsScreen(
             extraRomFolderCount = settings.library.romDirectoryUris.count {
                 it.platformId == null
             },
+            profileRegistry = profileRegistry,
+            activeProfileHasAvatar = activeProfileHasAvatar,
         )
         // About is a pane rather than a list of pages, and it now carries the
         // diagnostics controls, so it has rows of its own to walk.
@@ -335,6 +342,7 @@ fun SettingsScreen(
                                 indexerStatus = indexerStatus,
                                 addonStatus = addonStatus,
                                 extensionStatus = extensionStatus,
+                                profileRegistry = profileRegistry,
                             )
                         }
 

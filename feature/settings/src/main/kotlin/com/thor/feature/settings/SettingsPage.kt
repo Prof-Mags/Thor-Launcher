@@ -120,6 +120,15 @@ enum class SettingsPage(
     // Display and performance live here rather than in a category of their own.
     // Two pages is not a category, and "how the screens behave" is the same visit
     // as "how it reads and how hard it works".
+    /**
+     * First in System, and deliberately: it is the widest-reaching page in the
+     * launcher, because every other setting belongs to whichever profile this
+     * one selects.
+     */
+    PROFILES(
+        SettingsCategory.SYSTEM, "Profiles",
+        "Separate settings and library for each person",
+    ),
     DUAL_SCREEN(
         SettingsCategory.SYSTEM, "Dual screen",
         "How the two panels are used",

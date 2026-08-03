@@ -73,3 +73,11 @@
 
 # ----------------------------------------------------------------- Compose
 # Compose, Coil and Media3 all ship consumer rules; nothing extra is required.
+
+# -------------------------------------------------------------------- DAOs
+# The library DAOs are reached through a `java.lang.reflect.Proxy` so that every
+# query follows the signed-in profile — see `ProfileScopedDao`. A proxy resolves
+# each call against the interface's own `Method`, so the interfaces and their
+# members have to survive intact; R8 has no way to see the call and would
+# otherwise be free to merge or drop methods that appear unused.
+-keep interface com.thor.core.database.dao.** { *; }

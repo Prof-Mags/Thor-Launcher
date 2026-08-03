@@ -47,6 +47,7 @@ import com.thor.core.model.CornerStyle
 import com.thor.core.model.IconPack
 import com.thor.core.model.MouseAction
 import com.thor.core.model.MediaSettings
+import com.thor.core.model.ProfileRegistry
 import com.thor.core.model.MouseButton
 import com.thor.feature.settings.IconPackStatus
 import com.thor.feature.settings.component.DirectoryPickerRow
@@ -94,6 +95,8 @@ fun SettingsPageContent(
     addonStatus: Map<Int, String>,
     /** What the last extension import said, or null if there has not been one. */
     extensionStatus: String?,
+    /** Everyone on the device, for the profiles page. */
+    profileRegistry: ProfileRegistry = ProfileRegistry.EMPTY,
 ) {
     Column(
         modifier = Modifier
@@ -143,6 +146,7 @@ fun SettingsPageContent(
             )
             SettingsPage.FEEDBACK -> FeedbackPage(settings, focusedRow, viewModel)
 
+            SettingsPage.PROFILES -> ProfilesPage(profileRegistry, focusedRow, viewModel)
             SettingsPage.DUAL_SCREEN -> DualScreenPage(settings, focusedRow, viewModel)
             SettingsPage.PERFORMANCE -> PerformancePage(settings, focusedRow, viewModel)
 
@@ -166,6 +170,9 @@ fun rowCountFor(
     mediaSettings: MediaSettings = MediaSettings(),
     wallpaperClearRows: Int = 0,
     extraRomFolderCount: Int = 0,
+    /** Profile rows depend on how many there are and whether the active one has a picture. */
+    profileRegistry: ProfileRegistry = ProfileRegistry.EMPTY,
+    activeProfileHasAvatar: Boolean = false,
 ): Int = when (page) {
     SettingsPage.THEME -> 5
     SettingsPage.WALLPAPER -> 3 + wallpaperClearRows
@@ -193,6 +200,7 @@ fun rowCountFor(
     // Enable, permission, speed, span, then one row per bindable button.
     SettingsPage.POINTER -> 4 + MouseButton.entries.size
     SettingsPage.FEEDBACK -> 5
+    SettingsPage.PROFILES -> profilesRowCount(profileRegistry, activeProfileHasAvatar)
     SettingsPage.DUAL_SCREEN -> 6
     SettingsPage.PERFORMANCE -> 3
     SettingsPage.EXTENSIONS -> EXTENSIONS_ROWS
