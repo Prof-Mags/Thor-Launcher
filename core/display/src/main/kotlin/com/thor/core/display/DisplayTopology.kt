@@ -45,13 +45,30 @@ data class DisplayTopology(
     val primary: ThorDisplayInfo,
     val secondary: ThorDisplayInfo?,
     val requestedMode: DualScreenMode,
+    /**
+     * Whether a monitor is attached beyond the device's own second panel.
+     *
+     * Passed in rather than worked out here, because this type holds two displays
+     * and an attached monitor is by definition a third — it is not a fact this
+     * class has the data to determine. [hasExternalDisplay] answers it from the
+     * full list, which is what the caller has.
+     */
+    val hasExternalDisplay: Boolean = false,
 ) {
     val hasSecondaryDisplay: Boolean get() = secondary != null
 
     val effectiveMode: DualScreenMode
         get() = when (requestedMode) {
+            // A monitor is how someone says they have docked and sat down; see
+            // `resolveMode` in the shell, which this mirrors.
             DualScreenMode.AUTO ->
-                if (hasSecondaryDisplay) DualScreenMode.DUAL_DISPLAY else DualScreenMode.SPLIT_SINGLE
+                if (hasExternalDisplay) {
+                    DualScreenMode.COUCH
+                } else if (hasSecondaryDisplay) {
+                    DualScreenMode.DUAL_DISPLAY
+                } else {
+                    DualScreenMode.SPLIT_SINGLE
+                }
             // A user who explicitly asked for dual display but unplugged the
             // second panel still needs a usable launcher.
             DualScreenMode.DUAL_DISPLAY ->
@@ -83,6 +100,31 @@ data class DisplayTopology(
          * Overlay/virtual displays created by screen recorders and casting show
          * up in the same list and must not steal the info panel.
          */
+        /**
+         * Whether a monitor is plugged in, as distinct from the device's own panels.
+         *
+         * The Thor has exactly two built-in screens, so a *second* usable
+         * presentation display is one the user attached — a television, a monitor,
+         * a dock. Counting rather than naming, because the public API has no way to
+         * ask whether a display is built in: `Display.getType` is hidden, and the
+         * names are whatever the driver or the monitor's EDID happens to say.
+         *
+         * Private displays are already excluded by [isUsableSecondary], which is
+         * what keeps the launcher's own virtual displays out of this — a recording
+         * in progress creates one, and a recording must not look like a monitor.
+         */
+        fun hasExternalDisplay(displays: List<ThorDisplayInfo>): Boolean =
+            displays.count { !it.isPrimary && it.isPresentationCapable } >= EXTERNAL_THRESHOLD
+
+        /**
+         * The device's own second panel, plus one.
+         *
+         * Named rather than written as `2` at the comparison, because the number is
+         * a fact about this hardware and not an arbitrary threshold: it is "the
+         * built-in second screen, and then another one".
+         */
+        private const val EXTERNAL_THRESHOLD = 2
+
         fun isUsableSecondary(display: Display): Boolean {
             if (display.displayId == Display.DEFAULT_DISPLAY) return false
             if (display.state == Display.STATE_OFF) return false

@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,6 +77,7 @@ fun MediaDetailPanel(
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
     val item = detail.item
+    val infoWeight = INFO_WEIGHT
 
     Box(modifier = modifier.fillMaxSize().background(colors.background)) {
         item?.backdropUrl?.let { backdrop ->
@@ -92,9 +94,11 @@ fun MediaDetailPanel(
         Box(
             modifier = Modifier.fillMaxSize().background(
                 Brush.horizontalGradient(
-                    0f to colors.background.copy(alpha = 0.96f),
-                    0.56f to colors.background.copy(alpha = 0.74f),
-                    1f to colors.background.copy(alpha = 0.48f),
+                    *arrayOf(
+                            0f to colors.background.copy(alpha = 0.96f),
+                            0.56f to colors.background.copy(alpha = 0.74f),
+                            1f to colors.background.copy(alpha = 0.48f),
+                        ),
                 ),
             ),
         )
@@ -124,12 +128,13 @@ fun MediaDetailPanel(
                 // surface, not a floating dialog. Its children retain their own
                 // padding so text and source rows still have comfortable insets.
                 .padding(top = dimens.spacingSmall),
-            shape = ThorTheme.shapes.panel,
+            shape =                 ThorTheme.shapes.panel,
+            alphaOverride = null,
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
                 InformationPanel(
                     detail = detail,
-                    modifier = Modifier.weight(INFO_WEIGHT).fillMaxHeight(),
+                    modifier = Modifier.weight(infoWeight).fillMaxHeight(),
                 )
                 Box(
                     modifier = Modifier
@@ -146,7 +151,7 @@ fun MediaDetailPanel(
                     onSourcePicked = onSourcePicked,
                     onSeasonSelected = onSeasonSelected,
                     onEpisodeSelected = onEpisodeSelected,
-                    modifier = Modifier.weight(1f - INFO_WEIGHT).fillMaxHeight(),
+                    modifier = Modifier.weight(1f - infoWeight).fillMaxHeight(),
                 )
             }
         }
@@ -933,6 +938,8 @@ private fun List<ProviderOutcome>.describe(): String? = this
     ?.joinToString("\n")
 
 private const val INFO_WEIGHT = 0.59f
+private const val SHELF_INFO_WEIGHT = 0.66f
+private const val LIST_INFO_WEIGHT = 0.43f
 private const val POSTER_WIDTH = 86
 private const val LOGO_HEIGHT = 44
 private const val OVERVIEW_LINES = 6

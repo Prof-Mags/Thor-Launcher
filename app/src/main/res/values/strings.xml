@@ -21,4 +21,15 @@
     <string name="stream_connecting">Starting %1$s…</string>
     <!-- The core's own name for the step it is on, so a stall says where. -->
     <string name="stream_stage">Connecting — %1$s…</string>
+
+    <!--
+      The recording notification, which is the only control a recording has once
+      the user has left the launcher for whatever they are recording.
+    -->
+    <string name="recording_channel">Screen recording</string>
+    <string name="recording_channel_summary">Controls for a recording in progress</string>
+    <string name="recording_title">Loki is recording</string>
+    <string name="recording_text">Tap to open Loki</string>
+    <string name="recording_stop">Stop</string>
+    <string name="recording_screen">Record screen instead</string>
 </resources>

@@ -18,8 +18,20 @@ enum class ShortcutAction(val label: String, val description: String) {
     // it would rewrite every stored shortcut placement that refers to it.
     THOR_SETTINGS("Loki", "Open Loki's settings"),
     SWAP_SCREENS("Swap screens", "Move the grid to the other panel"),
+    COUCH_MODE("Couch mode", "Toggle the controller-first single-screen layout"),
     SCAN_LIBRARY("Rescan", "Look for newly added games"),
     RECORD("Record", "Capture both panels to a video"),
+
+    /**
+     * The other kind of recording, and a separate action rather than a mode.
+     *
+     * These capture different things and cannot be one button with a setting behind
+     * it: [RECORD] re-draws both panels into the console mock-up and stops producing
+     * frames the moment the launcher is not on screen, while this mirrors the real
+     * display and keeps going into a game. Which one someone wants is a decision
+     * they make each time, at the moment they press it.
+     */
+    RECORD_SCREEN("Record screen", "Capture the top screen, including games"),
 
     WIFI("Wi-Fi", "Open the Wi-Fi panel"),
     BLUETOOTH("Bluetooth", "Open Bluetooth settings"),
@@ -36,7 +48,7 @@ enum class ShortcutAction(val label: String, val description: String) {
  */
 object ShortcutGrid {
 
-    /** Tiles per row. Ten actions fall into three tidy rows at this width. */
+    /** Tiles per row. Twelve actions fill three tidy rows at this width. */
     const val COLUMNS = 4
 
     /** The tiles, in the order they are laid out. */

@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.thor.core.model.PanelLayout
 import com.thor.core.designsystem.modifier.SurfaceLevel
@@ -98,18 +99,20 @@ fun BottomNavBar(
                  * the frame of the panel.
                  */
                 shape = when (ThorTheme.shapes.style) {
-                    CornerStyle.SQUARE -> RectangleShape
-                    else -> RoundedCornerShape(
-                        topStart = dimens.cornerRadius,
-                        topEnd = dimens.cornerRadius,
-                        bottomStart = 0.dp,
-                        bottomEnd = 0.dp,
-                    )
-                },
+                        CornerStyle.SQUARE -> RectangleShape
+                        else -> RoundedCornerShape(
+                            topStart = dimens.cornerRadius,
+                            topEnd = dimens.cornerRadius,
+                            bottomStart = 0.dp,
+                            bottomEnd = 0.dp,
+                        )
+                    },
                 color = colors.surfaceElevated,
                 level = SurfaceLevel.RAISED,
             )
-            .padding(horizontal = dimens.spacingSmall),
+            .padding(
+                horizontal = dimens.spacingSmall,
+            ),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -184,7 +187,10 @@ private fun NavTab(
              * [PanelLayout.NAV_BAR_HEIGHT], so the insets here are the slack. Loosening any of
              * them without raising the bar clips the underline off the bottom.
              */
-            .padding(horizontal = dimens.spacingTiny, vertical = TAB_INSET.dp)
+            .padding(
+                horizontal = dimens.spacingTiny,
+                vertical = TAB_INSET.dp,
+            )
             .clip(shape)
             .then(
                 if (selected) {
@@ -204,20 +210,23 @@ private fun NavTab(
                 indication = null,
                 onClick = onClick,
             )
-            .padding(vertical = TAB_PADDING.dp),
+            .padding(
+                horizontal = 4.dp,
+                vertical = TAB_PADDING.dp,
+            ),
     ) {
-        Icon(
-            imageVector = tab.icon,
-            contentDescription = tab.label,
-            tint = tint,
-            modifier = Modifier.size((ICON_SIZE + lift * ICON_LIFT).dp),
-        )
-        Text(
-            text = tab.label,
-            style = MaterialTheme.typography.labelSmall,
-            color = tint,
-            maxLines = 1,
-        )
+                Icon(
+                    imageVector = tab.icon,
+                    contentDescription = tab.label,
+                    tint = tint,
+                    modifier = Modifier.size((ICON_SIZE + lift * ICON_LIFT).dp),
+                )
+                Text(
+                    text = tab.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = tint,
+                    maxLines = 1,
+                )
 
         // A short underline under the selected tab, because on the flat themes
         // the pill behind it is barely there and colour alone is not enough to
@@ -226,7 +235,9 @@ private fun NavTab(
             modifier = Modifier
                 .padding(top = 2.dp)
                 .height(UNDERLINE_HEIGHT.dp)
-                .width(if (selected) UNDERLINE_WIDTH.dp else 0.dp)
+                .width(
+if (selected) UNDERLINE_WIDTH.dp else 0.dp,
+                )
                 .clip(ThorTheme.shapes.pill)
                 .background(colors.cursor),
         )
@@ -239,6 +250,13 @@ private val LauncherTab.icon: ImageVector
         LauncherTab.STREAM -> Icons.Rounded.Sensors
         LauncherTab.HOME -> Icons.Rounded.Home
         LauncherTab.MOVIES -> Icons.Rounded.Movie
+    }
+
+private val LauncherTab.indexLabel: String
+    get() = when (this) {
+        LauncherTab.HOME -> "01"
+        LauncherTab.MOVIES -> "02"
+        LauncherTab.STREAM -> "03"
     }
 
 private const val BAR_HEIGHT = PanelLayout.NAV_BAR_HEIGHT
@@ -256,6 +274,8 @@ private const val ICON_SIZE = 20
 private const val ICON_LIFT = 3
 private const val UNDERLINE_HEIGHT = 2
 private const val UNDERLINE_WIDTH = 18
+private const val SEGMENT_UNDERLINE_WIDTH = 42
+private const val INDEX_UNDERLINE_WIDTH = 54
 
 /** The selected pill is a wash, not a fill: a solid accent bar is too loud here. */
 private const val SELECTED_PILL_ALPHA = 0.18f

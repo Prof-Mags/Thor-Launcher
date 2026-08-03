@@ -33,11 +33,13 @@ import com.thor.core.designsystem.theme.ThorTheme
 internal fun DossierCard(
     accent: Color,
     modifier: Modifier = Modifier,
+    bodyScrollable: Boolean = true,
     masthead: @Composable ColumnScope.() -> Unit,
     body: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val bodyScrollState = rememberScrollState()
 
     GlassSurface(
         modifier = modifier,
@@ -79,7 +81,13 @@ internal fun DossierCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .then(
+                        if (bodyScrollable) {
+                            Modifier.verticalScroll(bodyScrollState)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 content = body,
@@ -91,11 +99,12 @@ internal fun DossierCard(
 @Composable
 internal fun DossierSection(
     label: String,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = ThorTheme.colors
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(

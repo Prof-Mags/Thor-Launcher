@@ -16,6 +16,7 @@ import com.thor.core.display.hideSystemBars
 import com.thor.core.input.ControllerInputRouter
 import com.thor.core.input.ControllerProfiles
 import com.thor.core.input.MouseController
+import com.thor.launcher.capture.RecordingGeometry
 import com.thor.data.launcher.HomeRequests
 import com.thor.data.launcher.LauncherForeground
 import dagger.hilt.android.AndroidEntryPoint
@@ -74,6 +75,14 @@ class LauncherActivity : ComponentActivity() {
 
     /** Reports whether THOR is the activity in front, for the launch watchdog. */
     @Inject lateinit var launcherForeground: LauncherForeground
+
+    /**
+     * Where a recording gets its shape, filled in by the shell.
+     *
+     * Held by the activity rather than reached for inside the composable because
+     * the *service* reads it, and the service runs when this composition does not.
+     */
+    @Inject lateinit var recordingGeometry: RecordingGeometry
 
     /**
      * Re-asserts full screen and releases held keys as foreground status changes.
@@ -143,6 +152,7 @@ class LauncherActivity : ComponentActivity() {
                 displayMonitor = displayMonitor,
                 mouse = mouse,
                 homeRequests = homeRequests.requests,
+                recordingGeometry = recordingGeometry,
             )
         }
     }

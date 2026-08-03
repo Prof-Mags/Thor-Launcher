@@ -27,6 +27,23 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!--
+      Recording, which outlives the launcher being on screen.
+
+      A foreground service is the only way Android lets an app keep working while
+      the user is in another app, and `mediaProjection` is the type the platform
+      requires before it will grant a screen capture at all from Android 14.
+
+      `POST_NOTIFICATIONS` is asked for because the service's notification *is* the
+      recording's controls: leave the launcher for a game and it is the only way to
+      stop what you started. Refusing it does not stop recording working from the
+      launcher itself — nothing else in Loki posts a notification, and none of this
+      reads them, which is a separate permission Loki does not hold.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
       Fallback for the pointer's cursor on a secondary display.
 
       The cursor is normally an accessibility overlay, which the pointer service
@@ -169,6 +186,29 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!--
+          Recording's own service, and the dialog that has to precede a screen one.
+
+          The service is not exported: everything that starts it is inside Loki —
+          the shortcut panel, and its own notification's actions.
+
+          `ProjectionConsentActivity` is transparent and excluded from recents
+          because it is not a place the user goes. It exists because a projection
+          can only be granted to an activity result, so a notification action has
+          to route through one to ask.
+        -->
+        <service
+            android:name=".capture.RecordingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <activity
+            android:name=".capture.ProjectionConsentActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!--
           The window a stream is drawn in.

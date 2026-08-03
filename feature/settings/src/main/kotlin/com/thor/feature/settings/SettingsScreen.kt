@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -168,12 +169,15 @@ fun SettingsScreen(
             // ---- Category rail ---------------------------------------------
             GlassSurface(
                 modifier = Modifier
-                    .width(RAIL_WIDTH.dp)
+                    .width(
+                        CARD_RAIL_WIDTH.dp,
+                    )
                     .fillMaxHeight(),
-                shape = ThorTheme.shapes.large,
+                shape =                     ThorTheme.shapes.large,
                 color = colors.surface,
                 alphaOverride = 0.92f,
                 level = SurfaceLevel.RAISED,
+                bordered = true,
             ) {
                 /*
                  * Every category on screen at once, without a scroll.
@@ -243,8 +247,12 @@ fun SettingsScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .clip(ThorTheme.shapes.large)
-                    .background(colors.surface.copy(alpha = 0.38f)),
+                    .clip(
+                                                    ThorTheme.shapes.large,
+                    )
+                    .background(
+                        colors.surface.copy(alpha = 0.38f),
+                    ),
             ) {
                 DetailHeader(
                     title = openPage?.title ?: category.title,
@@ -380,7 +388,9 @@ private fun DetailHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.surface.copy(alpha = 0.48f))
+            .background(
+                colors.surface.copy(alpha = 0.48f),
+            )
             .padding(
                 start = dimens.spacingLarge,
                 end = dimens.spacingLarge,
@@ -390,13 +400,13 @@ private fun DetailHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier
-                .padding(end = dimens.spacingSmall)
-                .width(4.dp)
-                .height(42.dp)
-                .clip(ThorTheme.shapes.pill)
-                .background(Brush.verticalGradient(colors.accentStops)),
-        )
+                modifier = Modifier
+                    .padding(end = dimens.spacingSmall)
+                    .width(4.dp)
+                    .height(42.dp)
+                    .clip(ThorTheme.shapes.pill)
+                    .background(Brush.verticalGradient(colors.accentStops)),
+            )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = if (showBack) "SETTING PAGE" else "SETTINGS CATEGORY",
@@ -429,35 +439,39 @@ private fun PageNavRow(
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val shape = ThorTheme.shapes.panel
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 5.dp)
             .revealWhenFocused(focused)
-            .clip(ThorTheme.shapes.panel)
+            .clip(shape)
             .background(
                 if (focused) colors.surfaceHighest else colors.surface.copy(alpha = 0.58f),
             )
-            .thorCursor(focused = focused, cornerRadius = dimens.cornerRadiusSmall)
+            .thorCursor(focused = focused, shape = shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
+            .padding(
+                horizontal = 14.dp,
+                vertical = 14.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
     ) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(ThorTheme.shapes.small)
-                .background(colors.cursor.copy(alpha = if (focused) 0.22f else 0.10f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = page.category.icon,
-                contentDescription = null,
-                tint = colors.cursor,
-                modifier = Modifier.size(21.dp),
-            )
+                    Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(ThorTheme.shapes.small)
+                    .background(colors.cursor.copy(alpha = if (focused) 0.22f else 0.10f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = page.category.icon,
+                    contentDescription = null,
+                    tint = colors.cursor,
+                    modifier = Modifier.size(21.dp),
+                )
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -473,13 +487,13 @@ private fun PageNavRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        SettingsTextButton(
-            label = "OPEN",
-            containerColor = colors.cursor.copy(alpha = if (focused) 0.16f else 0.08f),
-            contentColor = if (focused) colors.cursor else colors.onSurfaceVariant,
-            borderColor = colors.cursor.copy(alpha = if (focused) 0.48f else 0.18f),
-            trailingIcon = Icons.Rounded.ChevronRight,
-        )
+                    SettingsTextButton(
+                label = "OPEN",
+                containerColor = colors.cursor.copy(alpha = if (focused) 0.16f else 0.08f),
+                contentColor = if (focused) colors.cursor else colors.onSurfaceVariant,
+                borderColor = colors.cursor.copy(alpha = if (focused) 0.48f else 0.18f),
+                trailingIcon = Icons.Rounded.ChevronRight,
+            )
     }
 }
 
@@ -499,19 +513,26 @@ private fun CategoryRow(
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val shape = ThorTheme.shapes.panel
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = dimens.spacingSmall, vertical = 3.dp)
+            .padding(
+                horizontal = dimens.spacingSmall,
+                vertical = 3.dp,
+            )
             .revealWhenFocused(cursorHere)
-            .clip(ThorTheme.shapes.panel)
+            .clip(shape)
             .background(
                 if (selected) colors.surfaceHighest else Color.Transparent,
             )
-            .thorCursor(focused = cursorHere, cornerRadius = dimens.cornerRadius)
+            .thorCursor(focused = cursorHere, shape = shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = dimens.spacingSmall, vertical = 9.dp),
+            .padding(
+                horizontal = dimens.spacingSmall,
+                vertical = 9.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
     ) {
@@ -524,21 +545,21 @@ private fun CategoryRow(
                     .background(Brush.verticalGradient(colors.accentStops)),
             )
         }
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(ThorTheme.shapes.small)
-                .background(
-                    if (selected) colors.cursor.copy(alpha = 0.16f) else colors.surfaceElevated,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = category.icon,
-                contentDescription = null,
-                tint = if (selected) colors.cursor else colors.onSurfaceVariant,
-                modifier = Modifier.size(19.dp),
-            )
+                    Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(ThorTheme.shapes.small)
+                    .background(
+                        if (selected) colors.cursor.copy(alpha = 0.16f) else colors.surfaceElevated,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = category.icon,
+                    contentDescription = null,
+                    tint = if (selected) colors.cursor else colors.onSurfaceVariant,
+                    modifier = Modifier.size(19.dp),
+                )
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -559,5 +580,7 @@ private fun CategoryRow(
     }
 }
 
-private const val RAIL_WIDTH = 256
+private const val CARD_RAIL_WIDTH = 256
+private const val CONSOLE_RAIL_WIDTH = 218
+private const val INDEX_RAIL_WIDTH = 286
 private const val CONTENT_MAX_WIDTH = 820

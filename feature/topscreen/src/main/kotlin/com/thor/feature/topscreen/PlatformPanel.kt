@@ -49,16 +49,20 @@ fun PlatformDetailPanel(
     val played = games.count { it.stats.hasBeenPlayed }
     val favourites = games.count { it.isFavorite }
     val totalMillis = games.sumOf { it.stats.totalPlayMillis }
-    val latest = games
+    val continuePlaying = games
         .filter { it.stats.hasBeenPlayed }
-        .maxByOrNull { it.stats.lastPlayedEpochMs ?: 0L }
-    val highlight = games.sortedWith(
+        .sortedWith(
+            compareByDescending<GameEntry> { it.stats.lastPlayedEpochMs ?: 0L }
+                .thenByDescending { it.stats.totalPlayMillis },
+        )
+        .take(PLATFORM_GAME_CARD_COUNT)
+    val highlights = games.sortedWith(
         compareBy<GameEntry> {
             PlatformFlagships.rankOf(platform.id, it.title) ?: FLAGSHIP_MISS
         }
             .thenByDescending { it.isFavorite }
             .thenBy { it.sortTitle },
-    ).firstOrNull()
+    ).take(PLATFORM_GAME_CARD_COUNT)
 
     Row(modifier = modifier.fillMaxSize()) {
         DossierCard(
@@ -104,19 +108,19 @@ fun PlatformDetailPanel(
                     }
                 }
 
-                if (latest != null) {
+                if (continuePlaying.isNotEmpty()) {
                     DossierSection("CONTINUE PLAYING") {
-                        PlatformGameCard(
-                            game = latest,
+                        PlatformGameCards(
+                            games = continuePlaying,
                             accent = accent,
                             showPlayActivity = true,
                         )
                     }
                 } else {
-                    highlight?.let { featured ->
+                    highlights.takeIf(List<GameEntry>::isNotEmpty)?.let { featured ->
                         DossierSection("PLATFORM HIGHLIGHTS") {
-                            PlatformGameCard(
-                                game = featured,
+                            PlatformGameCards(
+                                games = featured,
                                 accent = accent,
                                 showPlayActivity = false,
                             )
@@ -214,10 +218,32 @@ private fun PlatformMasthead(platform: Platform, fallbackTitle: String, accent: 
 }
 
 @Composable
+private fun PlatformGameCards(
+    games: List<GameEntry>,
+    accent: Color,
+    showPlayActivity: Boolean,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        games.forEach { game ->
+            PlatformGameCard(
+                game = game,
+                accent = accent,
+                showPlayActivity = showPlayActivity,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
 private fun PlatformGameCard(
     game: GameEntry,
     accent: Color,
     showPlayActivity: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
     val cover = game.metadata.artwork.boxArt ?: game.metadata.artwork.cellImage
@@ -235,12 +261,12 @@ private fun PlatformGameCard(
     }
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(ThorTheme.shapes.small)
             .background(colors.surfaceHighest.copy(alpha = 0.70f))
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ArtworkImage(
@@ -249,27 +275,27 @@ private fun PlatformGameCard(
             fallbackText = game.title,
             contentScale = ContentScale.Fit,
             modifier = Modifier
-                .width(CONTINUE_COVER_WIDTH.dp)
+                .width(PLATFORM_GAME_COVER_WIDTH.dp)
                 .aspectRatio(2f / 3f)
                 .clip(ThorTheme.shapes.small)
                 .background(colors.surface),
         )
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
                 text = game.title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.labelLarge,
                 color = colors.onSurface,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             if (supportingText.isNotEmpty()) {
                 Text(
                     text = supportingText,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelSmall,
                     color = colors.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -278,9 +304,9 @@ private fun PlatformGameCard(
             if (showPlayActivity) {
                 Box(
                     modifier = Modifier
-                        .padding(top = 3.dp)
-                        .fillMaxWidth(0.42f)
-                        .height(3.dp)
+                        .padding(top = 1.dp)
+                        .fillMaxWidth(0.35f)
+                        .height(2.dp)
                         .clip(ThorTheme.shapes.pill)
                         .background(accent),
                 )
@@ -310,4 +336,5 @@ private const val FLAGSHIP_MISS = Int.MAX_VALUE
 private const val PLATFORM_ICON_SIZE = 60
 private const val LOGO_HEIGHT = 30
 private const val LOGO_MAX_WIDTH = 240
-private const val CONTINUE_COVER_WIDTH = 48
+private const val PLATFORM_GAME_CARD_COUNT = 2
+private const val PLATFORM_GAME_COVER_WIDTH = 34

@@ -27,7 +27,7 @@ class RecordingFrameTest {
     fun `the frame holds both screens and the chrome around them`() {
         val f = frame()
 
-        val screens = f.width * TOP_SCREEN_WIDTH / panelAspect +
+        val screens = f.width * topScreenWidth() / panelAspect +
             f.width * bottomScreenWidth() / panelAspect
 
         assertThat(f.height.toFloat()).isGreaterThan(screens)
@@ -41,10 +41,10 @@ class RecordingFrameTest {
      */
     @Test
     fun `the base's screen is meaningfully smaller than the lid's`() {
-        assertThat(bottomScreenWidth()).isLessThan(TOP_SCREEN_WIDTH)
+        assertThat(bottomScreenWidth()).isLessThan(topScreenWidth())
 
         // Not merely smaller — visibly so.
-        assertThat(bottomScreenWidth() / TOP_SCREEN_WIDTH).isLessThan(NOTICEABLY_SMALLER)
+        assertThat(bottomScreenWidth() / topScreenWidth()).isLessThan(NOTICEABLY_SMALLER)
     }
 
     /**

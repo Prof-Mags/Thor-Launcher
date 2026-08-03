@@ -144,6 +144,17 @@ sealed interface LauncherEffect {
     data class LaunchFailed(val reason: String) : LauncherEffect
     data object OpenSettings : LauncherEffect
     data object OpenSearch : LauncherEffect
+
+    /**
+     * Ask for a recording of the real screen.
+     *
+     * Only this kind is handed up. It needs a consent dialog and a foreground
+     * service to hold the projection, and both live in the app module this one
+     * cannot see. Recording the launcher's own panels needs neither and is done in
+     * the view model directly.
+     */
+    data object StartScreenRecording : LauncherEffect
+
     /**
      * An app was started.
      *

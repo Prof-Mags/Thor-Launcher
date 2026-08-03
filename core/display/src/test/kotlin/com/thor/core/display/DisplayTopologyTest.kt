@@ -106,4 +106,71 @@ class DisplayTopologyTest {
         val degenerate = primary.copy(heightPx = 0)
         assertThat(degenerate.aspectRatio).isEqualTo(1f)
     }
+
+    // ---- An attached monitor -------------------------------------------------
+
+    /**
+     * The device's own second panel is not a monitor.
+     *
+     * The whole risk in counting displays rather than naming them, and the reason
+     * this is tested first: the Thor always reports a second panel, so mistaking it
+     * for something the user plugged in would put every device permanently into a
+     * mode meant for a docked one.
+     */
+    @Test
+    fun `the built-in second panel is not an external display`() {
+        assertThat(DisplayTopology.hasExternalDisplay(listOf(primary, secondary))).isFalse()
+        assertThat(DisplayTopology.hasExternalDisplay(listOf(primary))).isFalse()
+        assertThat(DisplayTopology.hasExternalDisplay(emptyList())).isFalse()
+    }
+
+    @Test
+    fun `a third usable display is a monitor`() {
+        val monitor = secondary.copy(displayId = 7, name = "HDMI")
+
+        assertThat(DisplayTopology.hasExternalDisplay(listOf(primary, secondary, monitor)))
+            .isTrue()
+    }
+
+    /**
+     * A recording must not look like a monitor.
+     *
+     * The launcher creates a display of its own while recording. One that counted
+     * here would flip the entire interface into couch mode the moment the user
+     * pressed record — which is why the filter is on *usable* displays, and why
+     * ours are private.
+     */
+    @Test
+    fun `a display of our own is not a monitor`() {
+        val ours = secondary.copy(displayId = 9, isPresentationCapable = false)
+
+        assertThat(DisplayTopology.hasExternalDisplay(listOf(primary, secondary, ours)))
+            .isFalse()
+    }
+
+    /** Plugging a monitor in is what asks for couch mode, and only on Automatic. */
+    @Test
+    fun `automatic switches to couch mode for a monitor, and nothing else does`() {
+        val monitor = secondary.copy(displayId = 7)
+        val withMonitor = { mode: DualScreenMode ->
+            DisplayTopology(
+                primary = primary,
+                secondary = monitor,
+                requestedMode = mode,
+                hasExternalDisplay = true,
+            )
+        }
+
+        assertThat(withMonitor(DualScreenMode.AUTO).effectiveMode)
+            .isEqualTo(DualScreenMode.COUCH)
+
+        // A mode chosen outright is an instruction; an attached screen does not
+        // overrule it.
+        assertThat(withMonitor(DualScreenMode.DUAL_DISPLAY).effectiveMode)
+            .isEqualTo(DualScreenMode.DUAL_DISPLAY)
+        assertThat(withMonitor(DualScreenMode.SPLIT_SINGLE).effectiveMode)
+            .isEqualTo(DualScreenMode.SPLIT_SINGLE)
+        assertThat(withMonitor(DualScreenMode.SINGLE).effectiveMode)
+            .isEqualTo(DualScreenMode.SINGLE)
+    }
 }

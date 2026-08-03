@@ -398,6 +398,7 @@ fun ThorTheme(
 
 /** Shorthand accessors, so components read `ThorTheme.colors.cursor`. */
 object ThorTheme {
+
     val colors: ThorColors
         @Composable get() = LocalThorTheme.current.colors
 

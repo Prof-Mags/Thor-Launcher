@@ -1,11 +1,8 @@
 package com.thor.feature.topscreen
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -14,7 +11,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -45,7 +41,6 @@ fun GameDetailPanel(
     game: GameEntry,
     platform: Platform?,
     selectedScreenshot: Int,
-    onScreenshotSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -56,6 +51,7 @@ fun GameDetailPanel(
     Row(modifier = modifier.fillMaxSize()) {
         DossierCard(
             accent = accent,
+            bodyScrollable = false,
             modifier = Modifier
                 .weight(DOSSIER_PANEL_WEIGHT)
                 .fillMaxHeight()
@@ -102,12 +98,14 @@ fun GameDetailPanel(
                 }
 
                 artwork.cappedScreenshots.takeIf(List<String>::isNotEmpty)?.let { screenshots ->
-                    DossierSection("MEDIA") {
+                    DossierSection(
+                        label = "MEDIA",
+                        modifier = Modifier.weight(1f),
+                    ) {
                         ScreenshotGallery(
                             urls = screenshots,
                             selected = selectedScreenshot,
-                            accent = accent,
-                            onSelected = onScreenshotSelected,
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -230,72 +228,37 @@ private fun GameMasthead(game: GameEntry, platform: Platform?, accent: Color) {
 private fun ScreenshotGallery(
     urls: List<String>,
     selected: Int,
-    accent: Color,
-    onSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
     val safeSelected = selected.coerceIn(0, urls.lastIndex)
 
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val previewHeight = (maxWidth * 9f / 16f).coerceIn(108.dp, 196.dp)
-        val thumbnailHeight = (previewHeight * 0.30f).coerceIn(38.dp, 54.dp)
-        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Box(
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(ThorTheme.shapes.small)
+            .background(colors.surfaceHighest),
+    ) {
+        ArtworkImage(
+            model = urls[safeSelected],
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
             modifier = Modifier
-                .fillMaxWidth()
-                .height(previewHeight)
-                .clip(ThorTheme.shapes.small)
-                .background(colors.surfaceHighest),
-        ) {
-            ArtworkImage(
-                model = urls[safeSelected],
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(1.dp),
-            )
-            Text(
-                text = "${safeSelected + 1} / ${urls.size}",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(8.dp)
-                    .clip(ThorTheme.shapes.pill)
-                    .background(Color.Black.copy(alpha = 0.68f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
-        }
-
-        if (urls.size > 1) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                urls.forEachIndexed { index, url ->
-                    val isSelected = index == safeSelected
-                    ArtworkImage(
-                        model = url,
-                        contentDescription = "Screenshot ${index + 1}",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(thumbnailHeight)
-                            .clip(ThorTheme.shapes.small)
-                            .background(colors.surfaceHighest)
-                            .border(
-                                width = if (isSelected) 2.dp else 1.dp,
-                                color = if (isSelected) accent else colors.outline.copy(alpha = 0.35f),
-                                shape = ThorTheme.shapes.small,
-                            )
-                            .clickable { onSelected(index) },
-                    )
-                }
-            }
-        }
-        }
+                .fillMaxSize()
+                .padding(1.dp),
+        )
+        Text(
+            text = "${safeSelected + 1} / ${urls.size}",
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(8.dp)
+                .clip(ThorTheme.shapes.pill)
+                .background(Color.Black.copy(alpha = 0.68f))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        )
     }
 }
 

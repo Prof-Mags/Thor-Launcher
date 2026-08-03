@@ -396,6 +396,20 @@ data class DisplaySettings(
     val swapScreens: Boolean = false,
     /** Fraction of a single display given to the top surface in split mode. */
     val splitRatio: Float = 0.5f,
+    /**
+     * Switches to Couch Mode on its own when a monitor is plugged in.
+     *
+     * On by default, because a monitor is a statement about where the user is: they
+     * have put the device in a dock and sat back, and the handheld layout is
+     * unreadable from there. Making them go and find the setting first is asking
+     * them to fix something the launcher could see for itself.
+     *
+     * Only applies to [DualScreenMode.AUTO]. Someone who has chosen a mode outright
+     * has said what they want, and a monitor is not a reason to overrule them —
+     * which is also why this is a switch rather than behaviour: unplug-and-replug
+     * with a specific layout in mind should stay put.
+     */
+    val couchOnExternalDisplay: Boolean = true,
     /** Physical scale of Couch Mode's navigation, hero, shelves and section UIs. */
     val couchUiScale: Float = DEFAULT_COUCH_UI_SCALE,
     val keepTopScreenAwake: Boolean = true,

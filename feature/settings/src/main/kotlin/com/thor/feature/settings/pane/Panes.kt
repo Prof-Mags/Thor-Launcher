@@ -192,7 +192,7 @@ fun rowCountFor(
     // Enable, permission, speed, span, then one row per bindable button.
     SettingsPage.POINTER -> 4 + MouseButton.entries.size
     SettingsPage.FEEDBACK -> 5
-    SettingsPage.DUAL_SCREEN -> 5
+    SettingsPage.DUAL_SCREEN -> 6
     SettingsPage.PERFORMANCE -> 3
     SettingsPage.EXTENSIONS -> EXTENSIONS_ROWS
     SettingsPage.ACCESSIBILITY -> 5
@@ -1206,12 +1206,27 @@ private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: S
         onSelected = { mode -> viewModel.updateDisplay { it.copy(mode = mode) } },
     )
     RowDivider()
+    SwitchRow(
+        title = "Couch mode on a monitor",
+        subtitle = if (display.mode == DualScreenMode.AUTO) {
+            "Switches to Couch mode on its own when a monitor is plugged in"
+        } else {
+            "Only applies on Automatic — Screen mode is set to " +
+                "${display.mode.label.lowercase()}"
+        },
+        checked = display.couchOnExternalDisplay,
+        focused = focusedRow == 1,
+        onCheckedChange = { on ->
+            viewModel.updateDisplay { it.copy(couchOnExternalDisplay = on) }
+        },
+    )
+    RowDivider()
     SliderRow(
         title = "Couch UI size",
         subtitle = "Make the complete Couch Mode interface smaller or larger",
         value = display.couchUiScale,
         range = DisplaySettings.MIN_COUCH_UI_SCALE..DisplaySettings.MAX_COUCH_UI_SCALE,
-        focused = focusedRow == 1,
+        focused = focusedRow == 2,
         valueLabel = { "%.0f%%".format(it * 100f) },
         onValueChange = { scale ->
             viewModel.updateDisplay { it.copy(couchUiScale = scale) }
@@ -1226,7 +1241,7 @@ private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: S
             "Put the grid on the main panel instead"
         },
         checked = display.swapScreens,
-        focused = focusedRow == 2,
+        focused = focusedRow == 3,
         onCheckedChange = { on -> viewModel.updateDisplay { it.copy(swapScreens = on) } },
     )
     RowDivider()
@@ -1236,7 +1251,7 @@ private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: S
             "is showing both",
         value = display.splitRatio,
         range = 0.25f..0.75f,
-        focused = focusedRow == 3,
+        focused = focusedRow == 4,
         valueLabel = { "${(it * 100).toInt()}%" },
         onValueChange = { ratio -> viewModel.updateDisplay { it.copy(splitRatio = ratio) } },
     )
@@ -1244,7 +1259,7 @@ private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: S
     SwitchRow(
         title = "Keep screen awake",
         checked = display.keepTopScreenAwake,
-        focused = focusedRow == 4,
+        focused = focusedRow == 5,
         onCheckedChange = { on -> viewModel.updateDisplay { it.copy(keepTopScreenAwake = on) } },
     )
 }

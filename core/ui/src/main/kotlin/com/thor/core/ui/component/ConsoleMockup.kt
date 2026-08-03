@@ -7,6 +7,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -18,8 +19,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -33,31 +32,29 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.sp
 
 /**
- * The launcher drawn inside a dual-screen console, which is what a recording is.
+ * The launcher drawn inside the AYN Thor, which is what a recording is.
  *
  * The two windows sit on two displays no capture API can see together, so a
- * recording cannot photograph them. It re-draws them instead — the same composables,
- * from the same state — onto a private display whose output is the video encoder's
- * input surface, and drops each into the screen cut-out of a console drawn around
- * them.
+ * recording cannot photograph them. It re-draws them instead — the same
+ * composables, from the same state — onto a private display whose output is the
+ * video encoder's input surface, and drops each into the screen cut-out of a console
+ * drawn around them.
  *
- * **Why a console and not two stacked rectangles.** Bare, the video is a tall square
- * that reads as two screenshots glued together. The point of a recording is to show
- * the launcher off, and a mock-up does that: the shell explains the proportions, the
- * hinge explains why there are two screens, and the controls explain what the thing
- * is. It is drawn rather than shipped as an image so it scales to any panel shape and
- * costs nothing in the APK.
+ * **Drawn as the actual device**, from the manufacturer's own photography: the cream
+ * shell, the gold trim around the lid's display, the wide flat hinge, the staggered
+ * controls — left stick above the d-pad, face buttons above the right stick — and
+ * the coloured buttons in their Nintendo arrangement. Vector rather than a
+ * photograph, so it scales to any panel shape, costs nothing in the APK, and has no
+ * lighting of its own to fight the screens.
  *
- * **The lid's screen is larger than the base's**, as it is on every dual-screen
- * handheld — the base has to find room for the controls beside its screen. That
- * difference is most of what makes the drawing read as a device rather than as two
- * equal rectangles in a frame.
+ * **The lid's screen is much the larger.** On this hardware the lid is nearly all
+ * display while the base has to find room for two sticks, a d-pad and four buttons
+ * beside its screen — which is most of what makes the drawing read as this device
+ * rather than as two rectangles in a frame.
  *
  * **Why an earlier body was removed, and why this one is safe.** The first version
  * laid each panel out at 86% of the frame while the frame carried a further 22% of
@@ -66,14 +63,14 @@ import androidx.compose.ui.unit.sp
  * stood for, laid out for a smaller screen, and showed less of itself. Two things
  * prevent that here, and both are load-bearing:
  *
- *  - the frame comes from [recordingFrameSize], derived
- *    from the same constants this file lays out with, so chrome cannot claim space
- *    the frame never budgeted
+ *  - the frame comes from [recordingFrameSize], derived from the same constants this
+ *    file lays out with, so chrome cannot claim space the frame never budgeted
  *  - each panel overrides [LocalDensity] so the *dp* box it is measured in is its
  *    real screen's, whatever pixel box it was drawn into — see [Screen]
  *
- * A panel drawn at half width therefore lays out **identically** to the real screen
- * and is merely rendered at fewer pixels. Nothing reflows, nothing crops.
+ * The base's panel is drawn at about half width and still lays out **identically** to
+ * the real screen; it is merely rendered at fewer pixels. Nothing reflows, nothing
+ * crops.
  */
 @Composable
 fun ConsoleMockup(
@@ -102,79 +99,57 @@ fun ConsoleMockup(
                 .padding(top = w * MARGIN),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            UpperShell(frameWidth = w, aspect = topAspect, widthDp = topWidthDp, panel = topPanel)
+            Lid(frameWidth = w, aspect = topAspect, widthDp = topWidthDp, panel = topPanel)
             Hinge(frameWidth = w)
-            LowerShell(
-                frameWidth = w,
-                aspect = bottomAspect,
-                widthDp = bottomWidthDp,
-                panel = bottomPanel,
-            )
+            Base(frameWidth = w, aspect = bottomAspect, widthDp = bottomWidthDp, panel = bottomPanel)
         }
     }
 }
 
 /**
- * The lid: one large screen, a camera and a status light.
+ * The lid: almost entirely display, inside a thin gold surround.
  *
- * Nothing else, because that is what a lid has — the asymmetry between the halves is
- * most of what makes a drawing read as a clamshell rather than as a box with two
- * holes cut in it.
+ * That trim is the device's one piece of jewellery and the quickest thing the eye
+ * uses to recognise it, so it is drawn as a real ring around the glass rather than
+ * as a tint on the bezel.
  */
 @Composable
-private fun UpperShell(
-    frameWidth: Dp,
-    aspect: Float,
-    widthDp: Float,
-    panel: @Composable () -> Unit,
-) {
+private fun Lid(frameWidth: Dp, aspect: Float, widthDp: Float, panel: @Composable () -> Unit) {
     Shell(frameWidth = frameWidth) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(frameWidth * SHELL_PAD),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(frameWidth * LID_PAD),
+            contentAlignment = Alignment.Center,
         ) {
-            // Camera and light, on the bezel above the screen.
-            Canvas(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(frameWidth * LID_TRIM),
+                    .clip(RoundedCornerShape(frameWidth * SCREEN_ROUND))
+                    .background(TRIM)
+                    .padding(frameWidth * TRIM_WIDTH),
             ) {
-                val r = size.height * 0.24f
-                val centre = Offset(size.width / 2f, size.height / 2f)
-                drawCircle(LENS, radius = r, center = centre)
-                drawCircle(LENS_INNER, radius = r * 0.45f, center = centre)
-                drawCircle(LED, radius = r * 0.34f, center = Offset(size.width * 0.9f, centre.y))
+                Screen(
+                    aspect = aspect,
+                    realWidthDp = widthDp,
+                    round = frameWidth * SCREEN_ROUND,
+                    content = panel,
+                )
             }
-
-            Screen(
-                aspect = aspect,
-                realWidthDp = widthDp,
-                // Of the shell's inner width, so the constant stays a share of the
-                // whole frame and [recordingFrameSize] can use it directly.
-                modifier = Modifier.fillMaxWidth(TOP_SCREEN_WIDTH / SHELL_INNER_WIDTH),
-                content = panel,
-            )
         }
     }
 }
 
 /**
- * The base: a smaller screen with the controls beside it, speaker along the foot.
+ * The base: a smaller screen with the controls staggered around it.
  *
- * The controls flank rather than sit beneath, which is both what a dual-screen
- * handheld looks like and what makes the base's screen visibly the smaller of the
- * two without costing the frame another band of height.
+ * Left is a stick above the d-pad, right is the buttons above a stick — the offset
+ * arrangement this device actually uses, and not a mirror image, which is what a
+ * symmetrical drawing gets wrong first.
  */
 @Composable
-private fun LowerShell(
-    frameWidth: Dp,
-    aspect: Float,
-    widthDp: Float,
-    panel: @Composable () -> Unit,
-) {
+private fun Base(frameWidth: Dp, aspect: Float, widthDp: Float, panel: @Composable () -> Unit) {
     Shell(frameWidth = frameWidth) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(frameWidth * SHELL_PAD),
+            modifier = Modifier.fillMaxWidth().padding(frameWidth * BASE_PAD),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(
@@ -182,12 +157,22 @@ private fun LowerShell(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Controls(frameWidth, left = true, modifier = Modifier.weight(CONTROL_COLUMN))
-                Screen(
-                    aspect = aspect,
-                    realWidthDp = widthDp,
-                    modifier = Modifier.weight(SCREEN_COLUMN),
-                    content = panel,
-                )
+
+                Box(
+                    modifier = Modifier
+                        .weight(SCREEN_COLUMN)
+                        .clip(RoundedCornerShape(frameWidth * SCREEN_ROUND))
+                        .background(BEZEL)
+                        .padding(frameWidth * BEZEL_WIDTH),
+                ) {
+                    Screen(
+                        aspect = aspect,
+                        realWidthDp = widthDp,
+                        round = frameWidth * SCREEN_ROUND,
+                        content = panel,
+                    )
+                }
+
                 Controls(frameWidth, left = false, modifier = Modifier.weight(CONTROL_COLUMN))
             }
 
@@ -196,14 +181,19 @@ private fun LowerShell(
     }
 }
 
-/** A moulded half of the body, with the soft top edge plastic has. */
+/** A moulded half of the shell, in the cream the hardware actually is. */
 @Composable
 private fun Shell(frameWidth: Dp, content: @Composable () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(frameWidth * SHELL_CORNER))
-            .background(Brush.verticalGradient(listOf(SHELL_TOP, SHELL_BOTTOM))),
+            .clip(RoundedCornerShape(frameWidth * SHELL_ROUND))
+            .background(Brush.verticalGradient(listOf(SHELL_LIGHT, SHELL_SHADE)))
+            .border(
+                width = frameWidth * SHELL_EDGE,
+                color = SHELL_EDGE_COLOUR,
+                shape = RoundedCornerShape(frameWidth * SHELL_ROUND),
+            ),
     ) {
         content()
     }
@@ -223,15 +213,16 @@ private fun Shell(frameWidth: Dp, content: @Composable () -> Unit) {
 private fun Screen(
     aspect: Float,
     realWidthDp: Float,
-    modifier: Modifier = Modifier,
+    round: Dp,
     content: @Composable () -> Unit,
 ) {
     val outer = LocalDensity.current
 
     BoxWithConstraints(
-        modifier = modifier
+        modifier = Modifier
+            .fillMaxWidth()
             .aspectRatio(aspect.coerceIn(MIN_ASPECT, MAX_ASPECT))
-            .clip(RoundedCornerShape(SCREEN_CORNER_PERCENT))
+            .clip(RoundedCornerShape(round))
             .background(Color.Black),
     ) {
         val drawnWidthPx = constraints.maxWidth.toFloat()
@@ -249,7 +240,7 @@ private fun Screen(
 }
 
 /**
- * One flanking control column: a stick above, d-pad or face buttons below.
+ * One side's controls: stick over d-pad on the left, buttons over stick on the right.
  *
  * Drawn on a canvas rather than assembled from composables — these are decoration
  * with no state and no interaction, and a dozen nested boxes to describe a d-pad
@@ -261,100 +252,133 @@ private fun Controls(frameWidth: Dp, left: Boolean, modifier: Modifier = Modifie
         val unit = size.width
         val cx = size.width / 2f
 
-        val stickR = unit * STICK_RADIUS
-        val stickY = size.height * STICK_Y
-        drawCircle(RECESS, radius = stickR * 1.3f, center = Offset(cx, stickY))
-        drawCircle(STICK, radius = stickR, center = Offset(cx, stickY))
-        drawCircle(STICK_TOP, radius = stickR * 0.6f, center = Offset(cx, stickY))
+        // The upper item sits high and the lower one low, and which is which is the
+        // whole of the stagger: a stick above a d-pad, buttons above a stick.
+        val upperY = size.height * UPPER_Y
+        val lowerY = size.height * LOWER_Y
 
-        val clusterY = size.height * CLUSTER_Y
         if (left) {
-            val arm = unit * DPAD_ARM
-            val thick = arm * 0.62f
-            drawRoundRect(
-                color = BUTTON,
-                topLeft = Offset(cx - arm, clusterY - thick / 2f),
-                size = Size(arm * 2f, thick),
-                cornerRadius = CornerRadius(thick * 0.3f),
-            )
-            drawRoundRect(
-                color = BUTTON,
-                topLeft = Offset(cx - thick / 2f, clusterY - arm),
-                size = Size(thick, arm * 2f),
-                cornerRadius = CornerRadius(thick * 0.3f),
-            )
-            drawCircle(BUTTON_TOP, radius = thick * 0.28f, center = Offset(cx, clusterY))
+            stick(cx, upperY, unit)
+            dpad(cx, lowerY, unit)
         } else {
-            val spread = unit * FACE_SPREAD
-            val r = unit * FACE_RADIUS
-            listOf(
-                Offset(cx, clusterY - spread) to FACE_N,
-                Offset(cx + spread, clusterY) to FACE_E,
-                Offset(cx, clusterY + spread) to FACE_S,
-                Offset(cx - spread, clusterY) to FACE_W,
-            ).forEach { (centre, colour) ->
-                drawCircle(RECESS, radius = r * 1.26f, center = centre)
-                drawCircle(colour, radius = r, center = centre)
-            }
+            faceButtons(cx, upperY, unit)
+            stick(cx, lowerY, unit)
         }
     }
 }
 
-/** Speaker holes and the wordmark, along the bottom lip. */
+/** A dished analogue stick in its recess. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.stick(
+    cx: Float,
+    cy: Float,
+    unit: Float,
+) {
+    val r = unit * STICK_RADIUS
+    drawCircle(RECESS, radius = r * 1.34f, center = Offset(cx, cy))
+    drawCircle(STICK_RIM, radius = r * 1.14f, center = Offset(cx, cy))
+    drawCircle(STICK, radius = r, center = Offset(cx, cy))
+    drawCircle(STICK_DISH, radius = r * 0.66f, center = Offset(cx, cy))
+}
+
+/** The cross, as one moulded piece rather than four keys. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.dpad(
+    cx: Float,
+    cy: Float,
+    unit: Float,
+) {
+    val arm = unit * DPAD_ARM
+    val thick = arm * 0.66f
+    val round = CornerRadius(thick * 0.26f)
+
+    drawRoundRect(
+        color = DPAD,
+        topLeft = Offset(cx - arm, cy - thick / 2f),
+        size = Size(arm * 2f, thick),
+        cornerRadius = round,
+    )
+    drawRoundRect(
+        color = DPAD,
+        topLeft = Offset(cx - thick / 2f, cy - arm),
+        size = Size(thick, arm * 2f),
+        cornerRadius = round,
+    )
+    drawCircle(DPAD_PIVOT, radius = thick * 0.26f, center = Offset(cx, cy))
+}
+
+/**
+ * Four buttons in the Nintendo arrangement, in the device's own colours.
+ *
+ * X blue at the top, Y green to the left, A red to the right, B yellow beneath —
+ * which is the layout and the palette the hardware ships with, and the detail most
+ * likely to be noticed if it were wrong.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.faceButtons(
+    cx: Float,
+    cy: Float,
+    unit: Float,
+) {
+    val spread = unit * FACE_SPREAD
+    val r = unit * FACE_RADIUS
+
+    listOf(
+        Offset(cx, cy - spread) to BUTTON_X,
+        Offset(cx - spread, cy) to BUTTON_Y,
+        Offset(cx + spread, cy) to BUTTON_A,
+        Offset(cx, cy + spread) to BUTTON_B,
+    ).forEach { (centre, colour) ->
+        drawCircle(RECESS, radius = r * 1.22f, center = centre)
+        drawCircle(colour, radius = r, center = centre)
+        // A highlight off the top edge, which is what makes a flat disc read as a
+        // moulded cap rather than as a dot.
+        drawCircle(
+            Color.White.copy(alpha = 0.16f),
+            radius = r * 0.52f,
+            center = Offset(centre.x, centre.y - r * 0.3f),
+        )
+    }
+}
+
+/** Speaker slots and the ports along the bottom edge. */
 @Composable
 private fun Foot(frameWidth: Dp) {
-    Box(
+    Canvas(
         modifier = Modifier.fillMaxWidth().height(frameWidth * FOOT_HEIGHT),
-        contentAlignment = Alignment.Center,
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val r = size.height * SPEAKER_DOT
-            val gap = r * 3.2f
-            val y = size.height / 2f
-            listOf(size.width * 0.1f, size.width * 0.9f).forEach { originX ->
-                repeat(SPEAKER_DOTS) { i ->
-                    val x = originX + (i - (SPEAKER_DOTS - 1) / 2f) * gap
-                    drawCircle(SPEAKER, radius = r, center = Offset(x, y))
-                }
-            }
+        val slotH = size.height * SPEAKER_HEIGHT
+        val slotW = size.width * SPEAKER_WIDTH
+        val y = size.height * 0.34f
+        val round = CornerRadius(slotH / 2f)
+
+        listOf(size.width * 0.08f, size.width * (0.92f - SPEAKER_WIDTH)).forEach { x ->
+            drawRoundRect(
+                color = SPEAKER,
+                topLeft = Offset(x, y),
+                size = Size(slotW, slotH),
+                cornerRadius = round,
+            )
         }
 
-        Text(
-            text = "LOKI",
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Light,
-            color = WORDMARK,
-            letterSpacing = WORDMARK_TRACKING.sp,
+        // The USB-C port, centred on the lower lip.
+        val portW = size.width * PORT_WIDTH
+        val portH = size.height * PORT_HEIGHT
+        drawRoundRect(
+            color = PORT,
+            topLeft = Offset((size.width - portW) / 2f, size.height - portH * 1.6f),
+            size = Size(portW, portH),
+            cornerRadius = CornerRadius(portH / 2f),
         )
     }
 }
 
-/** The seam, so the two halves read as one hinged device. */
+/** The wide flat hinge the lid folds onto. */
 @Composable
 private fun Hinge(frameWidth: Dp) {
-    Row(
-        modifier = Modifier.fillMaxWidth().height(frameWidth * HINGE_HEIGHT),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Barrel(frameWidth, Modifier.weight(1f))
-        Box(
-            modifier = Modifier
-                .weight(2.6f)
-                .fillMaxHeight()
-                .padding(vertical = frameWidth * HINGE_INSET)
-                .background(HINGE_GAP),
-        )
-        Barrel(frameWidth, Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun Barrel(frameWidth: Dp, modifier: Modifier) {
     Box(
-        modifier = modifier
-            .fillMaxHeight()
+        modifier = Modifier
+            .fillMaxWidth(HINGE_WIDTH)
+            .height(frameWidth * HINGE_HEIGHT)
             .clip(RoundedCornerShape(frameWidth * HINGE_ROUND))
-            .background(Brush.verticalGradient(listOf(HINGE_TOP, HINGE_BOTTOM))),
+            .background(Brush.verticalGradient(listOf(HINGE_SHADE, HINGE_LIGHT))),
     )
 }
 
@@ -386,33 +410,42 @@ fun recordingFrameSize(
     val bottom = bottomAspect.coerceIn(MIN_ASPECT, MAX_ASPECT)
 
     // Height as a multiple of width, so the shape is fixed before any size is chosen.
-    val heightRatio = TOP_SCREEN_WIDTH / top + bottomScreenWidth() / bottom + chromeHeight()
+    val heightRatio = topScreenWidth() / top + bottomScreenWidth() / bottom + chromeHeight()
 
-    val wanted = (panelWidthPx / TOP_SCREEN_WIDTH).toInt().coerceAtLeast(1)
-    val width = minOf(
-        wanted,
-        ceiling,
-        (ceiling / heightRatio).toInt(),
-    ).coerceAtLeast(1)
+    val wanted = (panelWidthPx / topScreenWidth()).toInt().coerceAtLeast(1)
+    val width = minOf(wanted, ceiling, (ceiling / heightRatio).toInt()).coerceAtLeast(1)
 
-    return RecordingFrame(width = width, height = (width * heightRatio).toInt())
+    return RecordingFrame(
+        width = width,
+        // Never zero. A frame of no height is not a small video, it is one the
+        // encoder refuses outright — and the width is already floored for the same
+        // reason, so leaving the height unguarded was an asymmetry waiting to be
+        // found by a display reporting something absurd.
+        height = (width * heightRatio).toInt().coerceAtLeast(1),
+    )
 }
 
 /**
- * What the base's screen takes of the whole frame, once the controls have theirs.
+ * What the lid's screen takes of the whole frame, glass only.
  *
- * A function rather than a derived constant only because Kotlin initialises
- * top-level properties in source order and the constants it reads are declared with
- * the rest of the layout, at the foot of the file.
+ * Functions rather than derived constants only because Kotlin initialises top-level
+ * properties in source order, and the constants these read are declared with the
+ * rest of the layout at the foot of the file.
  */
-internal fun bottomScreenWidth(): Float =
-    SHELL_INNER_WIDTH * (SCREEN_COLUMN / (SCREEN_COLUMN + CONTROL_COLUMN * 2))
+internal fun topScreenWidth(): Float = BODY_WIDTH - (LID_PAD + TRIM_WIDTH + SHELL_EDGE) * 2
+
+/** And what the base's takes, once the controls and bezel have theirs. */
+internal fun bottomScreenWidth(): Float {
+    val inner = BODY_WIDTH - (BASE_PAD + SHELL_EDGE) * 2
+    val cutout = inner * (SCREEN_COLUMN / (SCREEN_COLUMN + CONTROL_COLUMN * 2))
+    return cutout - BEZEL_WIDTH * 2
+}
 
 /** Everything above, below and between the two screens, as a share of frame width. */
 private fun chromeHeight(): Float =
     MARGIN * 2 +
-        SHELL_PAD * 4 + // two shells, padded top and bottom
-        LID_TRIM +
+        (LID_PAD + TRIM_WIDTH + SHELL_EDGE) * 2 +
+        (BASE_PAD + BEZEL_WIDTH + SHELL_EDGE) * 2 +
         HINGE_HEIGHT +
         FOOT_HEIGHT
 
@@ -445,77 +478,87 @@ private fun Modifier.alwaysRedrawing(): Modifier {
     }
 }
 
-private val BACKDROP = Color(0xFF07080A)
-private val SHELL_TOP = Color(0xFF262C35)
-private val SHELL_BOTTOM = Color(0xFF12161C)
-private val HINGE_TOP = Color(0xFF39414D)
-private val HINGE_BOTTOM = Color(0xFF1C2129)
-private val HINGE_GAP = Color(0xFF0D1014)
-private val RECESS = Color(0xFF0E1116)
-private val BUTTON = Color(0xFF39414D)
-private val BUTTON_TOP = Color(0xFF4A5462)
-private val STICK = Color(0xFF2A313A)
-private val STICK_TOP = Color(0xFF3C4552)
-private val SPEAKER = Color(0xFF0F1318)
-private val LENS = Color(0xFF0B0E12)
-private val LENS_INNER = Color(0xFF1B3348)
-private val LED = Color(0xFF2E7D5B)
-private val WORDMARK = Color(0xFF6E7580)
+/*
+ * The device's own colours, taken from AYN's product photography.
+ *
+ * The shell is a warm off-white rather than grey, which is the single thing that
+ * most decides whether the drawing is recognised — a dark body reads as some other
+ * handheld however accurate the rest of the shapes are.
+ */
+private val BACKDROP = Color(0xFF06070A)
+private val SHELL_LIGHT = Color(0xFFEFEBE3)
+private val SHELL_SHADE = Color(0xFFD9D3C7)
+private val SHELL_EDGE_COLOUR = Color(0xFFC7C0B2)
+private val TRIM = Color(0xFFC2A265)
+private val BEZEL = Color(0xFF1A1A1C)
+private val HINGE_LIGHT = Color(0xFFE4DFD5)
+private val HINGE_SHADE = Color(0xFFC9C2B4)
 
-private val FACE_N = Color(0xFF4A5462)
-private val FACE_E = Color(0xFF44505E)
-private val FACE_S = Color(0xFF3E4956)
-private val FACE_W = Color(0xFF48525F)
+private val RECESS = Color(0x33000000)
+private val STICK_RIM = Color(0xFF8E8878)
+private val STICK = Color(0xFF4C4C4E)
+private val STICK_DISH = Color(0xFF3A3A3C)
+private val DPAD = Color(0xFF4C4C4E)
+private val DPAD_PIVOT = Color(0xFF5C5C5E)
+private val SPEAKER = Color(0xFF9A9384)
+private val PORT = Color(0xFF6E675A)
+
+/** The face buttons, in their shipped colours. */
+private val BUTTON_X = Color(0xFF2F72C8)
+private val BUTTON_Y = Color(0xFF35914B)
+private val BUTTON_A = Color(0xFFD03A32)
+private val BUTTON_B = Color(0xFFE8B71D)
 
 /*
  * Every dimension is a fraction of the frame's width.
  *
  * Not dp, deliberately: a recording's density is whatever its frame needs, so a body
  * measured in dp would drift against the screens it surrounds as that changed.
- * Fractions keep the console the same shape at any resolution, and let the two
- * `recordingFrame…` functions compute the frame from the very numbers laid out with
- * here.
+ * Fractions keep the console the same shape at any resolution, and let
+ * [recordingFrameSize] compute the frame from the very numbers laid out with here.
  */
-internal const val BODY_WIDTH = 0.94f
-private const val MARGIN = 0.028f
-internal const val SHELL_PAD = 0.022f
-private const val SHELL_CORNER = 0.030f
-private const val LID_TRIM = 0.026f
-private const val FOOT_HEIGHT = 0.050f
+private const val BODY_WIDTH = 0.96f
+private const val MARGIN = 0.022f
+private const val SHELL_ROUND = 0.024f
+private const val SHELL_EDGE = 0.0016f
 
-/** A shell's usable width, once its own padding is taken. */
-internal const val SHELL_INNER_WIDTH = BODY_WIDTH - SHELL_PAD * 2
+/** The lid is nearly all glass; its bezel is the trim and little else. */
+private const val LID_PAD = 0.012f
+private const val TRIM_WIDTH = 0.004f
 
-/** The lid's screen, as a share of the whole frame — the larger of the two. */
-internal const val TOP_SCREEN_WIDTH = 0.83f
+private const val BASE_PAD = 0.016f
+private const val BEZEL_WIDTH = 0.005f
+private const val SCREEN_ROUND = 0.010f
 
 /**
  * The base splits into control, screen, control by weight.
  *
- * Chosen so the base's screen lands near 0.52 of the frame against the lid's 0.83:
- * distinctly the smaller screen, which is what a dual-screen handheld looks like and
- * what stops the recording reading as two equal rectangles.
+ * Weighted so the base's screen lands near half the frame against the lid's ~0.93:
+ * on this hardware the lid is nearly all display while the base gives most of itself
+ * to two sticks, a d-pad and four buttons.
  */
-internal const val SCREEN_COLUMN = 2.76f
-internal const val CONTROL_COLUMN = 1f
-private const val CONTROL_PAD = 0.008f
+private const val SCREEN_COLUMN = 2.09f
+private const val CONTROL_COLUMN = 1f
+private const val CONTROL_PAD = 0.006f
 
-private const val HINGE_HEIGHT = 0.026f
-private const val HINGE_INSET = 0.009f
-private const val HINGE_ROUND = 0.008f
+private const val HINGE_WIDTH = 0.82f
+private const val HINGE_HEIGHT = 0.020f
+private const val HINGE_ROUND = 0.004f
 
-private const val STICK_RADIUS = 0.20f
-private const val STICK_Y = 0.30f
-private const val CLUSTER_Y = 0.66f
-private const val DPAD_ARM = 0.26f
-private const val FACE_SPREAD = 0.24f
-private const val FACE_RADIUS = 0.11f
+private const val FOOT_HEIGHT = 0.034f
+private const val SPEAKER_WIDTH = 0.11f
+private const val SPEAKER_HEIGHT = 0.16f
+private const val PORT_WIDTH = 0.07f
+private const val PORT_HEIGHT = 0.14f
 
-private const val SPEAKER_DOT = 0.055f
-private const val SPEAKER_DOTS = 4
+/** Where the two items in a control column sit, as a share of its height. */
+private const val UPPER_Y = 0.30f
+private const val LOWER_Y = 0.70f
 
-private const val SCREEN_CORNER_PERCENT = 3
-private const val WORDMARK_TRACKING = 5f
+private const val STICK_RADIUS = 0.19f
+private const val DPAD_ARM = 0.23f
+private const val FACE_SPREAD = 0.21f
+private const val FACE_RADIUS = 0.095f
 
 /** Guards against a display reporting a nonsensical shape. */
 private const val MIN_ASPECT = 0.4f

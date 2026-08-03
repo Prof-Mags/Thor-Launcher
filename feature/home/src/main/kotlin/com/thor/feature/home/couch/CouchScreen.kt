@@ -63,6 +63,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -269,7 +270,10 @@ fun CouchScreen(
     }
 
     Box(modifier = modifier.fillMaxSize().background(colors.background)) {
-        if (selectedTab.isHome && !settingsSelected) {
+        if (
+            selectedTab.isHome &&
+            !settingsSelected
+        ) {
             CouchBackdrop(
                 entry = backdropEntry,
                 platform = backdropEntry?.platform(state.platformsById),
@@ -428,7 +432,9 @@ fun CouchNavigationBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(TOP_BAR_HEIGHT.dp)
-            .background(colors.background.copy(alpha = 0.72f))
+            .background(
+                colors.background.copy(alpha = 0.72f),
+            )
             .padding(horizontal = SCREEN_INSET.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -440,11 +446,12 @@ fun CouchNavigationBar(
             fontWeight = FontWeight.Black,
             modifier = Modifier.padding(end = 12.dp),
         )
-        tabs.forEach { tab ->
+        tabs.forEachIndexed { index, tab ->
             val selected = !settingsSelected && tab == selectedTab
             CouchNavItem(
                 label = tab.label,
                 icon = tab.couchIcon(),
+                index = index + 1,
                 selected = selected,
                 focused = !settingsFocused && tab == focusedTab,
                 onClick = { onTabSelected(tab) },
@@ -453,6 +460,7 @@ fun CouchNavigationBar(
         CouchNavItem(
             label = "Settings",
             icon = Icons.Rounded.Settings,
+            index = tabs.size + 1,
             selected = settingsSelected,
             focused = settingsFocused,
             onClick = onSettingsSelected,
@@ -470,7 +478,7 @@ fun CouchNavigationBar(
                     .clip(CircleShape)
                     .background(colors.cursor),
             )
-            Text(
+        Text(
                 text = "COUCH",
                 style = MaterialTheme.typography.labelSmall,
                 color = colors.onSurfaceVariant,
@@ -497,14 +505,16 @@ fun CouchNavigationBar(
 private fun CouchNavItem(
     label: String,
     icon: ImageVector,
+    index: Int,
     selected: Boolean,
     focused: Boolean,
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
+    val shape = ThorTheme.shapes.pill
     Row(
         modifier = Modifier
-            .clip(ThorTheme.shapes.pill)
+            .clip(shape)
             .background(
                 when {
                     focused -> colors.cursor
@@ -516,11 +526,14 @@ private fun CouchNavItem(
                 if (focused) Modifier.border(
                     2.dp,
                     contrastingContentColor(colors.cursor).copy(alpha = 0.64f),
-                    ThorTheme.shapes.pill,
+                    shape,
                 ) else Modifier,
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 17.dp, vertical = 8.dp),
+            .padding(
+                horizontal = 17.dp,
+                vertical = 8.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
@@ -568,6 +581,12 @@ private fun CouchHero(
             modifier = Modifier.fillMaxWidth(HERO_TEXT_WIDTH),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+        Text(
+                text = "NOW SELECTED",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.cursor,
+                fontWeight = FontWeight.Black,
+            )
             val logo = (entry as? GameEntry)?.metadata?.artwork?.logo
             if (logo != null) {
                 ArtworkImage(
@@ -584,7 +603,7 @@ private fun CouchHero(
                 Text(
                     text = entry.title,
                     style = MaterialTheme.typography.displaySmall,
-                    color = Color.White,
+                    color =                         Color.White,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -597,7 +616,9 @@ private fun CouchHero(
             ) {
                 Row(
                     modifier = Modifier
-                        .clip(ThorTheme.shapes.small)
+                        .clip(
+                                                            ThorTheme.shapes.small,
+                        )
                         .background(colors.cursor)
                         .clickable(onClick = onPlay)
                         .padding(horizontal = 20.dp, vertical = 10.dp),
@@ -614,7 +635,7 @@ private fun CouchHero(
                         tint = contrastingContentColor(colors.cursor),
                         modifier = Modifier.size(22.dp),
                     )
-                    Text(
+        Text(
                         text = if (entry is FolderEntry) "OPEN" else "PLAY",
                         style = MaterialTheme.typography.labelLarge,
                         color = contrastingContentColor(colors.cursor),
@@ -622,7 +643,7 @@ private fun CouchHero(
                     )
                 }
                 if (entry.isFavorite) {
-                    Text(
+        Text(
                         text = "FAVOURITE",
                         style = MaterialTheme.typography.labelSmall,
                         color = colors.cursor,
@@ -707,7 +728,7 @@ private fun CouchGameInfoPanel(
                         }
                     }
 
-                    Text(
+        Text(
                         text = platform?.name ?: game.platformId.uppercase(),
                         style = MaterialTheme.typography.labelMedium,
                         color = platform?.let { Color(it.accentArgb) } ?: colors.cursor,
@@ -1023,7 +1044,7 @@ private fun CouchRailContent(
         ) {
             Column {
                 Text(
-                    text = rail.title,
+                    text =                         rail.title,
                     style = MaterialTheme.typography.headlineSmall,
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
@@ -1036,18 +1057,18 @@ private fun CouchRailContent(
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
-            rails.forEachIndexed { index, _ ->
-                Box(
-                    modifier = Modifier
-                        .padding(start = 6.dp)
-                        .height(5.dp)
-                        .width(if (index == railIndex) 25.dp else 9.dp)
-                        .clip(ThorTheme.shapes.pill)
-                        .background(
-                            if (index == railIndex) colors.cursor
-                            else colors.onSurfaceVariant.copy(alpha = 0.36f),
-                        ),
-                )
+                            rails.forEachIndexed { index, _ ->
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 6.dp)
+                            .height(5.dp)
+                            .width(if (index == railIndex) 25.dp else 9.dp)
+                            .clip(ThorTheme.shapes.pill)
+                            .background(
+                                if (index == railIndex) colors.cursor
+                                else colors.onSurfaceVariant.copy(alpha = 0.36f),
+                            ),
+                    )
             }
         }
 
@@ -1097,7 +1118,7 @@ private fun CouchCard(
         animationSpec = tween(160),
         label = "couch-card-elevation",
     )
-    val shape = ThorTheme.shapes.small
+    val shape =         ThorTheme.shapes.small
     val isGame = entry is GameEntry
     val cardWidth = if (isGame) GAME_CARD_WIDTH else CARD_WIDTH
     val cardAspect = if (isGame) GAME_CARD_ASPECT else CARD_ASPECT
@@ -1134,8 +1155,7 @@ private fun CouchCard(
         ) {
             when (entry) {
                 is GameEntry -> ArtworkImage(
-                    model = entry.metadata.artwork.boxArt
-                        ?: entry.metadata.artwork.backgroundImage,
+                    model =                         entry.metadata.artwork.boxArt ?: entry.metadata.artwork.backgroundImage,
                     contentDescription = entry.title,
                     fallbackText = entry.title,
                     contentScale = ContentScale.Crop,
@@ -1184,7 +1204,7 @@ private fun CouchCard(
                         .border(1.dp, focusColor.copy(alpha = 0.72f), ThorTheme.shapes.pill)
                         .padding(horizontal = 9.dp, vertical = 4.dp),
                 ) {
-                    Text(
+        Text(
                         text = platform?.shortName?.ifBlank { platform.name }
                             ?: entry.typeLabel(),
                         style = MaterialTheme.typography.labelSmall,
@@ -1205,15 +1225,15 @@ private fun CouchCard(
             }
         }
         Text(
-            text = entry.title,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (focused) Color.White else Color.White.copy(alpha = 0.66f),
-            fontWeight = if (focused) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
+                text = entry.title,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (focused) Color.White else Color.White.copy(alpha = 0.66f),
+                fontWeight = if (focused) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 }
 
 @Composable
@@ -1229,11 +1249,13 @@ private fun FolderCard(folder: FolderEntry, platform: Platform?) {
             modifier = Modifier.fillMaxSize(),
         )
     } else {
+        // A folder with no artwork still has to read as a folder rather than as
+        // an empty card, which at this size is the glyph and nothing else.
         Icon(
             imageVector = Icons.Rounded.FolderOpen,
-            contentDescription = null,
+            contentDescription = folder.title,
             tint = colors.onSurfaceVariant,
-            modifier = Modifier.size(50.dp),
+            modifier = Modifier.fillMaxSize(FOLDER_GLYPH_FRACTION),
         )
     }
 }
@@ -1317,9 +1339,12 @@ private const val INFO_PANEL_ALPHA = 0.82f
 private const val INFO_DESCRIPTION_LINES = 5
 private const val CARD_WIDTH = 210
 private const val GAME_CARD_WIDTH = 148
+private const val SHELF_CARD_WIDTH = 232
+private const val INDEX_CARD_WIDTH = 260
 private const val CARD_GAP = 15
 private const val CARD_ASPECT = 16f / 9f
 private const val GAME_CARD_ASPECT = 2f / 3f
+private const val INDEX_CARD_ASPECT = 3.25f
 private const val HERO_WEIGHT = 0.43f
 private const val HERO_TEXT_WIDTH = 0.66f
 private const val HERO_LOGO_WIDTH = 0.72f
@@ -1333,3 +1358,6 @@ private const val HERO_START_SCALE = 1.025f
 private const val HERO_SCALE_DELTA = 0.035f
 private const val HERO_DRIFT_PX = 18f
 private const val RAIL_TRANSITION_MS = 220
+
+/** How much of an artless folder card its glyph fills. */
+private const val FOLDER_GLYPH_FRACTION = 0.42f

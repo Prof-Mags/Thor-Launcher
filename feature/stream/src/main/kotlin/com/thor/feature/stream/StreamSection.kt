@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -82,13 +83,15 @@ fun StreamTopPanel(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        colors.surfaceElevated.copy(alpha = 0.52f),
-                        colors.background,
+            .then(
+                Modifier.background(
+                        Brush.verticalGradient(
+                            listOf(
+                                colors.surfaceElevated.copy(alpha = 0.52f),
+                                colors.background,
+                            ),
+                        ),
                     ),
-                ),
             )
             .padding(
                 start = dimens.spacing,
@@ -141,6 +144,8 @@ private fun StreamHeader(state: StreamUiState) {
     GlassSurface(
         modifier = Modifier.fillMaxWidth(),
         shape = ThorTheme.shapes.panel,
+        color = colors.surface,
+        bordered = true,
     ) {
         Row(
             modifier = Modifier
@@ -199,8 +204,13 @@ private fun HeaderMetric(value: String, label: String) {
     Column(
         modifier = Modifier
             .clip(ThorTheme.shapes.small)
-            .background(colors.surfaceHighest.copy(alpha = 0.74f))
-            .padding(horizontal = 13.dp, vertical = 7.dp),
+            .background(
+                colors.surfaceHighest.copy(alpha = 0.74f),
+            )
+            .padding(
+                horizontal = 13.dp,
+                vertical = 7.dp,
+            ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -347,28 +357,31 @@ private fun HostCard(
             )
             .thorCursor(focused = highlighted, shape = shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = dimens.spacing, vertical = 12.dp),
+            .padding(
+                horizontal = dimens.spacing,
+                vertical = 12.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
     ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(ThorTheme.shapes.small)
-                .background(status.tint(colors.error, colors.onSurfaceVariant).copy(alpha = 0.13f))
-                .border(
-                    1.dp,
-                    status.tint(colors.error, colors.onSurfaceVariant).copy(alpha = 0.46f),
-                    ThorTheme.shapes.small,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Computer,
-                contentDescription = null,
-                tint = status.tint(colors.error, colors.onSurfaceVariant),
-                modifier = Modifier.size(27.dp),
-            )
+                    Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(ThorTheme.shapes.small)
+                    .background(status.tint(colors.error, colors.onSurfaceVariant).copy(alpha = 0.13f))
+                    .border(
+                        1.dp,
+                        status.tint(colors.error, colors.onSurfaceVariant).copy(alpha = 0.46f),
+                        ThorTheme.shapes.small,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Computer,
+                    contentDescription = null,
+                    tint = status.tint(colors.error, colors.onSurfaceVariant),
+                    modifier = Modifier.size(27.dp),
+                )
         }
 
         Column(modifier = Modifier.weight(1f)) {
@@ -385,15 +398,15 @@ private fun HostCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = if (host.discovered) "AUTO" else "SAVED",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.cursor,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .clip(ThorTheme.shapes.pill)
-                        .background(colors.cursor.copy(alpha = 0.10f))
-                        .padding(horizontal = 7.dp, vertical = 3.dp),
-                )
+                        text = if (host.discovered) "AUTO" else "SAVED",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.cursor,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(ThorTheme.shapes.pill)
+                            .background(colors.cursor.copy(alpha = 0.10f))
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
+                    )
             }
             Text(
                 text = host.address,
@@ -416,7 +429,13 @@ private fun HostStatusBadge(status: HostStatus, connecting: Boolean = false) {
         modifier = Modifier
             .clip(ThorTheme.shapes.pill)
             .background(tint.copy(alpha = 0.12f))
-            .border(1.dp, tint.copy(alpha = 0.36f), ThorTheme.shapes.pill)
+            .then(
+                Modifier.border(
+                    1.dp,
+                    tint.copy(alpha = 0.36f),
+                    ThorTheme.shapes.pill,
+                ),
+            )
             .padding(horizontal = 9.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -559,26 +578,6 @@ fun StreamCouchScreen(
                                 color = colors.onSurface,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.padding(top = 10.dp),
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize().weight(1f),
-                        contentPadding = PaddingValues(vertical = 2.dp),
-                        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-                    ) {
-                        itemsIndexed(
-                            items = state.hosts,
-                            key = { _, host -> host.address },
-                        ) { index, host ->
-                            HostCard(
-                                host = host,
-                                status = state.statusOf(host),
-                                selected = index == state.cursor,
-                                connecting = state.connecting && index == state.cursor,
-                                onClick = { onHostSelected(index) },
                             )
                         }
                     }

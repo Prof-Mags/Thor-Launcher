@@ -1,5 +1,9 @@
 package com.thor.launcher
 
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.DisplayMetrics
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -46,6 +50,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.pointer.pointerInput
+import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -59,6 +64,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.display.DisplayTopology
 import com.thor.core.display.LauncherFocus
 import com.thor.core.display.LauncherPanel
 import com.thor.core.display.SecondaryDisplay
@@ -66,6 +72,9 @@ import com.thor.core.display.ThorDisplayMonitor
 import com.thor.core.input.ControllerInputRouter
 import com.thor.core.input.MouseController
 import com.thor.core.input.PointerDisplay
+import com.thor.launcher.capture.ProjectedScreen
+import com.thor.launcher.capture.ProjectionConsentActivity
+import com.thor.launcher.capture.RecordingGeometry
 import com.thor.launcher.mouse.PointerHost
 import kotlinx.coroutines.flow.drop
 import com.thor.data.capture.RecordingState
@@ -169,6 +178,14 @@ fun ThorApp(
     mouse: MouseController,
     /** Fires when the system delivers a HOME intent to the running launcher. */
     homeRequests: Flow<Unit>,
+    /**
+     * Where a recording gets its shape.
+     *
+     * Written from here because this is the only place that knows both panels'
+     * real sizes, and read by a service that runs when this composition does not —
+     * which is the entire reason it is a held value rather than a parameter.
+     */
+    recordingGeometry: RecordingGeometry,
     viewModel: LauncherViewModel = hiltViewModel(),
 ) {
     /*
@@ -353,6 +370,43 @@ fun ThorApp(
     val context = LocalContext.current
 
     /*
+     * ---- The notification permission, asked for only when it is needed ----------
+     *
+     * Loki posts exactly one notification and only while a screen recording runs, so
+     * asking at first launch would be asking for something the user may never use.
+     * It is requested at the moment they start one instead, which is also the moment
+     * the reason for it is obvious.
+     *
+     * Below Android 13 there is nothing to ask: the permission did not exist and is
+     * granted by installing.
+     */
+    val notificationsAllowed: () -> Boolean = {
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    val notificationRequest = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        /*
+         * Granted or not, the recording the user asked for goes ahead.
+         *
+         * Refusing costs them the notification, not the feature — the recording
+         * still runs and still saves, it just has to be stopped from the launcher.
+         * Refusing to record at all because they declined a control surface would be
+         * punishing them for an answer they were entitled to give.
+         */
+        ProjectionConsentActivity.request(context)
+    }
+
+    val askForNotifications: () -> Unit = {
+        notificationRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    /*
      * The Movies section.
      *
      * Its view model and state are hoisted here because the section spans both
@@ -391,7 +445,13 @@ fun ThorApp(
     // Resolved before anything that routes input, because which window a surface is
     // in decides which window has to hold focus for it.
     val secondary = displays.firstOrNull { !it.isPrimary && it.isPresentationCapable }
-    val mode = resolveMode(settings.display.mode, secondary != null)
+    val mode = resolveMode(
+        requested = settings.display.mode,
+        hasSecondary = secondary != null,
+        // Only when the user has left the automatic switch on; see the setting.
+        hasExternal = settings.display.couchOnExternalDisplay &&
+            DisplayTopology.hasExternalDisplay(displays),
+    )
     val couchModeNow = rememberUpdatedState(mode == DualScreenMode.COUCH)
 
     /*
@@ -1383,6 +1443,27 @@ fun ThorApp(
                     }
 
                     /*
+                     * A screen recording, which needs two things asked for first.
+                     *
+                     * The notification permission, because on Android 13 and later
+                     * the recording's only control while the user is inside a game
+                     * is its notification, and a denied permission does not fail —
+                     * it silently posts nothing. A recording that cannot be stopped
+                     * is worse than one that was never offered.
+                     *
+                     * Then the projection itself, which only a system dialog can
+                     * grant and only to an activity result.
+                     */
+                    LauncherEffect.StartScreenRecording -> {
+                        feedback.play(FeedbackCue.CONFIRM)
+                        if (notificationsAllowed()) {
+                            ProjectionConsentActivity.request(context)
+                        } else {
+                            askForNotifications()
+                        }
+                    }
+
+                    /*
                      * The lock is released so the app can take focus on the display it
                      * is arriving on. The tap that started it was a launch, not a
                      * request to hold that panel — and a launcher window still holding
@@ -2064,6 +2145,13 @@ fun ThorApp(
                 height = frame.height,
                 densityDpi = top.densityDpi,
             )
+            // And to the service, which starts recordings this composition will not
+            // be alive to answer for.
+            recordingGeometry.setLauncherFrame(
+                width = frame.width,
+                height = frame.height,
+                densityDpi = top.densityDpi,
+            )
         }
 
         /*
@@ -2215,7 +2303,26 @@ fun ThorApp(
                         // density note in [StackedPanels].
                         topWidthDp = primaryPanel?.widthDp ?: DEFAULT_PANEL_WIDTH_DP,
                         bottomWidthDp = recordedBottom?.widthDp ?: DEFAULT_PANEL_WIDTH_DP,
-                        topPanel = topContent,
+                        /*
+                         * The lid shows whichever screen is being recorded.
+                         *
+                         * A launcher recording puts the launcher's own top panel
+                         * there. A screen recording puts a live mirror of the real
+                         * display there instead — so a game is recorded inside the
+                         * drawn device, with the launcher's own panel below it,
+                         * rather than as a bare rectangle of one screen.
+                         */
+                        topPanel = active.mirrored?.let { projection ->
+                            {
+                                ProjectedScreen(
+                                    projection = projection,
+                                    width = primaryPanel?.widthPx ?: DEFAULT_MIRROR_WIDTH,
+                                    height = primaryPanel?.heightPx ?: DEFAULT_MIRROR_HEIGHT,
+                                    densityDpi = primaryPanel?.densityDpi
+                                        ?: DisplayMetrics.DENSITY_DEFAULT,
+                                )
+                            }
+                        } ?: topContent,
                         bottomPanel = { bottomContent(Modifier.fillMaxSize()) },
                     )
                 }
@@ -2516,11 +2623,28 @@ private fun RecordingBadge(modifier: Modifier = Modifier) {
     }
 }
 
-/** Resolves the user's preference against the hardware actually present. */
-private fun resolveMode(requested: DualScreenMode, hasSecondary: Boolean): DualScreenMode =
+/**
+ * Resolves the user's preference against the hardware actually present.
+ *
+ * @param hasExternal whether a monitor is attached, which [DualScreenMode.AUTO]
+ *   treats as a request for couch mode: plugging one in is how someone says they
+ *   have docked the device and sat down, and the handheld layout is not readable
+ *   from there. Only AUTO — a mode chosen outright is an instruction, and an
+ *   attached screen is not a reason to overrule it.
+ */
+private fun resolveMode(
+    requested: DualScreenMode,
+    hasSecondary: Boolean,
+    hasExternal: Boolean = false,
+): DualScreenMode =
     when (requested) {
-        DualScreenMode.AUTO,
-        DualScreenMode.DUAL_DISPLAY,
+        DualScreenMode.AUTO -> when {
+            hasExternal -> DualScreenMode.COUCH
+            hasSecondary -> DualScreenMode.DUAL_DISPLAY
+            else -> DualScreenMode.SPLIT_SINGLE
+        }
+
+        DualScreenMode.DUAL_DISPLAY
         -> if (hasSecondary) DualScreenMode.DUAL_DISPLAY else DualScreenMode.SPLIT_SINGLE
 
         DualScreenMode.SPLIT_SINGLE -> DualScreenMode.SPLIT_SINGLE
@@ -2614,6 +2738,10 @@ private const val DEFAULT_PANEL_ASPECT = 16f / 10f
 
 /** A plausible handheld panel, for the moment before any display has reported. */
 private const val DEFAULT_PANEL_WIDTH_DP = 640f
+
+/** A plausible screen, for the moment before any display has reported. */
+private const val DEFAULT_MIRROR_WIDTH = 1920
+private const val DEFAULT_MIRROR_HEIGHT = 1080
 
 /** Recording red, fixed rather than themed: it means one thing everywhere. */
 private val RECORDING_DOT = Color(0xFFE5484D)

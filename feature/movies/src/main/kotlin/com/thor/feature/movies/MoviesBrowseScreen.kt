@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,10 +76,12 @@ fun MoviesBrowseScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(colors.surfaceElevated.copy(alpha = 0.42f), colors.background),
-                ),
+            .then(
+                Modifier.background(
+                        Brush.verticalGradient(
+                            listOf(colors.surfaceElevated.copy(alpha = 0.42f), colors.background),
+                        ),
+                    ),
             ),
     ) {
         CinemaHeader(
@@ -132,6 +137,8 @@ private fun CinemaHeader(
             end = dimens.spacing,
         ),
         shape = ThorTheme.shapes.panel,
+        color = colors.surface,
+        bordered = true,
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(
@@ -349,6 +356,16 @@ private fun PosterCell(
     progress: WatchProgress? = null,
     onClick: () -> Unit,
 ) {
+    AuroraPosterCell(item, focused, progress, onClick)
+}
+
+@Composable
+private fun AuroraPosterCell(
+    item: MediaItem,
+    focused: Boolean,
+    progress: WatchProgress?,
+    onClick: () -> Unit,
+) {
     val colors = ThorTheme.colors
     val shape = ThorTheme.shapes.small
     val hover = rememberPointerHover()
@@ -431,6 +448,7 @@ private fun PosterCell(
     }
 }
 
+
 private fun cardSubtitle(item: MediaItem, progress: WatchProgress?): String {
     if (progress == null) {
         return listOfNotNull(
@@ -487,5 +505,9 @@ fun MediaTypeTabs(
 
 private const val POSTER_RATIO = 2f / 3f
 private const val POSTER_CARD_WIDTH = 112
+private const val FULL_BLEED_CARD_WIDTH = 104
+private const val ROW_CARD_WIDTH = 214
+private const val ROW_CARD_HEIGHT = 78
+private const val ROW_THUMB_WIDTH = 54
 private const val CATALOGUE_ARROW_GUTTER = 27
 private const val CATALOGUE_ARROW_SIZE = 38

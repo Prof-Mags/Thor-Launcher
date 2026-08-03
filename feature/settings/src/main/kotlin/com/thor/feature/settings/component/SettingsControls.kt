@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -74,12 +75,15 @@ fun SettingsSection(
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val shape = ThorTheme.shapes.panel
 
     Column(
         modifier = modifier
             .padding(top = dimens.spacingSmall, bottom = dimens.spacing)
-            .clip(ThorTheme.shapes.panel)
-            .background(colors.surface.copy(alpha = 0.58f))
+            .clip(shape)
+            .background(
+                colors.surface.copy(alpha = 0.58f),
+            )
             .padding(12.dp),
     ) {
         Row(
@@ -166,8 +170,11 @@ fun SettingsCard(
             .revealWhenFocused(focused)
             .clip(shape)
             .background(
-                if (lit) colors.surfaceHighest.copy(alpha = 0.94f)
-                else colors.surfaceElevated.copy(alpha = 0.66f),
+                if (lit) {
+                    colors.surfaceHighest.copy(alpha = 0.94f)
+                } else {
+                    colors.surfaceElevated.copy(alpha = 0.66f)
+                },
             )
             .border(
                 width = if (lit) 1.5.dp else 1.dp,

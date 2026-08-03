@@ -159,7 +159,6 @@ fun TopScreen(
                     game = entry,
                     platform = platform,
                     selectedScreenshot = selectedScreenshot,
-                    onScreenshotSelected = onScreenshotSelected,
                 )
 
                 // A platform's folder is a system, not a folder, and gets a panel

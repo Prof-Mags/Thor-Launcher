@@ -21,6 +21,7 @@ import com.thor.core.model.PlatformFolders
 import com.thor.core.model.ShortcutAction
 import com.thor.core.model.ShortcutGrid
 import com.thor.core.model.ControlSettings
+import com.thor.core.model.DualScreenMode
 import com.thor.core.model.LauncherTab
 import com.thor.core.model.SortOrder
 import com.thor.data.capture.RecordingState
@@ -527,6 +528,18 @@ class LauncherViewModel @Inject constructor(
      * Records the launcher rather than the screen — see [ScreenRecorder] for why that
      * is the only thing a two-screen launcher can record at all.
      */
+    /**
+     * Starts or ends a recording of the launcher's own two panels.
+     *
+     * Done here rather than handed to the service, and that is deliberate: this kind
+     * of recording is fed by the launcher *composing*, and the launcher stops
+     * composing the moment it is not on screen. It cannot outlive this view model,
+     * so wrapping it in a service that can buys nothing and — on Android 14 and
+     * later — costs something real, because a foreground service typed for media
+     * projection is refused outright when there is no projection to justify it.
+     *
+     * Recording something the launcher did not draw is [startScreenRecording].
+     */
     fun toggleRecording() {
         if (screenRecorder.isRecording) {
             val saved = screenRecorder.stop()
@@ -546,6 +559,22 @@ class LauncherViewModel @Inject constructor(
         if (started is RecordingState.Failed) {
             emit(LauncherEffect.ShowMessage(started.reason))
         }
+    }
+
+    /**
+     * Asks for a recording of the real screen, which the shell has to arrange.
+     *
+     * A projection is granted by a system dialog to an activity result and then held
+     * by a foreground service, and both of those live in the app module this one
+     * cannot see. Stopping is the same toggle either way — the recorder does not
+     * care which kind it is running.
+     */
+    fun startScreenRecording() {
+        if (screenRecorder.isRecording) {
+            toggleRecording()
+            return
+        }
+        emit(LauncherEffect.StartScreenRecording)
     }
 
     /**
@@ -843,6 +872,19 @@ class LauncherViewModel @Inject constructor(
             ShortcutAction.THOR_SETTINGS -> emit(LauncherEffect.OpenSettings)
             ShortcutAction.SCAN_LIBRARY -> scanLibrary()
             ShortcutAction.RECORD -> toggleRecording()
+            ShortcutAction.RECORD_SCREEN -> startScreenRecording()
+
+            ShortcutAction.COUCH_MODE -> viewModelScope.launchSafely(TAG) {
+                settingsRepository.updateDisplay { display ->
+                    display.copy(
+                        mode = if (display.mode == DualScreenMode.COUCH) {
+                            DualScreenMode.AUTO
+                        } else {
+                            DualScreenMode.COUCH
+                        },
+                    )
+                }
+            }
 
             ShortcutAction.SWAP_SCREENS -> viewModelScope.launchSafely(TAG) {
                 settingsRepository.updateDisplay { it.copy(swapScreens = !it.swapScreens) }

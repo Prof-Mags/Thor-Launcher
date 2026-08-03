@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.projection.MediaProjection
+import android.view.Surface
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -25,8 +27,18 @@ sealed interface RecordingState {
      *
      * The id is the point: it is a display the launcher created for itself, and
      * whatever is rendered onto it is what lands in the file.
+     *
+     * @param mirrored a live projection of the real screen, when the user asked to
+     *   record something the launcher did not draw. It is *not* the video — the
+     *   video is still the console mock-up on [displayId] — it is the picture that
+     *   goes into the mock-up's top screen, so a game is recorded inside the device
+     *   with the launcher's own panel underneath it. Null for a recording of the
+     *   launcher alone, where the top screen shows the launcher's own top panel.
      */
-    data class Active(val displayId: Int) : RecordingState
+    data class Active(
+        val displayId: Int,
+        val mirrored: MediaProjection? = null,
+    ) : RecordingState
 
     /** The last attempt failed; carried so the UI can say what happened. */
     data class Failed(val reason: String) : RecordingState
@@ -65,6 +77,7 @@ class ScreenRecorder @Inject constructor(
     private var recorder: MediaRecorder? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var pendingUri: Uri? = null
+    private var activeProjection: MediaProjection? = null
 
     val isRecording: Boolean get() = _state.value is RecordingState.Active
 
@@ -97,6 +110,98 @@ class ScreenRecorder @Inject constructor(
         val videoHeight = (height * scale).toInt().roundToEven()
         val videoDensity = (densityDpi * scale).toInt().coerceAtLeast(MIN_DENSITY)
 
+        return begin(videoWidth, videoHeight, videoDensity) { surface ->
+            /*
+             * Own content only, and never mirrored: this display exists to be drawn
+             * into, so anything the system might otherwise duplicate onto it — the
+             * default display's content — would be exactly wrong. The presentation
+             * flag is what lets a `Presentation` window attach to it.
+             */
+            displayManager?.createVirtualDisplay(
+                DISPLAY_NAME,
+                videoWidth,
+                videoHeight,
+                videoDensity,
+                surface,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION,
+            ) ?: error("The device would not create a virtual display")
+        }
+    }
+
+    /**
+     * Records with the real screen in the console's top display.
+     *
+     * The same video as [start] — the mock-up, both screens, drawn onto the
+     * launcher's own private display — with one difference: the picture in the lid's
+     * screen is a live mirror of the actual display rather than the launcher's top
+     * panel. So a game is recorded *inside the device*, with the launcher's own
+     * bottom panel beneath it, instead of as a bare rectangle.
+     *
+     * The projection is handed back on the state rather than pointed at the encoder.
+     * Aiming it straight at the encoder is the obvious thing and produces exactly
+     * what this exists to avoid: one screen, no device, none of the launcher. What
+     * the recording actually wants is a *texture* it can draw inside the mock-up,
+     * and the surface for that belongs to the composition, not to this class.
+     *
+     * It still sees **one screen** — `MediaProjection` mirrors the default display
+     * and has no public route to a secondary panel — but that is the lid, and the
+     * base is drawn by the launcher as it always was.
+     *
+     * And it needs **consent every session**, granted by the system's own dialog.
+     * That is not something an app can remember on the user's behalf.
+     *
+     * @param projection a projection already obtained from a granted consent result
+     */
+    fun startProjection(
+        projection: MediaProjection,
+        width: Int,
+        height: Int,
+        densityDpi: Int,
+    ): RecordingState {
+        if (isRecording) return _state.value
+
+        /*
+         * The projection can end without us: the user revokes it from the system
+         * UI, or the platform tears it down. Left unhandled that leaves a recording
+         * of a frozen screen and a file nobody asked for.
+         */
+        val callback = object : MediaProjection.Callback() {
+            override fun onStop() {
+                if (isRecording) stop()
+            }
+        }
+        projection.registerCallback(callback, null)
+        activeProjection = projection
+
+        return when (val state = start(width, height, densityDpi)) {
+            is RecordingState.Active -> state.copy(mirrored = projection)
+                .also { _state.value = it }
+
+            else -> {
+                projection.unregisterCallback(callback)
+                projection.stop()
+                activeProjection = null
+                state
+            }
+        }
+    }
+
+    /**
+     * Everything a recording needs whichever picture is going into it.
+     *
+     * The encoder, the output file and the bookkeeping are identical for both; only
+     * where the frames come from differs, which is what [display] supplies. Shared
+     * rather than written twice because the failure path in particular — release the
+     * encoder, delete the half-written entry, report why — is the part that is easy
+     * to get subtly different in a second copy and never notice.
+     */
+    private fun begin(
+        videoWidth: Int,
+        videoHeight: Int,
+        videoDensity: Int,
+        display: (Surface) -> VirtualDisplay,
+    ): RecordingState {
         val uri = createOutputEntry() ?: return fail("Could not create the video file")
 
         return runCatching {
@@ -116,29 +221,15 @@ class ScreenRecorder @Inject constructor(
                 }
             }
 
-            /*
-             * Own content only, and never mirrored: this display exists to be drawn
-             * into, so anything the system might otherwise duplicate onto it — the
-             * default display's content — would be exactly wrong. The presentation
-             * flag is what lets a `Presentation` window attach to it.
-             */
-            val display = displayManager?.createVirtualDisplay(
-                DISPLAY_NAME,
-                videoWidth,
-                videoHeight,
-                videoDensity,
-                newRecorder.surface,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or
-                    DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION,
-            ) ?: error("The device would not create a virtual display")
+            val newDisplay = display(newRecorder.surface)
 
             newRecorder.start()
 
             recorder = newRecorder
-            virtualDisplay = display
+            virtualDisplay = newDisplay
             pendingUri = uri
 
-            RecordingState.Active(display.display.displayId).also { _state.value = it }
+            RecordingState.Active(newDisplay.display.displayId).also { _state.value = it }
         }.getOrElse { error ->
             ThorLog.e(TAG, "Could not start recording", error)
             releaseEverything()
@@ -215,6 +306,10 @@ class ScreenRecorder @Inject constructor(
     }
 
     private fun releaseEverything() {
+        // The projection first: it owns the display about to be dropped, and one
+        // left running is a screen the system still believes is being captured.
+        runCatching { activeProjection?.stop() }
+        activeProjection = null
         runCatching { virtualDisplay?.release() }
         runCatching { recorder?.reset() }
         runCatching { recorder?.release() }
