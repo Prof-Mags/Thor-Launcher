@@ -1,14 +1,11 @@
 package com.thor.feature.home.couch
 
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -19,6 +16,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -39,8 +37,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
@@ -64,7 +66,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -73,6 +74,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.zIndex
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.theme.ThorTheme
@@ -206,6 +208,7 @@ fun CouchScreen(
     onEntryFocused: (rail: Int, item: Int) -> Unit,
     onEntrySelected: (GridEntry) -> Unit,
     onEntryLongPressed: (GridEntry) -> Unit,
+    onEntryFavorite: (GridEntry) -> Unit,
     fullscreenSection: Boolean = false,
     sectionContent: (@Composable (LauncherTab) -> Unit)? = null,
     settingsContent: (@Composable () -> Unit)? = null,
@@ -243,18 +246,26 @@ fun CouchScreen(
         ((rails.getOrNull(safeRail)?.entries?.size ?: 0) - 1).coerceAtLeast(0),
     )
     val focusedEntry = rails.getOrNull(safeRail)?.entries?.getOrNull(safeItem)
-    var backdropEntry by remember { mutableStateOf(focusedEntry) }
+    val requestedBackdrop = focusedEntry?.couchBackdropArtwork()
+        ?: focusedEntry?.platform(state.platformsById)?.artwork?.heroUri
+    var settledBackdrop by remember { mutableStateOf(requestedBackdrop) }
 
-    LaunchedEffect(focusedEntry?.id, focusedEntry?.heroArtwork()) {
-        if (focusedEntry == null || backdropEntry == null) {
-            backdropEntry = focusedEntry
+    LaunchedEffect(focusedEntry?.id, requestedBackdrop) {
+        if (requestedBackdrop == null || settledBackdrop == null) {
+            settledBackdrop = requestedBackdrop
         } else {
-            // A held stick can cross ten games in a moment. Waiting for a brief
-            // settle means all cancelled intermediate selections avoid starting
-            // an image request and a full-screen crossfade.
+            // Do not decode every image crossed while the stick is held. The
+            // backdrop catches up as soon as the cursor briefly settles.
             delay(BACKDROP_SETTLE_MS)
-            backdropEntry = focusedEntry
+            settledBackdrop = requestedBackdrop
         }
+    }
+    val visibleEntries = remember(state.entriesById) {
+        state.entriesById.values.filterNot(GridEntry::isHidden)
+    }
+    val focusedPlatform = focusedEntry?.platform(state.platformsById)
+    val libraryStats = remember(visibleEntries, focusedPlatform) {
+        couchLibraryStats(visibleEntries, focusedPlatform)
     }
 
     LaunchedEffect(safeRail, safeItem, focus, rails.size) {
@@ -270,13 +281,12 @@ fun CouchScreen(
     }
 
     Box(modifier = modifier.fillMaxSize().background(colors.background)) {
-        if (
-            selectedTab.isHome &&
-            !settingsSelected
-        ) {
-            CouchBackdrop(
-                entry = backdropEntry,
-                platform = backdropEntry?.platform(state.platformsById),
+        if (selectedTab.isHome && !settingsSelected) {
+            CouchArtworkBackdrop(
+                artwork = settledBackdrop,
+                accent = focusedEntry?.platform(state.platformsById)
+                    ?.let { Color(it.accentArgb) }
+                    ?: colors.cursor,
             )
         }
 
@@ -304,24 +314,33 @@ fun CouchScreen(
                     if (focusedEntry == null) {
                         EmptyCouchLibrary(modifier = Modifier.weight(1f))
                     } else {
-                        Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                                CouchHero(
-                                    entry = focusedEntry,
-                                    onPlay = { onEntrySelected(focusedEntry) },
-                                    modifier = Modifier.fillMaxWidth().weight(HERO_WEIGHT),
-                                )
-                                CouchRailDeck(
-                                    rails = rails,
-                                    focus = CouchFocus(safeRail, safeItem),
-                                    platforms = state.platformsById,
-                                    onEntryFocused = onEntryFocused,
-                                    onEntrySelected = onEntrySelected,
-                                    onEntryLongPressed = onEntryLongPressed,
-                                    modifier = Modifier.fillMaxWidth().weight(1f - HERO_WEIGHT),
-                                )
-                            }
-
+                        Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                            CouchHero(
+                                entry = focusedEntry,
+                                platform = focusedEntry.platform(state.platformsById),
+                                onPlay = { onEntrySelected(focusedEntry) },
+                                onFavorite = { onEntryFavorite(focusedEntry) },
+                                onMore = { onEntryLongPressed(focusedEntry) },
+                                modifier = Modifier.fillMaxWidth().weight(HERO_WEIGHT),
+                            )
+                            CouchLibrarySummary(
+                                stats = libraryStats,
+                                accent = focusedPlatform
+                                    ?.let { Color(it.accentArgb) }
+                                    ?: colors.cursor,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(LIBRARY_SUMMARY_HEIGHT.dp),
+                            )
+                            CouchRailDeck(
+                                rails = rails,
+                                focus = CouchFocus(safeRail, safeItem),
+                                platforms = state.platformsById,
+                                onEntryFocused = onEntryFocused,
+                                onEntrySelected = onEntrySelected,
+                                onEntryLongPressed = onEntryLongPressed,
+                                modifier = Modifier.fillMaxWidth().weight(1f - HERO_WEIGHT),
+                            )
                         }
                     }
                 } else {
@@ -334,85 +353,79 @@ fun CouchScreen(
     }
 }
 
-private data class CouchBackdropModel(
-    val entryId: String,
-    val artwork: String,
-    val accentArgb: Long?,
-)
-
 @Composable
-private fun CouchBackdrop(entry: GridEntry?, platform: Platform?) {
-    val art = entry?.heroArtwork() ?: return
-    val animationsEnabled = ThorTheme.materials.animationsEnabled
-    val model = remember(entry.id, art, platform?.accentArgb) {
-        CouchBackdropModel(entry.id, art, platform?.accentArgb)
-    }
-    val drift = remember { Animatable(0f) }
-
-    LaunchedEffect(model.entryId, animationsEnabled) {
-        drift.snapTo(0f)
-        if (animationsEnabled) {
-            drift.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = HERO_DRIFT_MS, easing = LinearEasing),
-            )
-        }
+private fun CouchArtworkBackdrop(artwork: String?, accent: Color) {
+    if (artwork == null) {
+        CouchAmbientBackground(accent)
+        return
     }
 
-    Crossfade(
-        targetState = model,
-        animationSpec = tween(if (animationsEnabled) HERO_CROSSFADE_MS else 0),
-        label = "couch-hero-art",
+    val duration = if (ThorTheme.materials.animationsEnabled) BACKDROP_CROSSFADE_MS else 0
+    AnimatedContent(
+        targetState = artwork,
+        transitionSpec = {
+            fadeIn(tween(duration)) togetherWith fadeOut(tween(duration))
+        },
+        label = "couch-selected-artwork",
         modifier = Modifier.fillMaxSize(),
-    ) { backdrop ->
-        val accent = backdrop.accentArgb?.let(::Color) ?: ThorTheme.colors.cursor
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    val zoom = HERO_START_SCALE + drift.value * HERO_SCALE_DELTA
-                    scaleX = zoom
-                    scaleY = zoom
-                    translationX = -drift.value * HERO_DRIFT_PX
-                },
-        ) {
+    ) { selectedArtwork ->
+        Box(modifier = Modifier.fillMaxSize()) {
             ArtworkImage(
-                model = backdrop.artwork,
+                model = selectedArtwork,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 crossfadeMillis = 0,
-                modifier = Modifier.fillMaxSize().alpha(0.86f),
-            )
-            // Platform identity reads as light in the room, not another panel.
-            Box(
-                modifier = Modifier.fillMaxSize().background(
-                    Brush.horizontalGradient(
-                        0f to accent.copy(alpha = 0.28f),
-                        0.34f to accent.copy(alpha = 0.13f),
-                        0.72f to Color.Transparent,
-                    ),
-                ),
+                modifier = Modifier.fillMaxSize().alpha(0.82f),
             )
             Box(
-                modifier = Modifier.fillMaxSize().background(
-                    Brush.horizontalGradient(
-                        0f to Color.Black.copy(alpha = 0.18f),
-                        0.55f to Color.Black.copy(alpha = 0.38f),
-                        1f to Color.Black.copy(alpha = 0.72f),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            0f to Color.Black.copy(alpha = 0.50f),
+                            0.52f to Color.Black.copy(alpha = 0.18f),
+                            1f to Color.Black.copy(alpha = 0.30f),
+                        ),
                     ),
-                ),
             )
             Box(
-                modifier = Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.18f),
-                        0.52f to Color.Black.copy(alpha = 0.28f),
-                        1f to Color.Black.copy(alpha = 0.82f),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to accent.copy(alpha = 0.09f),
+                            0.54f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.70f),
+                        ),
                     ),
-                ),
             )
         }
     }
+}
+
+@Composable
+private fun CouchAmbientBackground(accent: Color) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.horizontalGradient(
+                    0f to accent.copy(alpha = 0.085f),
+                    0.42f to Color.Transparent,
+                    1f to Color.Transparent,
+                ),
+            ),
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.02f),
+                    1f to Color.Black.copy(alpha = 0.24f),
+                ),
+            ),
+    )
 }
 
 @Composable
@@ -428,76 +441,82 @@ fun CouchNavigationBar(
     onSettingsSelected: () -> Unit,
 ) {
     val colors = ThorTheme.colors
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .height(TOP_BAR_HEIGHT.dp)
-            .background(
-                colors.background.copy(alpha = 0.72f),
-            )
-            .padding(horizontal = SCREEN_INSET.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .background(colors.background.copy(alpha = 0.94f)),
     ) {
-        Text(
-            text = "LOKI",
-            style = MaterialTheme.typography.titleLarge,
-            color = colors.cursor,
-            fontWeight = FontWeight.Black,
-            modifier = Modifier.padding(end = 12.dp),
-        )
-        tabs.forEachIndexed { index, tab ->
-            val selected = !settingsSelected && tab == selectedTab
-            CouchNavItem(
-                label = tab.label,
-                icon = tab.couchIcon(),
-                index = index + 1,
-                selected = selected,
-                focused = !settingsFocused && tab == focusedTab,
-                onClick = { onTabSelected(tab) },
-            )
-        }
-        CouchNavItem(
-            label = "Settings",
-            icon = Icons.Rounded.Settings,
-            index = tabs.size + 1,
-            selected = settingsSelected,
-            focused = settingsFocused,
-            onClick = onSettingsSelected,
-        )
-        Spacer(modifier = Modifier.weight(1f))
         Row(
             modifier = Modifier
-                .padding(start = 12.dp, end = if (showStatusBar) 2.dp else 12.dp),
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(horizontal = SCREEN_INSET.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(colors.cursor),
+            Text(
+                text = "LOKI",
+                style = MaterialTheme.typography.titleLarge,
+                color = colors.cursor,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.padding(end = 14.dp),
             )
-        Text(
-                text = "COUCH",
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant,
-                fontWeight = FontWeight.Bold,
+            tabs.forEach { tab ->
+                CouchNavItem(
+                    label = tab.label,
+                    icon = tab.couchIcon(),
+                    selected = !settingsSelected && tab == selectedTab,
+                    focused = !settingsFocused && tab == focusedTab,
+                    onClick = { onTabSelected(tab) },
+                )
+            }
+            CouchNavItem(
+                label = "Settings",
+                icon = Icons.Rounded.Settings,
+                selected = settingsSelected,
+                focused = settingsFocused,
+                onClick = onSettingsSelected,
             )
-            if (showStatusBar) {
+            Spacer(modifier = Modifier.weight(1f))
+            Row(
+                modifier = Modifier.padding(start = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 Box(
                     modifier = Modifier
-                        .padding(start = 3.dp)
-                        .width(COUCH_STATUS_WIDTH.dp),
-                ) {
-                    LauncherStatusBar(
-                        clockStyle = clockStyle,
-                        visible = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(colors.cursor),
+                )
+                Text(
+                    text = "COUCH",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold,
+                )
+                if (showStatusBar) {
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 2.dp)
+                            .width(COUCH_STATUS_WIDTH.dp),
+                    ) {
+                        LauncherStatusBar(
+                            clockStyle = clockStyle,
+                            visible = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             }
         }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(colors.outline.copy(alpha = 0.18f)),
+        )
     }
 }
 
@@ -505,57 +524,56 @@ fun CouchNavigationBar(
 private fun CouchNavItem(
     label: String,
     icon: ImageVector,
-    index: Int,
     selected: Boolean,
     focused: Boolean,
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
-    val shape = ThorTheme.shapes.pill
-    Row(
+    val shape = ThorTheme.shapes.small
+    Column(
         modifier = Modifier
+            .fillMaxHeight()
             .clip(shape)
             .background(
-                when {
-                    focused -> colors.cursor
-                    selected -> colors.surfaceHighest.copy(alpha = 0.92f)
-                    else -> Color.Transparent
-                },
+                if (focused) colors.surfaceHighest.copy(alpha = 0.74f)
+                else Color.Transparent,
             )
             .then(
                 if (focused) Modifier.border(
-                    2.dp,
-                    contrastingContentColor(colors.cursor).copy(alpha = 0.64f),
+                    1.dp,
+                    colors.cursor.copy(alpha = 0.56f),
                     shape,
                 ) else Modifier,
             )
-            .clickable(onClick = onClick)
-            .padding(
-                horizontal = 17.dp,
-                vertical = 8.dp,
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = when {
-                focused -> contrastingContentColor(colors.cursor)
-                selected -> colors.onSurface
-                else -> colors.onSurfaceVariant
-            },
-            modifier = Modifier.size(17.dp),
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleSmall,
-            color = when {
-                focused -> contrastingContentColor(colors.cursor)
-                selected -> colors.onSurface
-                else -> colors.onSurfaceVariant
-            },
-            fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected || focused) colors.onSurface else colors.onSurfaceVariant,
+                modifier = Modifier.size(17.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (selected || focused) colors.onSurface else colors.onSurfaceVariant,
+                fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .height(3.dp)
+                .width(if (selected) 46.dp else 0.dp)
+                .clip(ThorTheme.shapes.pill)
+                .background(colors.cursor),
         )
     }
 }
@@ -569,94 +587,338 @@ private fun LauncherTab.couchIcon(): ImageVector = when (this) {
 @Composable
 private fun CouchHero(
     entry: GridEntry,
+    platform: Platform?,
     onPlay: () -> Unit,
+    onFavorite: () -> Unit,
+    onMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
-    Row(
-        modifier = modifier.padding(horizontal = SCREEN_INSET.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.Bottom,
+    val game = entry as? GameEntry
+    val metadata = game?.metadata
+    val description = when (entry) {
+        is GameEntry -> entry.metadata.description
+        is FolderEntry -> entry.description
+        is AppEntry -> entry.packageName
+        else -> null
+    }
+    val facts = buildList {
+        platform?.shortName?.ifBlank { platform.name }?.let(::add)
+        metadata?.releaseYear?.toString()?.let(::add)
+        metadata?.rating?.let { add("$it / 100") }
+    }
+
+    Box(
+        /*
+         * Weighted to the bottom of its slot, so the card sits clear of the tab
+         * bar rather than crowding it. The gap below is left to the library
+         * summary's own inset.
+         */
+        modifier = modifier.padding(
+            start = SCREEN_INSET.dp,
+            end = SCREEN_INSET.dp,
+            top = 16.dp,
+            bottom = 0.dp,
+        ),
+        contentAlignment = Alignment.CenterStart,
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(HERO_TEXT_WIDTH),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(HERO_CARD_WIDTH)
+                .fillMaxHeight()
+                .clip(ThorTheme.shapes.panel)
+                .background(colors.surface.copy(alpha = 0.48f))
+                .border(1.dp, colors.outline.copy(alpha = 0.16f), ThorTheme.shapes.panel)
+                .padding(7.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-        Text(
-                text = "NOW SELECTED",
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.cursor,
-                fontWeight = FontWeight.Black,
+            CouchHeroArtwork(
+                entry = entry,
+                platform = platform,
+                modifier = Modifier.fillMaxHeight().aspectRatio(1f),
             )
-            val logo = (entry as? GameEntry)?.metadata?.artwork?.logo
-            if (logo != null) {
-                ArtworkImage(
-                    model = logo,
-                    contentDescription = entry.title,
-                    contentScale = ContentScale.Fit,
-                    alignment = Alignment.CenterStart,
-                    modifier = Modifier
-                        .align(Alignment.Start)
-                        .fillMaxWidth(HERO_LOGO_WIDTH)
-                        .heightIn(min = HERO_LOGO_MIN_HEIGHT.dp, max = HERO_LOGO_MAX_HEIGHT.dp),
+            Column(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = when (entry) {
+                        is GameEntry -> "SELECTED GAME"
+                        is AppEntry -> "SELECTED APP"
+                        is FolderEntry -> "SELECTED COLLECTION"
+                        else -> "SELECTED ITEM"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.cursor,
+                    fontWeight = FontWeight.Black,
                 )
-            } else {
                 Text(
                     text = entry.title,
-                    style = MaterialTheme.typography.displaySmall,
-                    color =                         Color.White,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = colors.onSurface,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-            Spacer(modifier = Modifier.height(HERO_ACTION_GAP.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    modifier = Modifier
-                        .clip(
-                                                            ThorTheme.shapes.small,
-                        )
-                        .background(colors.cursor)
-                        .clickable(onClick = onPlay)
-                        .padding(horizontal = 20.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(
-                        imageVector = if (entry is FolderEntry) {
-                            Icons.Rounded.FolderOpen
-                        } else {
-                            Icons.Rounded.PlayArrow
-                        },
-                        contentDescription = null,
-                        tint = contrastingContentColor(colors.cursor),
-                        modifier = Modifier.size(22.dp),
-                    )
-        Text(
-                        text = if (entry is FolderEntry) "OPEN" else "PLAY",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = contrastingContentColor(colors.cursor),
-                        fontWeight = FontWeight.Bold,
+                if (facts.isNotEmpty()) {
+                    Text(
+                        text = facts.joinToString("  /  "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (entry.isFavorite) {
-        Text(
-                        text = "FAVOURITE",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.cursor,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clip(ThorTheme.shapes.pill)
-                            .background(colors.cursor.copy(alpha = 0.14f))
-                            .padding(horizontal = 11.dp, vertical = 7.dp),
+                description?.takeIf(String::isNotBlank)?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    CouchHeroAction(
+                        label = if (entry is FolderEntry) "Open" else "Play",
+                        icon = if (entry is FolderEntry) Icons.Rounded.FolderOpen
+                        else Icons.Rounded.PlayArrow,
+                        primary = true,
+                        onClick = onPlay,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CouchHeroAction(
+                        label = if (entry.isFavorite) "Favorited" else "Favorite",
+                        icon = if (entry.isFavorite) Icons.Rounded.Favorite
+                        else Icons.Rounded.FavoriteBorder,
+                        onClick = onFavorite,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CouchHeroAction(
+                        label = "More",
+                        icon = Icons.Rounded.MoreHoriz,
+                        onClick = onMore,
+                        modifier = Modifier.weight(0.78f),
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun CouchHeroArtwork(
+    entry: GridEntry,
+    platform: Platform?,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ThorTheme.colors
+    val shape = ThorTheme.shapes.small
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(colors.surfaceHighest)
+            .border(1.dp, colors.outline.copy(alpha = 0.2f), shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        when (entry) {
+            is GameEntry -> ArtworkImage(
+                model = entry.metadata.artwork.cellImage,
+                contentDescription = entry.title,
+                fallbackText = entry.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            is AppEntry -> if (entry.customIconUri != null) {
+                ArtworkImage(
+                    model = entry.customIconUri,
+                    contentDescription = entry.title,
+                    fallbackText = entry.title,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(0.64f),
+                )
+            } else {
+                AppIcon(
+                    packageName = entry.packageName,
+                    title = entry.title,
+                    shape = shape,
+                    modifier = Modifier.fillMaxSize(0.64f),
+                )
+            }
+            is FolderEntry -> FolderCard(entry, platform)
+            else -> Unit
+        }
+    }
+}
+
+@Composable
+private fun CouchHeroAction(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    primary: Boolean = false,
+) {
+    val colors = ThorTheme.colors
+    val background = if (primary) colors.cursor else colors.surfaceHighest.copy(alpha = 0.72f)
+    val foreground = if (primary) contrastingContentColor(colors.cursor) else colors.onSurface
+    Row(
+        modifier = modifier
+            .height(HERO_ACTION_HEIGHT.dp)
+            .clip(ThorTheme.shapes.small)
+            .background(background)
+            .then(
+                if (primary) Modifier
+                else Modifier.border(1.dp, colors.outline.copy(alpha = 0.18f), ThorTheme.shapes.small),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = foreground, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = foreground,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun CouchLibrarySummary(
+    stats: CouchLibraryStats,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ThorTheme.colors
+    Box(
+        modifier = modifier.padding(horizontal = SCREEN_INSET.dp, vertical = 3.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(HERO_CARD_WIDTH)
+                .fillMaxHeight()
+                .clip(ThorTheme.shapes.panel)
+                .background(colors.surface.copy(alpha = 0.44f))
+                .border(1.dp, colors.outline.copy(alpha = 0.14f), ThorTheme.shapes.panel)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = stats.title,
+                style = MaterialTheme.typography.labelSmall,
+                color = accent,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CouchLibraryStat(stats.games, "Games", Modifier.weight(1f))
+                CouchLibraryDivider()
+                CouchLibraryStat(stats.favorites, "Favorites", Modifier.weight(1f))
+                CouchLibraryDivider()
+                CouchLibraryStat(stats.played, "Played", Modifier.weight(1f))
+                CouchLibraryDivider()
+                CouchLibraryStat(stats.trailing, stats.trailingLabel, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/**
+ * The four figures under the hero, and what they are counting.
+ *
+ * [trailing] is the slot that changes meaning: scoped to a platform it is time
+ * on that platform, because a platform count of one tells you nothing.
+ */
+internal data class CouchLibraryStats(
+    val title: String,
+    val games: Int,
+    val favorites: Int,
+    val played: Int,
+    val trailing: Int,
+    val trailingLabel: String,
+)
+
+/**
+ * Narrows the library figures to the platform under the cursor.
+ *
+ * Whole-library totals sit still while you move around, which makes them
+ * wallpaper; the same four numbers scoped to whatever you are looking at
+ * actually answer something — how far into this platform you are. With nothing
+ * under the cursor that belongs to a platform (an app, a folder), it falls back
+ * to the library totals rather than showing zeroes.
+ */
+internal fun couchLibraryStats(
+    entries: List<GridEntry>,
+    platform: Platform?,
+): CouchLibraryStats {
+    val games = entries.filterIsInstance<GameEntry>()
+    if (platform == null) {
+        return CouchLibraryStats(
+            title = "YOUR LIBRARY",
+            games = games.size,
+            favorites = entries.count(GridEntry::isFavorite),
+            played = games.count { it.stats.hasBeenPlayed },
+            trailing = games.map(GameEntry::platformId).distinct().size,
+            trailingLabel = "Platforms",
+        )
+    }
+    val owned = games.filter { it.platformId == platform.id }
+    val playMillis = owned.sumOf { it.stats.totalPlayMillis }
+    return CouchLibraryStats(
+        title = platform.shortName.ifBlank { platform.name }.uppercase(),
+        games = owned.size,
+        favorites = owned.count(GridEntry::isFavorite),
+        played = owned.count { it.stats.hasBeenPlayed },
+        // Rounded down: an hour you have not finished is not one you have put in.
+        trailing = (playMillis / MILLIS_PER_HOUR).toInt(),
+        trailingLabel = "Hours",
+    )
+}
+
+private const val MILLIS_PER_HOUR = 3_600_000L
+
+@Composable
+private fun CouchLibraryStat(value: Int, label: String, modifier: Modifier = Modifier) {
+    val colors = ThorTheme.colors
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value.toString(),
+            style = MaterialTheme.typography.titleLarge,
+            color = colors.onSurface,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun CouchLibraryDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(36.dp)
+            .background(ThorTheme.colors.outline.copy(alpha = 0.2f)),
+    )
 }
 
 @Composable
@@ -976,31 +1238,52 @@ private fun CouchRailDeck(
     val target = remember(focus.rail, rail) { CouchRailTarget(focus.rail, rail) }
     val duration = if (animationsEnabled) RAIL_TRANSITION_MS else 0
 
-    AnimatedContent(
-        targetState = target,
-        transitionSpec = {
-            val direction = if (targetState.index >= initialState.index) 1 else -1
-            (slideInVertically(tween(duration)) { height -> direction * (height / 5) } +
-                fadeIn(tween(duration))) togetherWith
-                (slideOutVertically(tween(duration)) { height -> -direction * (height / 5) } +
-                    fadeOut(tween(duration)))
-        },
-        contentKey = { it.rail.id },
-        label = "couch-rail-change",
-        modifier = modifier.padding(top = 2.dp),
-    ) { displayed ->
-        CouchRailContent(
-            rails = rails,
-            railIndex = displayed.index,
-            rail = displayed.rail,
-            focusedItem = focus.item,
-            platforms = platforms,
-            onEntryFocused = onEntryFocused,
-            onEntrySelected = onEntrySelected,
-            onEntryLongPressed = onEntryLongPressed,
-            modifier = Modifier.fillMaxSize(),
-        )
+    // The deck is the only thing here that knows how tall the shelf slot really
+    // is, so the card size is decided once at this level and passed down.
+    BoxWithConstraints(modifier = modifier.padding(top = 2.dp)) {
+        val cardSize = couchCardSize(maxHeight)
+
+        AnimatedContent(
+            targetState = target,
+            transitionSpec = {
+                val direction = if (targetState.index >= initialState.index) 1 else -1
+                (slideInVertically(tween(duration)) { height -> direction * (height / 5) } +
+                    fadeIn(tween(duration))) togetherWith
+                    (slideOutVertically(tween(duration)) { height -> -direction * (height / 5) } +
+                        fadeOut(tween(duration)))
+            },
+            contentKey = { it.rail.id },
+            label = "couch-rail-change",
+        ) { displayed ->
+            CouchRailContent(
+                rails = rails,
+                railIndex = displayed.index,
+                rail = displayed.rail,
+                focusedItem = focus.item,
+                platforms = platforms,
+                cardSize = cardSize,
+                onEntryFocused = onEntryFocused,
+                onEntrySelected = onEntrySelected,
+                onEntryLongPressed = onEntryLongPressed,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
+}
+
+/**
+ * Largest square card the shelf slot can actually hold.
+ *
+ * The rail is laid out at a fixed height, so a constant card size overflows the
+ * top of the deck as soon as the slot is short — and the slot is not fixed: it
+ * is a fraction of the screen, measured through a density the user can scale.
+ * Capping against the space on offer lets the preferred size be generous
+ * without the shelf running off the top of a display that reports a high
+ * density or a scale turned up.
+ */
+internal fun couchCardSize(slotHeight: Dp): Dp {
+    val available = slotHeight - RAIL_HEADER_HEIGHT.dp - CARD_RAIL_EXTRA_HEIGHT.dp
+    return available.coerceIn(MIN_CARD_SIZE.dp, SQUARE_CARD_SIZE.dp)
 }
 
 private data class CouchRailTarget(
@@ -1015,6 +1298,7 @@ private fun CouchRailContent(
     rail: CouchRail,
     focusedItem: Int,
     platforms: Map<String, Platform>,
+    cardSize: Dp,
     onEntryFocused: (Int, Int) -> Unit,
     onEntrySelected: (GridEntry) -> Unit,
     onEntryLongPressed: (GridEntry) -> Unit,
@@ -1038,50 +1322,62 @@ private fun CouchRailContent(
     }
 
     Column(modifier = modifier) {
+        Spacer(modifier = Modifier.weight(1f))
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = SCREEN_INSET.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SCREEN_INSET.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
-                Text(
-                    text =                         rail.title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = "${railIndex + 1} OF ${rails.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.cursor,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
+            Text(
+                text = rail.title.uppercase(),
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.cursor,
+                fontWeight = FontWeight.Black,
+            )
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = colors.cursor,
+                modifier = Modifier.size(18.dp),
+            )
             Spacer(modifier = Modifier.weight(1f))
-                            rails.forEachIndexed { index, _ ->
-                    Box(
-                        modifier = Modifier
-                            .padding(start = 6.dp)
-                            .height(5.dp)
-                            .width(if (index == railIndex) 25.dp else 9.dp)
-                            .clip(ThorTheme.shapes.pill)
-                            .background(
-                                if (index == railIndex) colors.cursor
-                                else colors.onSurfaceVariant.copy(alpha = 0.36f),
-                            ),
-                    )
+            Text(
+                text = "${rail.entries.size} ITEMS",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+            )
+            rails.forEachIndexed { index, _ ->
+                Box(
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .height(3.dp)
+                        .width(if (index == railIndex) 19.dp else 7.dp)
+                        .clip(ThorTheme.shapes.pill)
+                        .background(
+                            if (index == railIndex) colors.cursor
+                            else colors.onSurfaceVariant.copy(alpha = 0.36f),
+                        ),
+                )
             }
         }
 
         LazyRow(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(top = 10.dp),
-            contentPadding = PaddingValues(horizontal = SCREEN_INSET.dp, vertical = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(cardSize + CARD_RAIL_EXTRA_HEIGHT.dp)
+                .padding(top = 3.dp),
+            contentPadding = PaddingValues(horizontal = SCREEN_INSET.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.spacedBy(CARD_GAP.dp),
+            verticalAlignment = Alignment.Bottom,
         ) {
             itemsIndexed(rail.entries, key = { _, entry -> entry.id }) { index, entry ->
                 CouchCard(
                     entry = entry,
                     platform = entry.platform(platforms),
+                    size = cardSize,
                     focused = index == safeItem,
                     onFocus = { onEntryFocused(railIndex, index) },
                     onSelected = { onEntrySelected(entry) },
@@ -1096,6 +1392,7 @@ private fun CouchRailContent(
 private fun CouchCard(
     entry: GridEntry,
     platform: Platform?,
+    size: Dp,
     focused: Boolean,
     onFocus: () -> Unit,
     onSelected: () -> Unit,
@@ -1104,71 +1401,71 @@ private fun CouchCard(
     val colors = ThorTheme.colors
     val focusColor = platform?.let { Color(it.accentArgb) } ?: colors.cursor
     val scale by animateFloatAsState(
-        targetValue = if (focused) 1.075f else 1f,
+        targetValue = if (focused) 1.035f else 1f,
         animationSpec = tween(160),
         label = "couch-card-focus",
     )
     val imageAlpha by animateFloatAsState(
-        targetValue = if (focused) 1f else 0.84f,
+        targetValue = if (focused) 1f else 0.88f,
         animationSpec = tween(160),
         label = "couch-card-depth",
     )
     val elevation by animateDpAsState(
-        targetValue = if (focused) 16.dp else 0.dp,
+        targetValue = if (focused) 10.dp else 0.dp,
         animationSpec = tween(160),
         label = "couch-card-elevation",
     )
-    val shape =         ThorTheme.shapes.small
-    val isGame = entry is GameEntry
-    val cardWidth = if (isGame) GAME_CARD_WIDTH else CARD_WIDTH
-    val cardAspect = if (isGame) GAME_CARD_ASPECT else CARD_ASPECT
+    val shape = ThorTheme.shapes.small
+    val game = entry as? GameEntry
+    val progress = game?.let {
+        val completionMillis = it.metadata.completionMinutes
+            ?.takeIf { minutes -> minutes > 0 }
+            ?.times(60_000L)
+        if (completionMillis != null && it.stats.totalPlayMillis > 0L) {
+            (it.stats.totalPlayMillis.toFloat() / completionMillis.toFloat()).coerceIn(0f, 1f)
+        } else {
+            null
+        }
+    }
 
-    Column(
+    Box(
         modifier = Modifier
-            .width(cardWidth.dp)
+            .width(size)
+            .aspectRatio(1f)
             .zIndex(if (focused) 1f else 0f)
-            .scale(scale),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .scale(scale)
+            .shadow(elevation = elevation, shape = shape, clip = false)
+            .clip(shape)
+            .background(colors.surfaceHighest)
+            .then(
+                if (focused) Modifier.border(2.dp, focusColor, shape)
+                else Modifier.border(1.dp, colors.outline.copy(alpha = 0.16f), shape),
+            )
+            .pointerInput(entry.id) {
+                detectTapGestures(
+                    onPress = { onFocus() },
+                    onTap = { onSelected() },
+                    onLongPress = { onLongPressed() },
+                )
+            },
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(cardAspect)
-                .shadow(elevation = elevation, shape = shape, clip = false)
-                .clip(shape)
-                .background(
-                    if (focused) focusColor.copy(alpha = 0.22f)
-                    else colors.surfaceHighest,
-                )
-                .then(
-                    if (focused) Modifier.border(3.dp, focusColor, shape)
-                    else Modifier.border(1.dp, Color.White.copy(alpha = 0.10f), shape),
-                )
-                .pointerInput(entry.id) {
-                    detectTapGestures(
-                        onPress = { onFocus() },
-                        onTap = { onSelected() },
-                        onLongPress = { onLongPressed() },
-                    )
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            when (entry) {
-                is GameEntry -> ArtworkImage(
-                    model =                         entry.metadata.artwork.boxArt ?: entry.metadata.artwork.backgroundImage,
+        when (entry) {
+            is GameEntry -> ArtworkImage(
+                    model = entry.metadata.artwork.cellImage,
                     contentDescription = entry.title,
                     fallbackText = entry.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().alpha(imageAlpha),
                 )
-                is AppEntry -> if (entry.customIconUri != null) {
+            is AppEntry -> if (entry.customIconUri != null) {
                     ArtworkImage(
                         model = entry.customIconUri,
                         contentDescription = entry.title,
                         fallbackText = entry.title,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
-                            .fillMaxHeight(0.58f)
+                            .fillMaxHeight(0.54f)
                             .aspectRatio(1f)
                             .alpha(imageAlpha),
                     )
@@ -1177,63 +1474,98 @@ private fun CouchCard(
                         packageName = entry.packageName,
                         title = entry.title,
                         shape = shape,
-                        modifier = Modifier.fillMaxHeight(0.58f).aspectRatio(1f),
+                        modifier = Modifier.fillMaxHeight(0.54f).aspectRatio(1f),
                     )
                 }
-                is FolderEntry -> FolderCard(entry, platform)
-                else -> Unit
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(38.dp)
-                    .align(Alignment.BottomCenter)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.86f)),
-                        ),
-                    ),
-            )
-            if (focused) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(8.dp)
-                        .clip(ThorTheme.shapes.pill)
-                        .background(Color.Black.copy(alpha = 0.66f))
-                        .border(1.dp, focusColor.copy(alpha = 0.72f), ThorTheme.shapes.pill)
-                        .padding(horizontal = 9.dp, vertical = 4.dp),
-                ) {
-        Text(
-                        text = platform?.shortName?.ifBlank { platform.name }
-                            ?: entry.typeLabel(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 5.dp)
-                        .width(48.dp)
-                        .height(4.dp)
-                        .clip(ThorTheme.shapes.pill)
-                        .background(focusColor),
-                )
-            }
+            is FolderEntry -> FolderCard(entry, platform)
+            else -> Unit
         }
-        Text(
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.58f)
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.92f)),
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(7.dp)
+                .clip(ThorTheme.shapes.small)
+                .background(Color.Black.copy(alpha = 0.68f))
+                .padding(horizontal = 7.dp, vertical = 3.dp),
+        ) {
+            Text(
+                text = platform?.shortName?.ifBlank { platform.name } ?: entry.typeLabel(),
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+        }
+        if (entry.isFavorite) {
+            Icon(
+                imageVector = Icons.Rounded.Favorite,
+                contentDescription = "Favorite",
+                tint = focusColor,
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(15.dp),
+            )
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            if (progress != null) {
+                Text(
+                    text = "${(progress * 100f).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(ThorTheme.shapes.pill)
+                        .background(Color.White.copy(alpha = 0.22f)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress)
+                            .fillMaxHeight()
+                            .background(focusColor),
+                    )
+                }
+            }
+            Text(
                 text = entry.title,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (focused) Color.White else Color.White.copy(alpha = 0.66f),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White,
                 fontWeight = if (focused) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        if (focused) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .width(36.dp)
+                    .height(3.dp)
+                    .clip(ThorTheme.shapes.pill)
+                    .background(focusColor),
+            )
+        }
+    }
 }
 
 @Composable
@@ -1289,8 +1621,9 @@ private fun GridEntry.lastPlayedAt(): Long? = when (this) {
     else -> null
 }
 
-private fun GridEntry.heroArtwork(): String? = when (this) {
-    is GameEntry -> metadata.artwork.backgroundImage
+/** Wide artwork for the selected game's room-scale couch backdrop. */
+private fun GridEntry.couchBackdropArtwork(): String? = when (this) {
+    is GameEntry -> metadata.artwork.backgroundImage ?: metadata.artwork.cellImage
     is FolderEntry -> artworkUri
     else -> null
 }
@@ -1337,26 +1670,19 @@ private const val INFO_COLUMN_GAP = 14
 private const val INFO_PANEL_PADDING = 15
 private const val INFO_PANEL_ALPHA = 0.82f
 private const val INFO_DESCRIPTION_LINES = 5
-private const val CARD_WIDTH = 210
-private const val GAME_CARD_WIDTH = 148
-private const val SHELF_CARD_WIDTH = 232
-private const val INDEX_CARD_WIDTH = 260
-private const val CARD_GAP = 15
-private const val CARD_ASPECT = 16f / 9f
-private const val GAME_CARD_ASPECT = 2f / 3f
-private const val INDEX_CARD_ASPECT = 3.25f
-private const val HERO_WEIGHT = 0.43f
-private const val HERO_TEXT_WIDTH = 0.66f
-private const val HERO_LOGO_WIDTH = 0.72f
-private const val HERO_LOGO_MIN_HEIGHT = 58
-private const val HERO_LOGO_MAX_HEIGHT = 94
-private const val HERO_ACTION_GAP = 12
-private const val HERO_CROSSFADE_MS = 420
-private const val BACKDROP_SETTLE_MS = 110L
-private const val HERO_DRIFT_MS = 12_000
-private const val HERO_START_SCALE = 1.025f
-private const val HERO_SCALE_DELTA = 0.035f
-private const val HERO_DRIFT_PX = 18f
+private const val CARD_GAP = 14
+/** Preferred card edge, subject to what the shelf slot can hold. */
+private const val SQUARE_CARD_SIZE = 192
+private const val MIN_CARD_SIZE = 116
+private const val CARD_RAIL_EXTRA_HEIGHT = 22
+/** Room the rail's title row takes above the cards. */
+private const val RAIL_HEADER_HEIGHT = 26
+private const val HERO_WEIGHT = 0.47f
+private const val HERO_CARD_WIDTH = 0.48f
+private const val HERO_ACTION_HEIGHT = 40
+private const val LIBRARY_SUMMARY_HEIGHT = 76
+private const val BACKDROP_SETTLE_MS = 105L
+private const val BACKDROP_CROSSFADE_MS = 300
 private const val RAIL_TRANSITION_MS = 220
 
 /** How much of an artless folder card its glyph fills. */

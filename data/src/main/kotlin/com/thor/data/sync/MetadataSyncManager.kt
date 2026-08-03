@@ -31,7 +31,13 @@ import javax.inject.Singleton
 /** Progress of a metadata scrape. */
 sealed interface ScrapeState {
     data object Idle : ScrapeState
-    data class Running(val done: Int, val total: Int, val currentTitle: String) : ScrapeState
+    data class Running(
+        val done: Int,
+        val total: Int,
+        val currentTitle: String,
+        /** Non-null when the user requested one platform rather than the library. */
+        val platformId: String? = null,
+    ) : ScrapeState
     data class Completed(val updated: Int, val skipped: Int) : ScrapeState
     data class Failed(val message: String) : ScrapeState
 
@@ -147,6 +153,7 @@ class MetadataSyncManager @Inject constructor(
             _state.value = ScrapeState.NotConfigured
             return@withContext
         }
+        val canFetchDescriptions = !trailersOnly && aggregator.hasDescriptionProvider()
 
         val platforms = platformDao.getAll().associateBy { it.id }
 
@@ -175,7 +182,13 @@ class MetadataSyncManager @Inject constructor(
              * one.
              */
             trailersOnly -> all.filter { it.metadata.artwork.videoUri.isNullOrBlank() }
-            onlyMissing -> all.filter { it.metadata.lastScrapedEpochMs == null }
+            // Older library rows may have been stamped "scraped" by an artwork
+            // provider before descriptions were fetched from RAWG's detail API.
+            // Treat a blank description as missing when a prose source is usable.
+            onlyMissing -> all.filter {
+                it.metadata.lastScrapedEpochMs == null ||
+                    it.metadata.needsDescriptionRefresh(canFetchDescriptions)
+            }
             else -> all
         }
 
@@ -194,6 +207,7 @@ class MetadataSyncManager @Inject constructor(
                 done = index,
                 total = targets.size,
                 currentTitle = game.title,
+                platformId = platformId,
             )
 
             val platform = platforms[game.platformId]
@@ -244,7 +258,10 @@ class MetadataSyncManager @Inject constructor(
         // way past is unrelated work the user did not ask for, and — before this —
         // work that actively undid their icon pack.
         if (!trailersOnly) {
-            updated += scrapeFolderArtwork(onlyMissing)
+            // A platform action promises to touch only that system. Custom
+            // folders span systems, so scraping every one after a platform pass
+            // both hides the real progress and violates that scope.
+            if (platformId == null) updated += scrapeFolderArtwork(onlyMissing)
             updated += dressPlatformFolders()
         }
 
@@ -395,7 +412,12 @@ class MetadataSyncManager @Inject constructor(
             withContext(ioDispatcher) {
                 val game: GameEntity = gameDao.getById(gameId) ?: return@withContext
                 val platform = platformDao.getById(game.platformId)
-                _state.value = ScrapeState.Running(0, 1, game.title)
+                _state.value = ScrapeState.Running(
+                    done = 0,
+                    total = 1,
+                    currentTitle = game.title,
+                    platformId = game.platformId,
+                )
 
                 val merged = aggregator.scrape(
                     query = MetadataQuery(
@@ -405,6 +427,8 @@ class MetadataSyncManager @Inject constructor(
                         providerPlatformId = platform?.providerIds?.get("screenscraper"),
                         fileName = game.fileName,
                         fileSizeBytes = game.fileSizeBytes,
+                        releaseYearHint = game.metadata.releaseYear,
+                        region = game.metadata.region,
                     ),
                     existing = game.metadata,
                 )
@@ -421,3 +445,9 @@ class MetadataSyncManager @Inject constructor(
         const val FLAGSHIP_MISS = Int.MAX_VALUE
     }
 }
+
+/** Blank prose is missing even on an older row that already has a scrape timestamp. */
+internal fun GameMetadata.needsDescriptionRefresh(providerAvailable: Boolean): Boolean =
+    providerAvailable &&
+        GameMetadata.FIELD_DESCRIPTION !in lockedFields &&
+        description.isNullOrBlank()

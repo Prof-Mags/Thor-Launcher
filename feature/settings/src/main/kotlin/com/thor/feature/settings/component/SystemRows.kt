@@ -291,6 +291,8 @@ fun SystemRow(
     installedEmulators: List<Pair<String, String>>,
     romFolder: String?,
     focused: Boolean = false,
+    /** Current completed/total count when this platform is being scraped. */
+    scrapeProgress: String? = null,
     onToggleEmulator: (String) -> Unit,
     /** Re-scrapes just this system's games. */
     onScrape: () -> Unit,
@@ -372,14 +374,23 @@ fun SystemRow(
                     )
                 }
                 Text(
-                    text = if (ready) "READY" else "SETUP NEEDED",
+                    text = when {
+                        scrapeProgress != null -> "SCRAPING $scrapeProgress"
+                        ready -> "READY"
+                        else -> "SETUP NEEDED"
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (ready) colors.cursor else colors.error,
+                    color = when {
+                        scrapeProgress != null -> colors.cursor
+                        ready -> colors.cursor
+                        else -> colors.error
+                    },
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .clip(ThorTheme.shapes.pill)
                         .background(
-                            (if (ready) colors.cursor else colors.error).copy(alpha = 0.12f),
+                            (if (scrapeProgress != null || ready) colors.cursor else colors.error)
+                                .copy(alpha = 0.12f),
                         )
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                 )
@@ -442,7 +453,7 @@ fun SystemRow(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     PlatformAction(
-                        label = "SCRAPE",
+                        label = scrapeProgress ?: "SCRAPE",
                         icon = Icons.Rounded.Refresh,
                         focused = focused && highlightedControl == installedEmulators.size,
                         onClick = onScrape,

@@ -246,6 +246,7 @@ fun BottomScreen(
                 onEntryFocused = onCouchEntryFocused,
                 onEntrySelected = onCouchEntrySelected,
                 onEntryLongPressed = onCouchEntryLongPressed,
+                onEntryFavorite = onCouchDetailsFavorite,
                 fullscreenSection = couchFullscreenSection,
                 sectionContent = sectionContent,
                 settingsContent = couchSettingsContent,

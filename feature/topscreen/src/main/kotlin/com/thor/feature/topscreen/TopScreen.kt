@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.theme.ThorTheme
@@ -67,6 +68,7 @@ fun TopScreen(
      */
     selectedScreenshot: Int,
     onScreenshotSelected: (Int) -> Unit,
+    onEntrySelected: (GridEntry) -> Unit = {},
     /**
      * Whether the controller is currently aimed at this panel.
      *
@@ -140,7 +142,10 @@ fun TopScreen(
             )
         }
 
-        Scrim()
+        Scrim(
+            artworkLed = selection is GameEntry ||
+                (selection is FolderEntry && platform != null),
+        )
 
         AnimatedContent(
             // Keyed on the selection, so moving between entries crossfades.
@@ -168,6 +173,7 @@ fun TopScreen(
                         platform = platform,
                         folderTitle = entry.title,
                         children = folderChildren,
+                        onGameSelected = onEntrySelected,
                     )
                 } else {
                     FolderDetailPanel(folder = entry, children = folderChildren)
@@ -187,6 +193,13 @@ fun TopScreen(
             visible = focused,
             canCycleScreenshots = screenshots.size > 1,
             canLaunch = selection != null,
+            platformAccent = when (selection) {
+                is FolderEntry -> platform?.let { Color(it.accentArgb) }
+                is GameEntry -> platform?.let { Color(it.accentArgb) }
+                    ?: selection.metadata.artwork.dominantArgb?.let(::Color)
+                    ?: colors.cursor
+                else -> null
+            },
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -206,10 +219,13 @@ private fun ControllerFocusEdge(
     visible: Boolean,
     canCycleScreenshots: Boolean,
     canLaunch: Boolean,
+    platformAccent: Color?,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
     val motion = ThorTheme.motion
+    val focusBrush = platformAccent?.let { platformAccentBrush(it, alpha = .54f) }
+        ?: SolidColor(colors.cursor)
 
     AnimatedVisibility(
         visible = visible,
@@ -222,22 +238,24 @@ private fun ControllerFocusEdge(
                 .fillMaxSize()
                 .border(
                     width = FOCUS_EDGE_WIDTH,
-                    color = colors.cursor,
+                    brush = focusBrush,
                     shape = RoundedCornerShape(FOCUS_EDGE_RADIUS),
                 ),
         ) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = HINT_INSET)
-                    .clip(ThorTheme.shapes.pill)
-                    .background(colors.surface.copy(alpha = HINT_BACKGROUND_ALPHA))
-                    .padding(horizontal = 14.dp, vertical = 7.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                if (canCycleScreenshots) Hint("◀ ▶  Screenshots")
-                if (canLaunch) Hint("A  Launch")
-                Hint("B  Grid")
+            if (platformAccent == null) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = HINT_INSET)
+                        .clip(ThorTheme.shapes.pill)
+                        .background(colors.surface.copy(alpha = HINT_BACKGROUND_ALPHA))
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    if (canCycleScreenshots) Hint("◀ ▶  Screenshots")
+                    if (canLaunch) Hint("A  Launch")
+                    Hint("B  Grid")
+                }
             }
         }
     }
@@ -322,16 +340,18 @@ private fun Backdrop(
  * behind text.
  */
 @Composable
-private fun Scrim() {
+private fun Scrim(artworkLed: Boolean) {
     val colors = ThorTheme.colors
+    val leadingAlpha = if (artworkLed) .38f else .70f
+    val middleAlpha = if (artworkLed) .16f else .35f
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.horizontalGradient(
                     colorStops = arrayOf(
-                        0.0f to colors.background.copy(alpha = 0.70f),
-                        0.45f to colors.background.copy(alpha = 0.35f),
+                        0.0f to colors.background.copy(alpha = leadingAlpha),
+                        0.45f to colors.background.copy(alpha = middleAlpha),
                         1.0f to Color.Transparent,
                     ),
                 ),

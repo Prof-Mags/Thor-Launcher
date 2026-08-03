@@ -92,6 +92,10 @@ class MetadataAggregator @Inject constructor(
     suspend fun hasTextualProvider(): Boolean =
         usableProviders(settings.metadata.first()).any { !it.artworkOnly }
 
+    /** True when a configured source can fill the game-description field. */
+    suspend fun hasDescriptionProvider(): Boolean =
+        usableProviders(settings.metadata.first()).any { it.id in DESCRIPTION_PROVIDERS }
+
     /**
      * Probes every provider, concurrently, and reports what each one said.
      *
@@ -172,6 +176,15 @@ class MetadataAggregator @Inject constructor(
         val locked = existing.lockedFields
         fun <T> pick(field: String, current: T?, selector: (MetadataCandidate) -> T?): T? =
             if (field in locked) current else current ?: textual.firstNotNullOfOrNull(selector)
+        fun pickText(
+            field: String,
+            current: String?,
+            selector: (MetadataCandidate) -> String?,
+        ): String? = selectNonBlankMetadataText(
+            current = current,
+            locked = field in locked,
+            candidates = textual.map(selector),
+        )
 
         val sources = existing.providerSources.toMutableMap()
         textual.forEach { candidate ->
@@ -189,7 +202,7 @@ class MetadataAggregator @Inject constructor(
         }
 
         return existing.copy(
-            description = pick(GameMetadata.FIELD_DESCRIPTION, existing.description) {
+            description = pickText(GameMetadata.FIELD_DESCRIPTION, existing.description) {
                 it.metadata.description
             },
             genres = if (GameMetadata.FIELD_GENRES in locked || existing.genres.isNotEmpty()) {
@@ -197,10 +210,10 @@ class MetadataAggregator @Inject constructor(
             } else {
                 textual.firstOrNull { it.metadata.genres.isNotEmpty() }?.metadata?.genres.orEmpty()
             },
-            developer = pick(GameMetadata.FIELD_DEVELOPER, existing.developer) {
+            developer = pickText(GameMetadata.FIELD_DEVELOPER, existing.developer) {
                 it.metadata.developer
             },
-            publisher = pick(GameMetadata.FIELD_PUBLISHER, existing.publisher) {
+            publisher = pickText(GameMetadata.FIELD_PUBLISHER, existing.publisher) {
                 it.metadata.publisher
             },
             releaseDate = pick(GameMetadata.FIELD_RELEASE_DATE, existing.releaseDate) {
@@ -266,6 +279,9 @@ class MetadataAggregator @Inject constructor(
          */
         val TRAILER_PROVIDERS = setOf("screenscraper", "rawg")
 
+        /** Sources whose payloads contain prose rather than facts or artwork only. */
+        val DESCRIPTION_PROVIDERS = setOf("screenscraper", "rawg", "wikidata")
+
         /**
          * Below this, a title match is more likely to be a different game than
          * the right one — attaching wrong artwork is worse than attaching none.
@@ -281,4 +297,19 @@ class MetadataAggregator @Inject constructor(
          */
         const val MAX_CONCURRENT_REQUESTS = 3
     }
+}
+
+/**
+ * Empty strings were persisted by early imports and metadata editors. Treat
+ * those as missing so a later scrape can actually repair the field, while
+ * still respecting a user's explicit field lock.
+ */
+internal fun selectNonBlankMetadataText(
+    current: String?,
+    locked: Boolean,
+    candidates: List<String?>,
+): String? {
+    if (locked) return current
+    return current?.takeIf(String::isNotBlank)
+        ?: candidates.firstNotNullOfOrNull { it?.takeIf(String::isNotBlank) }
 }

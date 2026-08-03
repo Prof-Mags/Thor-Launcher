@@ -41,6 +41,7 @@ import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.data.sync.ScrapeState
 import com.thor.feature.settings.component.AddPlatformDialog
 import com.thor.feature.settings.component.LocalRowActivation
 import com.thor.feature.settings.component.LocalHorizontalRowRegistration
@@ -349,6 +350,19 @@ fun SettingsScreen(
             }
         }
 
+        (scrapeState as? ScrapeState.Running)?.let { running ->
+            val platformName = running.platformId?.let { id ->
+                platformOptions.firstOrNull { it.platform.id == id }?.platform?.name
+            }
+            ScrapeProgressOverlay(
+                state = running,
+                platformName = platformName,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(dimens.spacingLarge),
+            )
+        }
+
         // Above everything so it is not clipped by the detail scroll container.
         pendingPlatform?.let { platform ->
             CompositionLocalProvider(
@@ -370,6 +384,77 @@ fun SettingsScreen(
                         )
                     },
                     onDismiss = viewModel::cancelAddPlatform,
+                )
+            }
+        }
+    }
+}
+
+/** Persistent progress that remains visible while moving between settings pages. */
+@Composable
+private fun ScrapeProgressOverlay(
+    state: ScrapeState.Running,
+    platformName: String?,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ThorTheme.colors
+    val progress = if (state.total > 0) {
+        (state.done.toFloat() / state.total).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    GlassSurface(
+        modifier = modifier.width(330.dp),
+        shape = ThorTheme.shapes.panel,
+        color = colors.surfaceElevated,
+        alphaOverride = .96f,
+        level = SurfaceLevel.RAISED,
+        bordered = true,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = platformName?.let { "SCRAPING $it" } ?: "SCRAPING METADATA",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.cursor,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "${state.done} / ${state.total}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Text(
+                text = state.currentTitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(ThorTheme.shapes.pill)
+                    .background(colors.surfaceHighest),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .fillMaxHeight()
+                        .background(Brush.horizontalGradient(colors.accentStops)),
                 )
             }
         }

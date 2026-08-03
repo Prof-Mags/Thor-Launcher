@@ -1053,13 +1053,10 @@ class SettingsViewModel @Inject constructor(
     val checkingProviders: StateFlow<Boolean> = _checkingProviders.asStateFlow()
 
     /**
-     * True when artwork can be fetched but text cannot.
+     * True when scraping can run but no enabled source can return descriptions.
      *
-     * SteamGridDB serves artwork only. With it as the sole configured provider a
-     * scrape fills in cover art for the entire library and leaves every
-     * developer, publisher, description and genre blank — which looks like a
-     * broken scraper rather than a provider that never offered those fields, so
-     * the metadata page says so outright.
+     * Facts-only sources must not hide this warning. A generic "text provider"
+     * check previously counted sources that never wrote the description field.
      */
     private val _artworkOnlyProviders = MutableStateFlow(false)
     val artworkOnlyProviders: StateFlow<Boolean> = _artworkOnlyProviders.asStateFlow()
@@ -1122,7 +1119,7 @@ class SettingsViewModel @Inject constructor(
             _checkingProviders.value = true
             _providerStatus.value = aggregator.checkConnections()
             _artworkOnlyProviders.value =
-                aggregator.hasUsableProvider() && !aggregator.hasTextualProvider()
+                aggregator.hasUsableProvider() && !aggregator.hasDescriptionProvider()
             _checkingProviders.value = false
         }
     }

@@ -14,25 +14,27 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Wikidata — developer, publisher, release date and genre, with no API key.
+ * Wikidata and Wikipedia — descriptions and facts, with no API key.
  *
  * Every other textual source needs a credential: RAWG and SteamGridDB want an API
  * key, ScreenScraper a registered developer pair. That left a launcher with no
  * keys configured able to download artwork and nothing else, which reads as a
  * broken scraper rather than as an unconfigured one. Wikidata is open, needs no
  * registration, and has developer and publisher for essentially every
- * commercially released game.
+ * commercially released game. The exact English Wikipedia article linked from
+ * the matched entity supplies a concise introduction for the description field.
  *
  * It carries no artwork — Commons images are inconsistently framed and licensed —
  * so this complements SteamGridDB rather than replacing it.
  *
- * Two requests per game:
+ * Two requests per game, plus one extract request for the best match:
  *  1. `wbsearchentities` to turn a title into candidate entity ids. Its matching
  *     is fuzzy and good, which is why it is used instead of an exact SPARQL label
  *     match — "Pokemon Red" does not equal `"Pokémon Red Version"@en`.
- *  2. one SPARQL query resolving claims *and* their labels server-side. Reading
+ *  2. one SPARQL query resolving claims, labels and the exact article server-side. Reading
  *     the claims directly would return entity ids for developer and publisher and
  *     need a third round trip to turn them into names.
+ *  3. one MediaWiki extracts request for that article's plain-text introduction.
  */
 @Singleton
 class WikidataProvider @Inject constructor(
@@ -89,21 +91,30 @@ class WikidataProvider @Inject constructor(
         if (ranked.isEmpty()) return emptyList()
 
         val claims = fetchClaims(ranked.map { it.first.id }) ?: return emptyList()
+        val bestDescription = ranked.firstOrNull()
+            ?.first
+            ?.id
+            ?.let(claims::get)
+            ?.wikipediaTitle
+            ?.let { fetchWikipediaDescription(it) }
 
-        return ranked.mapNotNull { (entity, confidence) ->
-            val row = claims[entity.id] ?: return@mapNotNull null
+        return ranked.mapIndexedNotNull { index, (entity, confidence) ->
+            val row = claims[entity.id] ?: return@mapIndexedNotNull null
+            val description = bestDescription.takeIf { index == 0 }
             MetadataCandidate(
                 providerId = ID,
                 remoteId = entity.id,
                 matchedTitle = entity.label.orEmpty(),
                 confidence = confidence,
                 metadata = GameMetadata(
+                    description = description,
                     developer = row.developer,
                     publisher = row.publisher,
                     releaseDate = row.releaseDate,
                     releaseYear = row.releaseYear,
                     genres = row.genres,
                     providerSources = buildMap {
+                        if (description != null) put(GameMetadata.FIELD_DESCRIPTION, ID)
                         if (row.developer != null) put(GameMetadata.FIELD_DEVELOPER, ID)
                         if (row.publisher != null) put(GameMetadata.FIELD_PUBLISHER, ID)
                         if (row.releaseDate != null) put(GameMetadata.FIELD_RELEASE_DATE, ID)
@@ -159,8 +170,12 @@ class WikidataProvider @Inject constructor(
     private suspend fun fetchClaims(ids: List<String>): Map<String, ClaimRow>? {
         val values = ids.joinToString(" ") { "wd:$it" }
         val query = """
-            SELECT ?item ?devLabel ?pubLabel ?date ?genreLabel WHERE {
+            SELECT ?item ?article ?devLabel ?pubLabel ?date ?genreLabel WHERE {
               VALUES ?item { $values }
+              OPTIONAL {
+                ?article schema:about ?item;
+                         schema:isPartOf <https://en.wikipedia.org/>.
+              }
               OPTIONAL { ?item wdt:$PROP_DEVELOPER ?dev. }
               OPTIONAL { ?item wdt:$PROP_PUBLISHER ?pub. }
               OPTIONAL { ?item wdt:$PROP_PUBLICATION_DATE ?date. }
@@ -203,6 +218,12 @@ class WikidataProvider @Inject constructor(
             byEntity[entityId] = existing.copy(
                 developer = existing.developer ?: binding.devLabel?.value?.takeIf(::isName),
                 publisher = existing.publisher ?: binding.pubLabel?.value?.takeIf(::isName),
+                wikipediaTitle = existing.wikipediaTitle
+                    ?: binding.article?.value
+                        ?.toHttpUrlOrNull()
+                        ?.pathSegments
+                        ?.lastOrNull()
+                        ?.takeIf(String::isNotBlank),
                 releaseDate = existing.releaseDate ?: date,
                 // Wikidata dates are ISO 8601 timestamps, so the year is the
                 // leading four characters when it parses at all.
@@ -213,6 +234,41 @@ class WikidataProvider @Inject constructor(
             )
         }
         return byEntity
+    }
+
+    /** Plain-text introduction for the exact English article linked by Wikidata. */
+    private suspend fun fetchWikipediaDescription(title: String): String? {
+        val url = WIKIPEDIA_API_URL.toHttpUrlOrNull()
+            ?.newBuilder()
+            ?.addQueryParameter("action", "query")
+            ?.addQueryParameter("prop", "extracts")
+            ?.addQueryParameter("exintro", "1")
+            ?.addQueryParameter("explaintext", "1")
+            ?.addQueryParameter("exsentences", DESCRIPTION_SENTENCES.toString())
+            ?.addQueryParameter("redirects", "1")
+            ?.addQueryParameter("titles", title)
+            ?.addQueryParameter("format", "json")
+            ?.addQueryParameter("formatversion", "2")
+            ?.build()
+            ?: return null
+
+        return try {
+            client.newCall(get(url.toString())).await().use { response ->
+                if (!response.isSuccessful) return null
+                val body = response.body?.string() ?: return null
+                json.decodeFromString<WikipediaExtractResponse>(body)
+                    .query
+                    ?.pages
+                    .orEmpty()
+                    .firstNotNullOfOrNull { cleanWikipediaExtract(it.extract) }
+            }
+        } catch (e: IOException) {
+            ThorLog.d(TAG) { "Wikipedia extract request failed for $title" }
+            null
+        } catch (e: IllegalArgumentException) {
+            ThorLog.w(TAG, "Unparseable Wikipedia extract for $title", e)
+            null
+        }
     }
 
     /**
@@ -256,6 +312,7 @@ class WikidataProvider @Inject constructor(
     private data class ClaimRow(
         val developer: String? = null,
         val publisher: String? = null,
+        val wikipediaTitle: String? = null,
         val releaseDate: String? = null,
         val releaseYear: Int? = null,
         val genres: List<String> = emptyList(),
@@ -282,6 +339,7 @@ class WikidataProvider @Inject constructor(
     @Serializable
     private data class WdBinding(
         val item: WdValue? = null,
+        val article: WdValue? = null,
         @SerialName("devLabel") val devLabel: WdValue? = null,
         @SerialName("pubLabel") val pubLabel: WdValue? = null,
         val date: WdValue? = null,
@@ -291,12 +349,23 @@ class WikidataProvider @Inject constructor(
     @Serializable
     private data class WdValue(val value: String? = null)
 
+    @Serializable
+    private data class WikipediaExtractResponse(val query: WikipediaQuery? = null)
+
+    @Serializable
+    private data class WikipediaQuery(val pages: List<WikipediaPage>? = null)
+
+    @Serializable
+    private data class WikipediaPage(val extract: String? = null)
+
     companion object {
         const val ID = "wikidata"
 
         private const val TAG = "Wikidata"
         private const val API_URL = "https://www.wikidata.org/w/api.php"
         private const val SPARQL_URL = "https://query.wikidata.org/sparql"
+        private const val WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
+        private const val DESCRIPTION_SENTENCES = 4
 
         /**
          * Identifies THOR to Wikidata, per their API etiquette.
@@ -328,3 +397,9 @@ class WikidataProvider @Inject constructor(
         )
     }
 }
+
+/** Rejects empty and boilerplate-only extracts before persisting them. */
+internal fun cleanWikipediaExtract(extract: String?): String? = extract
+    ?.trim()
+    ?.replace(Regex("\\s+"), " ")
+    ?.takeIf { it.length >= 40 }

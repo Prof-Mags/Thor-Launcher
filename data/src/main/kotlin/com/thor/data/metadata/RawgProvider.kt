@@ -5,6 +5,8 @@ import com.thor.core.datastore.SettingsRepository
 import com.thor.core.model.ArtworkSet
 import com.thor.core.model.GameMetadata
 import com.thor.data.network.await
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -92,29 +94,29 @@ class RawgProvider @Inject constructor(
                 .sortedByDescending(MetadataCandidate::confidence)
 
             /*
-             * The trailer is a second request, and only for the best match.
+             * Details and trailers are extra requests, only for the best match.
              *
              * RAWG does not return clips from the search endpoint — they live
              * behind `/games/{id}/movies`. Fetching one per candidate would mean
-             * five requests to fill a field that only the winner's value is ever
-             * read from, against an API with a rate limit; fetching none is why
-             * modern games have never had a trailer in this launcher.
+             * five requests per field when only the winner is ever read. The game
+             * detail endpoint is also where RAWG exposes `description_raw`.
              */
             val best = candidates.firstOrNull()
-            if (best == null || best.confidence < TRAILER_CONFIDENCE_FLOOR) {
+            if (best == null || best.confidence < ENRICHMENT_CONFIDENCE_FLOOR) {
                 candidates
             } else {
-                val trailer = fetchTrailer(best.remoteId, apiKey)
-                if (trailer == null) {
-                    candidates
-                } else {
-                    candidates.mapIndexed { index, candidate ->
-                        if (index == 0) {
-                            candidate.copy(artwork = candidate.artwork.copy(videoUri = trailer))
-                        } else {
-                            candidate
-                        }
-                    }
+                coroutineScope {
+                    // Search results omit prose and credits. Fetch the confident
+                    // winner's detail record once, beside its trailer request.
+                    val details = async { fetchDetails(best.remoteId, apiKey) }
+                    val trailer = async { fetchTrailer(best.remoteId, apiKey) }
+                    val enriched = details.await()?.let { best.withDetails(it, query) } ?: best
+                    val completed = enriched.copy(
+                        artwork = enriched.artwork.copy(
+                            videoUri = trailer.await() ?: enriched.artwork.videoUri,
+                        ),
+                    )
+                    listOf(completed) + candidates.drop(1)
                 }
             }
         } catch (e: IOException) {
@@ -123,6 +125,38 @@ class RawgProvider @Inject constructor(
         } catch (e: IllegalStateException) {
             ThorLog.w(TAG, "Unexpected response for '${query.title}'", e)
             emptyList()
+        } catch (e: IllegalArgumentException) {
+            ThorLog.w(TAG, "Malformed response for '${query.title}'", e)
+            emptyList()
+        }
+    }
+
+    /** Fetches descriptions and credits omitted by RAWG's search-list response. */
+    private suspend fun fetchDetails(remoteId: String, apiKey: String): RawgGame? {
+        val url = "$BASE_URL/games/$remoteId".toHttpUrlOrNull()
+            ?.newBuilder()
+            ?.addQueryParameter("key", apiKey)
+            ?.build()
+            ?: return null
+
+        return try {
+            val body = client.newCall(Request.Builder().url(url).build()).await().use { response ->
+                if (!response.isSuccessful) {
+                    ThorLog.w(TAG, "Detail lookup returned ${response.code} for $remoteId")
+                    return null
+                }
+                response.body?.string()
+            } ?: return null
+            json.decodeFromString<RawgGame>(body)
+        } catch (e: IOException) {
+            ThorLog.w(TAG, "Detail lookup failed for $remoteId", e)
+            null
+        } catch (e: IllegalStateException) {
+            ThorLog.w(TAG, "Unexpected detail response for $remoteId", e)
+            null
+        } catch (e: IllegalArgumentException) {
+            ThorLog.w(TAG, "Malformed detail response for $remoteId", e)
+            null
         }
     }
 
@@ -162,6 +196,9 @@ class RawgProvider @Inject constructor(
         } catch (e: IllegalStateException) {
             ThorLog.w(TAG, "Unexpected trailer response for $remoteId", e)
             null
+        } catch (e: IllegalArgumentException) {
+            ThorLog.w(TAG, "Malformed trailer response for $remoteId", e)
+            null
         }
     }
 
@@ -194,6 +231,24 @@ class RawgProvider @Inject constructor(
             artwork = ArtworkSet(
                 hero = backgroundImage,
                 screenshots = shortScreenshots.orEmpty().mapNotNull { it.image },
+            ),
+        )
+    }
+
+    /** Keeps search artwork while replacing its sparse text with the detail record. */
+    private fun MetadataCandidate.withDetails(
+        details: RawgGame,
+        query: MetadataQuery,
+    ): MetadataCandidate {
+        val detailed = details.toCandidate(query)
+        val base = metadata
+        val extra = detailed.metadata
+        return copy(
+            matchedTitle = detailed.matchedTitle,
+            metadata = mergeRawgDetailMetadata(base, extra),
+            artwork = artwork.copy(
+                hero = detailed.artwork.hero ?: artwork.hero,
+                screenshots = detailed.artwork.screenshots.ifEmpty { artwork.screenshots },
             ),
         )
     }
@@ -244,10 +299,26 @@ class RawgProvider @Inject constructor(
         /**
          * Below this, the top match is not confident enough to spend a request on.
          *
-         * A trailer attached to the wrong game is worse than none: it is
+         * A description or trailer attached to the wrong game is worse than none: it is
          * indistinguishable from the launcher being broken, whereas a missing one
          * simply falls back to stills.
          */
-        private const val TRAILER_CONFIDENCE_FLOOR = 0.6f
+        private const val ENRICHMENT_CONFIDENCE_FLOOR = 0.6f
     }
 }
+
+/** Field-wise enrichment kept pure so search-list regressions are easy to test. */
+internal fun mergeRawgDetailMetadata(
+    search: GameMetadata,
+    details: GameMetadata,
+): GameMetadata = search.copy(
+    description = details.description ?: search.description,
+    genres = details.genres.ifEmpty { search.genres },
+    developer = details.developer ?: search.developer,
+    publisher = details.publisher ?: search.publisher,
+    releaseDate = details.releaseDate ?: search.releaseDate,
+    releaseYear = details.releaseYear ?: search.releaseYear,
+    rating = details.rating ?: search.rating,
+    completionMinutes = details.completionMinutes ?: search.completionMinutes,
+    providerSources = search.providerSources + details.providerSources,
+)

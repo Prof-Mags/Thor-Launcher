@@ -1723,6 +1723,7 @@ fun ThorApp(
                         trailerDismissedFor != state.selection?.id,
                     selectedScreenshot = selectedScreenshot,
                     onScreenshotSelected = viewModel::setScreenshot,
+                    onEntrySelected = viewModel::launchEntry,
                     // Only when this panel is holding the controller *itself*. An
                     // overlay drawn over it has its own focus to show, and two focus
                     // treatments on one panel would contradict each other.

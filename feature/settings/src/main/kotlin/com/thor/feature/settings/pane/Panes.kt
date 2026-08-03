@@ -110,6 +110,7 @@ fun SettingsPageContent(
 
             SettingsPage.PLATFORMS -> PlatformsPage(
                 settings, focusedRow, viewModel, platformOptions, availablePlatforms, scanState,
+                scrapeState,
             )
             SettingsPage.ROM_FOLDERS -> RomFoldersPage(settings, focusedRow, viewModel)
             SettingsPage.SCANNING ->
@@ -733,8 +734,12 @@ private fun PlatformsPage(
     platformOptions: List<PlatformEmulatorOption>,
     availablePlatforms: List<Platform>,
     scanState: SyncState,
+    scrapeState: ScrapeState,
 ) {
     platformOptions.forEachIndexed { index, option ->
+        val scrapeProgress = (scrapeState as? ScrapeState.Running)
+            ?.takeIf { it.platformId == option.platform.id }
+            ?.let { "${it.done}/${it.total}" }
         if (index > 0) RowDivider()
         SystemRow(
             platform = option.platform,
@@ -743,6 +748,7 @@ private fun PlatformsPage(
                 .firstOrNull { it.platformId == option.platform.id }
                 ?.displayName,
             focused = focusedRow == index,
+            scrapeProgress = scrapeProgress,
             onToggleEmulator = { packageName ->
                 viewModel.togglePlatformEmulator(option.platform.id, packageName)
             },
@@ -994,9 +1000,9 @@ private fun MetadataPage(
     if (artworkOnly) {
         RowDivider()
         InfoRow(
-            "Artwork only",
-            "SteamGridDB has no developer, publisher, description or genre data. " +
-                "Add a RAWG API key below to fill those in.",
+            "No description source",
+            "Enable Wikidata for key-free Wikipedia descriptions, or add a RAWG key " +
+                "for RAWG descriptions and credits.",
         )
     }
 
