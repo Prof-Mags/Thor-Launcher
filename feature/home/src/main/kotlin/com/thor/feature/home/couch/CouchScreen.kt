@@ -344,23 +344,44 @@ fun CouchScreen(
                         EmptyCouchLibrary(modifier = Modifier.weight(1f))
                     } else {
                         Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                            CouchHero(
-                                entry = focusedEntry,
-                                platform = focusedEntry.platform(state.platformsById),
-                                onPlay = { onEntrySelected(focusedEntry) },
-                                onFavorite = { onEntryFavorite(focusedEntry) },
-                                onMore = { onEntryLongPressed(focusedEntry) },
-                                modifier = Modifier.fillMaxWidth().weight(HERO_WEIGHT),
-                            )
-                            CouchLibrarySummary(
-                                stats = libraryStats,
-                                accent = focusedPlatform
-                                    ?.let { Color(it.accentArgb) }
-                                    ?: colors.cursor,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(LIBRARY_SUMMARY_HEIGHT.dp),
-                            )
+                            /*
+                             * The shelf takes what it needs; the panel centres in
+                             * everything left over.
+                             *
+                             * It used to be the other way round — the panel had a
+                             * weighted slot at the top and the shelf had the rest
+                             * — and the shelf draws its rail hard against its own
+                             * bottom edge, so all of that leftover height ended up
+                             * *below* the panel. Centring the card inside its own
+                             * slot could not help: the slot itself was at the top
+                             * of the screen. Giving the shelf a height and the
+                             * panel the remainder puts the empty space where it
+                             * belongs, around the panel rather than under it.
+                             */
+                            Column(
+                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                CouchHero(
+                                    entry = focusedEntry,
+                                    platform = focusedEntry.platform(state.platformsById),
+                                    onPlay = { onEntrySelected(focusedEntry) },
+                                    onFavorite = { onEntryFavorite(focusedEntry) },
+                                    onMore = { onEntryLongPressed(focusedEntry) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(HERO_HEIGHT.dp),
+                                )
+                                CouchLibrarySummary(
+                                    stats = libraryStats,
+                                    accent = focusedPlatform
+                                        ?.let { Color(it.accentArgb) }
+                                        ?: colors.cursor,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(LIBRARY_SUMMARY_HEIGHT.dp),
+                                )
+                            }
                             CouchRailDeck(
                                 rails = rails,
                                 focus = CouchFocus(safeRail, safeItem),
@@ -368,7 +389,9 @@ fun CouchScreen(
                                 onEntryFocused = onEntryFocused,
                                 onEntrySelected = onEntrySelected,
                                 onEntryLongPressed = onEntryLongPressed,
-                                modifier = Modifier.fillMaxWidth().weight(1f - HERO_WEIGHT),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(SHELF_HEIGHT.dp),
                             )
                         }
                     }
@@ -537,6 +560,9 @@ fun CouchNavigationBar(
                         onNotificationOpened = statusActions.onNotificationOpened,
                         onNotificationDismissed = statusActions.onNotificationDismissed,
                         onDismissAll = statusActions.onDismissAll,
+                        // The bar already has a background; a pill on top of it
+                        // would box something that is already in a box.
+                        surfaced = false,
                     )
                 } else {
                     Box(
@@ -680,7 +706,7 @@ private fun CouchHero(
         Row(
             modifier = Modifier
                 .fillMaxWidth(HERO_CARD_WIDTH)
-                .fillMaxHeight(HERO_CARD_HEIGHT)
+                .fillMaxHeight()
                 .clip(ThorTheme.shapes.panel)
                 .background(colors.surface.copy(alpha = 0.48f))
                 .border(1.dp, colors.outline.copy(alpha = 0.16f), ThorTheme.shapes.panel)
@@ -1744,11 +1770,20 @@ private const val MIN_CARD_SIZE = 87
 private const val CARD_RAIL_EXTRA_HEIGHT = 22
 /** Room the rail's title row takes above the cards. */
 private const val RAIL_HEADER_HEIGHT = 26
-private const val HERO_WEIGHT = 0.35f
 private const val HERO_CARD_WIDTH = 0.36f
 
-/** Short of its slot, so there is room either side of it to centre in. */
-private const val HERO_CARD_HEIGHT = 0.82f
+/** The information card.s own height, now that it no longer shares a weight. */
+private const val HERO_HEIGHT = 148
+
+/**
+ * What the shelf reserves at the bottom of the screen.
+ *
+ * The rail plus its header and inset — see `couchCardSize`, which divides this
+ * back down into a card. Fixed so the space left over goes to the panel above,
+ * which is what puts the panel in the middle of the screen rather than at the
+ * top of it.
+ */
+private const val SHELF_HEIGHT = 200
 private const val HERO_ACTION_HEIGHT = 40
 private const val LIBRARY_SUMMARY_HEIGHT = 76
 private const val BACKDROP_SETTLE_MS = 105L

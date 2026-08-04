@@ -68,6 +68,14 @@ fun ProfileNotificationCluster(
     onNotificationOpened: (String) -> Unit,
     onNotificationDismissed: (String) -> Unit,
     onDismissAll: () -> Unit,
+    /**
+     * Whether the header draws its own surface.
+     *
+     * False on the couch bar, which has a background of its own — a pill there
+     * boxes something already inside a box. True over the information panel,
+     * where it floats on artwork and would otherwise be unreadable.
+     */
+    surfaced: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -85,6 +93,7 @@ fun ProfileNotificationCluster(
             count = notifications.count(LauncherNotification::isClearable),
             granted = access !is NotificationAccess.Denied,
             expanded = expanded,
+            surfaced = surfaced,
             onClick = onToggleExpanded,
         )
 
@@ -117,19 +126,23 @@ private fun ClusterHeader(
     count: Int,
     granted: Boolean,
     expanded: Boolean,
+    surfaced: Boolean,
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
-    GlassSurface(
-        // Same width as the shade below it: the two are one control, and a pill
-        // narrower than the panel it opens reads as a button that happens to sit
-        // above an unrelated box.
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = ThorTheme.shapes.pill,
-        level = SurfaceLevel.RAISED,
-    ) {
+
+    /**
+     * The header, with or without a surface under it.
+     *
+     * On the information panel it is a pill floating over artwork and needs one.
+     * On the couch bar it sits on the bar's own background, and a second surface
+     * there draws a box around something already inside a box.
+     */
+    val row: @Composable () -> Unit = {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -150,6 +163,21 @@ private fun ClusterHeader(
             )
             ProfileAvatar(profile = profile, avatarPath = avatarPath, accent = accent, size = 28)
         }
+    }
+
+    if (surfaced) {
+        GlassSurface(
+            // Same width as the shade below it: the two are one control, and a
+            // pill narrower than the panel it opens reads as a button that
+            // happens to sit above an unrelated box.
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+            shape = ThorTheme.shapes.pill,
+            level = SurfaceLevel.RAISED,
+        ) {
+            row()
+        }
+    } else {
+        Box(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) { row() }
     }
 }
 
@@ -485,7 +513,7 @@ private fun NotificationRow(
  * opens are a single control, and a pill narrower than its own panel reads as a
  * button sitting above an unrelated box.
  */
-private const val CLUSTER_WIDTH = 170
+private const val CLUSTER_WIDTH = 196
 private const val SHADE_PADDING = 10
 private const val SHADE_MAX_HEIGHT = 290
 private const val SHADE_MS = 220
