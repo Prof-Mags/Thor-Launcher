@@ -164,10 +164,10 @@ private fun GameProfileCard(
                 GameDescription(
                     text = description,
                     color = colors.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().weight(GAME_DESCRIPTION_WEIGHT),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                 )
             } else {
-                Spacer(modifier = Modifier.weight(GAME_DESCRIPTION_WEIGHT))
+                Spacer(modifier = Modifier.weight(1f))
             }
 
             if (selectedMedia != null) {
@@ -187,7 +187,7 @@ private fun GameProfileCard(
                     selected = selectedScreenshot,
                     count = screenshots.size,
                     accent = accent,
-                    modifier = Modifier.fillMaxWidth().weight(GAME_MEDIA_WEIGHT),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(GAME_MEDIA_ASPECT),
                 )
             }
         }
@@ -765,7 +765,7 @@ internal fun fittedTextScale(available: Int, measureHeight: (Float) -> Int): Flo
  * looking like a deliberate choice; a synopsis long enough to need it is better
  * ellipsised than rendered at a size nobody reads.
  */
-private const val MIN_DESCRIPTION_SCALE = 0.88f
+private const val MIN_DESCRIPTION_SCALE = 0.95f
 private const val DESCRIPTION_SCALE_STEP = 0.03f
 
 /**
@@ -775,8 +775,16 @@ private const val DESCRIPTION_SCALE_STEP = 0.03f
  * whole panel, so the strip is a picker showing which of them is back there,
  * while the description appears nowhere else.
  */
-private const val GAME_DESCRIPTION_WEIGHT = 1.45f
-private const val GAME_MEDIA_WEIGHT = 1f
+/**
+ * The strip is a fixed shape, so it cannot be clipped.
+ *
+ * Sharing the leftover with the description meant the screenshot took whatever
+ * the text did not want, which on a long synopsis was not enough to draw it in.
+ * A fixed ratio settles that: the strip is always the same size, and the
+ * description absorbs the slack. Wide, because that is the shape of the media
+ * behind it and of the captures themselves.
+ */
+private const val GAME_MEDIA_ASPECT = 21f / 9f
 
 /** Scales both the size and its leading, so the text keeps its proportions. */
 private fun TextStyle.scaledBy(scale: Float): TextStyle = if (scale == 1f) {

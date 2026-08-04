@@ -223,9 +223,33 @@ class ScreenScraperProvider @Inject constructor(
             // cartridge photo reads far better in a square cell than a cropped
             // box scan does.
             icon = pick("support-2D", "wheel-carbon-steel"),
-            screenshots = listOfNotNull(pick("ss"), pick("sstitle")).distinct(),
+            screenshots = pickWide(region),
             videoUri = pick("video-normalized", "video"),
         )
+    }
+
+    /**
+     * Every wide image the entry has, best first, up to the model's cap.
+     *
+     * [toArtworkSet]'s `pick` answers "the one best media of this type", which is
+     * right for a box scan and wrong for screenshots — it returned a single shot
+     * however many the entry carried, so the panel had one image to cycle and the
+     * strip looked broken. This keeps going instead: the region's own media
+     * first, then world, then whatever is left, deduplicated because the same
+     * shot is commonly registered under several regions.
+     *
+     * Ordered by type as well: `fanart` is the wide promotional still, `ss` the
+     * in-game capture, and `sstitle` a title screen, which is the least
+     * interesting of the three and so goes last rather than displacing anything.
+     */
+    private fun List<SsMedia>.pickWide(region: String?): List<String> {
+        val ranked = WIDE_TYPES.flatMap { type ->
+            val matching = filter { it.type == type }
+            val regional = matching.filter { it.region.equals(region, ignoreCase = true) }
+            val world = matching.filter { it.region in WORLD_REGIONS }
+            (regional + world + matching).mapNotNull(SsMedia::url)
+        }
+        return ranked.distinct().take(ArtworkSet.MAX_SCREENSHOTS)
     }
 
     // ------------------------------------------------------------------ DTOs
@@ -301,6 +325,17 @@ class ScreenScraperProvider @Inject constructor(
         const val ID = "screenscraper"
         private const val TAG = "ScreenScraper"
         private const val BASE_URL = "https://api.screenscraper.fr/api2"
+
+        /**
+         * Media types that are wide images, best first.
+         *
+         * `fanart` is promotional art, `ss` an in-game capture and `sstitle` a
+         * title screen — all landscape, which is what the panel's strip and the
+         * full-bleed backdrop are shaped for. Box scans and cartridge photos are
+         * deliberately absent: they are portrait or square, and letterboxing one
+         * into a wide frame wastes most of it.
+         */
+        private val WIDE_TYPES = listOf("fanart", "ss", "sstitle")
 
         /** Identifies this client to ScreenScraper in its request logs. */
         private const val SOFT_NAME = "Loki"

@@ -29,4 +29,16 @@ object LauncherFeatures {
      * rather than restoring a bar with no way to configure it.
      */
     const val DOCK_ENABLED = false
+
+    /**
+     * Whether the top screen shows the profile and notification cluster.
+     *
+     * Off: the corner is quiet again while the rest of the panel is being
+     * settled. Everything behind it is intact and working — the shade, the
+     * listener service and its permission prompt, the avatar, the switcher —
+     * and profiles themselves are entirely unaffected: they still own the
+     * settings and the library, and are still managed from their own settings
+     * category. This hides one corner of one screen, not the feature.
+     */
+    const val PROFILE_CLUSTER_ENABLED = false
 }

@@ -368,14 +368,12 @@ class WikidataProvider @Inject constructor(
         /**
          * Sentences asked of the MediaWiki extract.
          *
-         * Four was cutting synopses short at the source — the panel could show
-         * more than arrived, so no amount of layout work would have fixed it.
-         * Still bounded rather than taking `exintro`'s whole lead section, which
-         * runs to several paragraphs on a well-documented game and would only
-         * move the truncation back into the panel. Eight sentences is a summary
-         * that reads as finished.
+         * Four cut synopses short at the source, and eight overflowed the panel
+         * — a synopsis the panel has to shrink to show is not more readable for
+         * being longer. Five reads as a finished summary and fits at full size,
+         * which is the point: the constraint here is the panel, not the article.
          */
-        private const val DESCRIPTION_SENTENCES = 8
+        private const val DESCRIPTION_SENTENCES = 5
 
         /**
          * Identifies THOR to Wikidata, per their API etiquette.

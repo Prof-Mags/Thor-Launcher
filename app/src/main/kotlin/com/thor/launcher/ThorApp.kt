@@ -82,6 +82,7 @@ import com.thor.core.model.ControllerCommand
 import com.thor.core.model.DualScreenMode
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.LauncherExtension
+import com.thor.core.model.LauncherFeatures
 import com.thor.core.model.GameEntry
 import com.thor.core.model.KeyboardKey
 import com.thor.core.model.PlatformFolders
@@ -1759,7 +1760,8 @@ fun ThorApp(
                     // overlay drawn over it has its own focus to show, and two focus
                     // treatments on one panel would contradict each other.
                     focused = activeSurface == InputSurface.TOP && !overlayIsOpen,
-                    status = shellStatus,
+                    // Null hides the cluster; see LauncherFeatures.
+                    status = shellStatus.takeIf { LauncherFeatures.PROFILE_CLUSTER_ENABLED },
                     statusActions = shellStatusActions,
                 )
                 infoOverlays()
