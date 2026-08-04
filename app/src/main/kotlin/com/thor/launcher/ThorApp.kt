@@ -2373,9 +2373,16 @@ fun ThorApp(
                          *
                          * A launcher recording puts the launcher's own top panel
                          * there. A screen recording puts a live mirror of the real
-                         * display there instead — so a game is recorded inside the
-                         * drawn device, with the launcher's own panel below it,
-                         * rather than as a bare rectangle of one screen.
+                         * display there instead — so a game is recorded with the
+                         * launcher's own panel below it, rather than as a bare
+                         * rectangle of one screen.
+                         *
+                         * Couch mode is the exception, and it was recorded upside
+                         * down. Its whole interface is composed into the *grid*
+                         * window — one screen is the point of the mode — so the
+                         * stack put the launcher in the lower half with the unused
+                         * information panel black above it. On the device that
+                         * layout is on top, so that is where it is recorded.
                          */
                         topPanel = active.mirrored?.let { projection ->
                             {
@@ -2387,8 +2394,19 @@ fun ThorApp(
                                         ?: DisplayMetrics.DENSITY_DEFAULT,
                                 )
                             }
-                        } ?: topContent,
-                        bottomPanel = { bottomContent(Modifier.fillMaxSize()) },
+                        } ?: if (mode == DualScreenMode.COUCH) {
+                            { bottomContent(Modifier.fillMaxSize()) }
+                        } else {
+                            topContent
+                        },
+                        // Black in couch mode, because the second panel is dark on
+                        // the device too — the recording is not missing a screen,
+                        // it is showing one that is off.
+                        bottomPanel = { bottomModifier ->
+                            if (mode != DualScreenMode.COUCH) {
+                                bottomContent(bottomModifier)
+                            }
+                        },
                     )
                 }
             }
