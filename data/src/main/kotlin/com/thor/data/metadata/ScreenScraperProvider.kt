@@ -327,15 +327,18 @@ class ScreenScraperProvider @Inject constructor(
         private const val BASE_URL = "https://api.screenscraper.fr/api2"
 
         /**
-         * Media types that are wide images, best first.
+         * Media offered as images of the game, best first.
          *
-         * `fanart` is promotional art, `ss` an in-game capture and `sstitle` a
-         * title screen — all landscape, which is what the panel's strip and the
-         * full-bleed backdrop are shaped for. Box scans and cartridge photos are
-         * deliberately absent: they are portrait or square, and letterboxing one
-         * into a wide frame wastes most of it.
+         * Artwork before capture, deliberately. `fanart` is the key art, and the
+         * box and flyer scans are the game as it was sold — whole images, drawn
+         * to be looked at. `ss` and `sstitle` are frames grabbed from the game
+         * running, which are a different thing and rarely the more interesting
+         * one at this size; they come last so they fill the strip only when the
+         * artwork does not.
          */
-        private val WIDE_TYPES = listOf("fanart", "ss", "sstitle")
+        private val WIDE_TYPES = listOf(
+            "fanart", "box-2D", "flyer", "screenmarquee", "ss", "sstitle",
+        )
 
         /** Identifies this client to ScreenScraper in its request logs. */
         private const val SOFT_NAME = "Loki"

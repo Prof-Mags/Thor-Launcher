@@ -778,13 +778,18 @@ private const val DESCRIPTION_SCALE_STEP = 0.03f
 /**
  * The strip is a fixed shape, so it cannot be clipped.
  *
- * Sharing the leftover with the description meant the screenshot took whatever
- * the text did not want, which on a long synopsis was not enough to draw it in.
- * A fixed ratio settles that: the strip is always the same size, and the
- * description absorbs the slack. Wide, because that is the shape of the media
- * behind it and of the captures themselves.
+ * Sharing the leftover with the description meant the artwork took whatever the
+ * text did not want, which on a long synopsis was not enough to draw it in. A
+ * fixed ratio settles that: the strip is always the same size, and the
+ * description absorbs the slack.
+ *
+ * Sixteen by nine rather than the twenty-one by nine it was. The images are now
+ * artwork rather than banners — covers, key art, the occasional portrait scan —
+ * and they are fitted, not cropped, so an ultra-wide frame showed a cover as a
+ * sliver with empty panel either side. This is the widest shape that still has
+ * somewhere to put an image that is taller than it is wide.
  */
-private const val GAME_MEDIA_ASPECT = 21f / 9f
+private const val GAME_MEDIA_ASPECT = 16f / 9f
 
 /** Scales both the size and its leading, so the text keeps its proportions. */
 private fun TextStyle.scaledBy(scale: Float): TextStyle = if (scale == 1f) {
