@@ -96,8 +96,8 @@ class IgdbProvider @Inject constructor(
          * because IGDB matches titles across every system it knows: without it
          * a Mega Drive ROM happily matches the PlayStation remake.
          */
-        val platformFilter = query.providerPlatformId
-            ?.let { "where platforms = ($it);" }
+        val platformFilter = query.providerPlatformIds["igdb"]
+            ?.let { "where platforms = ($it) & " }
             .orEmpty()
         val body = buildString {
             append("search \"${query.title.escapedForApicalypse()}\";")
@@ -105,7 +105,21 @@ class IgdbProvider @Inject constructor(
             append("cover.image_id,screenshots.image_id,artworks.image_id,")
             append("genres.name,involved_companies.developer,involved_companies.publisher,")
             append("involved_companies.company.name;")
-            append(platformFilter)
+            /*
+             * Main games only, and the filter is not optional.
+             *
+             * IGDB's search ranks mods and add-ons above the game they are
+             * built on: "Super Mario Odyssey" came back fourth, behind a mod, a
+             * DLC and a joke translation. `game_type` 0 is the release itself;
+             * the rest here are remakes, remasters, expanded editions and ports,
+             * which are the game as well. Everything else — mods, episodes,
+             * seasons, packs — is something a ROM is not.
+             *
+             * The field is `game_type`. `category` held this until IGDB retired
+             * it, and it now returns nothing at all rather than failing, so a
+             * filter written against it silently matches no games.
+             */
+            append("where $platformFilter" + "game_type = ($MAIN_GAME_TYPES);")
             append("limit $MAX_CANDIDATES;")
         }
 
@@ -246,7 +260,16 @@ class IgdbProvider @Inject constructor(
         const val TAG = "IGDB"
         const val BASE_URL = "https://api.igdb.com/v4"
         const val TOKEN_URL = "https://id.twitch.tv/oauth2/token"
-        const val MAX_CANDIDATES = 5
+        const val MAX_CANDIDATES = 8
+
+        /**
+         * Release, remake, remaster, expanded edition, port.
+         *
+         * What a ROM on a shelf can actually be. Mods and DLC are excluded not
+         * because they are uninteresting but because they outrank the game in
+         * IGDB's own search ordering.
+         */
+        const val MAIN_GAME_TYPES = "0,8,9,10,11"
 
         /** Renewed this long before expiry, so a request never races the clock. */
         const val TOKEN_MARGIN_MS = 60_000L

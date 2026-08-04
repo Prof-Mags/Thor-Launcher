@@ -44,7 +44,21 @@ class MetadataAggregator @Inject constructor(
      * @param existing the current record, whose locked fields are preserved
      * @return the merged result, or `existing` when nothing usable was found
      */
-    suspend fun scrape(query: MetadataQuery, existing: GameMetadata): GameMetadata =
+    suspend fun scrape(
+        query: MetadataQuery,
+        existing: GameMetadata,
+        /**
+         * Whether freshly fetched artwork supersedes what is already stored.
+         *
+         * False for a top-up pass, which only fills gaps. True for a full
+         * re-scrape, because otherwise that action cannot change anything: every
+         * artwork slot was written on the first pass and kept forever after, so
+         * re-scraping a library whose images came from a provider since replaced
+         * returned exactly the images complained about. A locked field and a
+         * hand-picked image are still untouchable either way.
+         */
+        replaceArtwork: Boolean = false,
+    ): GameMetadata =
         withContext(ioDispatcher) {
             val config = settings.metadata.first()
             val active = usableProviders(config)
@@ -59,7 +73,7 @@ class MetadataAggregator @Inject constructor(
 
             if (candidates.isEmpty()) return@withContext existing
 
-            merge(existing, candidates, config)
+            merge(existing, candidates, config, replaceArtwork)
         }
 
     /** True when at least one enabled provider is fully configured. */
@@ -177,6 +191,7 @@ class MetadataAggregator @Inject constructor(
         existing: GameMetadata,
         candidates: List<MetadataCandidate>,
         config: MetadataSettings,
+        replaceArtwork: Boolean = false,
     ): GameMetadata {
         val ranked = candidates.sortedWith(
             compareBy<MetadataCandidate> { config.providerPriority[it.providerId] ?: Int.MAX_VALUE }
@@ -208,7 +223,7 @@ class MetadataAggregator @Inject constructor(
             }
         }
 
-        val mergedArtwork = mergeArtwork(existing.artwork, ranked, locked)
+        val mergedArtwork = mergeArtwork(existing.artwork, ranked, locked, replaceArtwork)
         if (mergedArtwork != existing.artwork) {
             sources.putIfAbsent(
                 GameMetadata.FIELD_ARTWORK,
@@ -261,13 +276,21 @@ class MetadataAggregator @Inject constructor(
         existing: ArtworkSet,
         ranked: List<MetadataCandidate>,
         locked: Set<String>,
+        replaceArtwork: Boolean,
     ): ArtworkSet {
         if (GameMetadata.FIELD_ARTWORK in locked) return existing
+
+        // On a full re-scrape the fetched image wins where there is one; on a
+        // top-up the stored one does. Either way a slot nobody answered keeps
+        // what it had, so a provider being down never blanks a library.
+        fun slot(current: String?, fetched: String?): String? =
+            if (replaceArtwork) fetched ?: current else current ?: fetched
+
         return ArtworkSet(
-            boxArt = existing.boxArt ?: ranked.firstNotNullOfOrNull { it.artwork.boxArt },
-            hero = existing.hero ?: ranked.firstNotNullOfOrNull { it.artwork.hero },
-            logo = existing.logo ?: ranked.firstNotNullOfOrNull { it.artwork.logo },
-            icon = existing.icon ?: ranked.firstNotNullOfOrNull { it.artwork.icon },
+            boxArt = slot(existing.boxArt, ranked.firstNotNullOfOrNull { it.artwork.boxArt }),
+            hero = slot(existing.hero, ranked.firstNotNullOfOrNull { it.artwork.hero }),
+            logo = slot(existing.logo, ranked.firstNotNullOfOrNull { it.artwork.logo }),
+            icon = slot(existing.icon, ranked.firstNotNullOfOrNull { it.artwork.icon }),
             /*
              * Topped up, not replaced and not skipped.
              *
@@ -279,7 +302,13 @@ class MetadataAggregator @Inject constructor(
              * user is looking at reshuffles, and the rest of the room is filled
              * from whoever has more.
              */
-            screenshots = (existing.screenshots + ranked.flatMap { it.artwork.screenshots })
+            screenshots = when {
+                // Fetched first on a re-scrape, so a full set of stale images
+                // cannot fill the cap and shut the new ones out.
+                replaceArtwork ->
+                    (ranked.flatMap { it.artwork.screenshots } + existing.screenshots)
+                else -> (existing.screenshots + ranked.flatMap { it.artwork.screenshots })
+            }
                 .distinct()
                 .take(ArtworkSet.MAX_SCREENSHOTS),
             videoUri = existing.videoUri ?: ranked.firstNotNullOfOrNull { it.artwork.videoUri },

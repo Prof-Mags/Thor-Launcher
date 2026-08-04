@@ -9,8 +9,16 @@ data class MetadataQuery(
     /** Normalised title, articles and decorations stripped. */
     val sortTitle: String,
     val platformId: String,
-    /** Provider-specific platform id, when the platform declares one. */
-    val providerPlatformId: String?,
+    /**
+     * Every provider-specific platform id the platform declares, keyed by
+     * provider.
+     *
+     * A map rather than one value. It was a single field back when ScreenScraper
+     * was the only provider that filtered by system, and it carried
+     * ScreenScraper's id regardless of who read it — so IGDB filtered its
+     * catalogue by a ScreenScraper system number and matched nothing at all.
+     */
+    val providerPlatformIds: Map<String, String> = emptyMap(),
     val fileName: String,
     val fileSizeBytes: Long,
     val releaseYearHint: Int? = null,

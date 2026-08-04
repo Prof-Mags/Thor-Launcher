@@ -95,7 +95,7 @@ class ScreenScraperProvider @Inject constructor(
         if (!hasDeveloperKey) return emptyList()
         val config = settings.metadata.first()
 
-        val systemId = query.providerPlatformId ?: run {
+        val systemId = query.providerPlatformIds["screenscraper"] ?: run {
             ThorLog.d(TAG) { "No ScreenScraper system id for ${query.platformId}" }
             return emptyList()
         }

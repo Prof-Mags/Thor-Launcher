@@ -216,13 +216,17 @@ class MetadataSyncManager @Inject constructor(
                     title = game.title,
                     sortTitle = game.sortTitle,
                     platformId = game.platformId,
-                    providerPlatformId = platform?.providerIds?.get("screenscraper"),
+                    providerPlatformIds = platform?.providerIds.orEmpty(),
                     fileName = game.fileName,
                     fileSizeBytes = game.fileSizeBytes,
                     releaseYearHint = game.metadata.releaseYear,
                     region = game.metadata.region,
                 ),
                 existing = game.metadata,
+                // A full re-scrape is a request to replace; only-missing is a
+                // request to fill gaps. Anything else makes the full pass unable
+                // to change the artwork it was run to change.
+                replaceArtwork = !onlyMissing,
             )
 
             /*
@@ -320,7 +324,7 @@ class MetadataSyncManager @Inject constructor(
                     // No platform: a folder spans systems, and constraining the
                     // search to one would miss most of the matches.
                     platformId = "",
-                    providerPlatformId = null,
+                    providerPlatformIds = emptyMap(),
                     // A folder has no file, so the filename and size matchers
                     // have nothing to work with and only title matching applies.
                     fileName = folder.title,
@@ -424,7 +428,7 @@ class MetadataSyncManager @Inject constructor(
                         title = game.title,
                         sortTitle = game.sortTitle,
                         platformId = game.platformId,
-                        providerPlatformId = platform?.providerIds?.get("screenscraper"),
+                        providerPlatformIds = platform?.providerIds.orEmpty(),
                         fileName = game.fileName,
                         fileSizeBytes = game.fileSizeBytes,
                         releaseYearHint = game.metadata.releaseYear,
