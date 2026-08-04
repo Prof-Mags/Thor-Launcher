@@ -31,6 +31,8 @@ import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.ui.component.ThorMenuRow
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.core.model.SortOrder
 
 /**
@@ -90,9 +92,18 @@ fun SortDialog(
                         color = colors.onSurface,
                         modifier = Modifier.weight(1f),
                     )
+                    val directionHover = rememberPointerHover()
                     Row(
                         modifier = Modifier
                             .clip(ThorTheme.shapes.pill)
+                            .background(
+                                if (directionHover.isHovered) {
+                                    colors.surfaceHighest
+                                } else {
+                                    Color.Transparent
+                                },
+                            )
+                            .pointerHover(directionHover)
                             .clickable(onClick = onToggleDirection)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,

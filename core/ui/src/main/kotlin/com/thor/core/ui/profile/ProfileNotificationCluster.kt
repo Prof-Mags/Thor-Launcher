@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
@@ -47,6 +46,8 @@ import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.LauncherNotification
 import com.thor.core.model.LauncherProfile
 import com.thor.core.model.NotificationAccess
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 
 /**
  * Who is signed in, and what the system is trying to tell them.
@@ -243,19 +244,39 @@ private fun ClusterHeader(
         }
     }
 
+    // The one control in the couch bar's corner, and the only way to the shade.
+    // It lights under the pointer like everything else the cursor can press.
+    val hover = rememberPointerHover()
+    val shape = ThorTheme.shapes.pill
     if (surfaced) {
         GlassSurface(
             // Same width as the shade below it: the two are one control, and a
             // pill narrower than the panel it opens reads as a button that
             // happens to sit above an unrelated box.
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-            shape = ThorTheme.shapes.pill,
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerHover(hover)
+                .clickable(onClick = onClick),
+            shape = shape,
             level = SurfaceLevel.RAISED,
         ) {
             row()
         }
     } else {
-        Box(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) { row() }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(
+                    if (hover.isHovered) {
+                        colors.surfaceHighest.copy(alpha = 0.6f)
+                    } else {
+                        Color.Transparent
+                    },
+                )
+                .pointerHover(hover)
+                .clickable(onClick = onClick),
+        ) { row() }
     }
 }
 
@@ -284,7 +305,7 @@ private fun NotificationBell(count: Int, granted: Boolean, accent: Color, open: 
             Box(
                 modifier = Modifier
                     .size(BADGE_SIZE.dp)
-                    .clip(CircleShape)
+                    .clip(ThorTheme.shapes.pill)
                     .background(accent),
                 contentAlignment = Alignment.Center,
             ) {
@@ -309,12 +330,16 @@ fun ProfileAvatar(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    // The user's corner setting reaches the face too. A launcher squared
+    // everywhere else with one circle left in the corner of the bar is exactly
+    // the inconsistency [ThorShapes] exists to remove.
+    val shape = ThorTheme.shapes.pill
     Box(
         modifier = modifier
             .size(size.dp)
-            .clip(CircleShape)
+            .clip(shape)
             .background(accent.copy(alpha = .22f))
-            .border(1.5.dp, accent, CircleShape),
+            .border(1.5.dp, accent, shape),
         contentAlignment = Alignment.Center,
     ) {
         if (avatarPath != null) {
@@ -322,7 +347,7 @@ fun ProfileAvatar(
                 model = avatarPath,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(size.dp).clip(CircleShape),
+                modifier = Modifier.size(size.dp).clip(shape),
             )
         } else {
             Text(
@@ -362,13 +387,22 @@ private fun NotificationShade(
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 if (access is NotificationAccess.Connected && access.notifications.any { it.isClearable }) {
+                    val clearHover = rememberPointerHover()
                     Text(
                         text = "CLEAR ALL",
                         style = MaterialTheme.typography.labelSmall,
-                        color = colors.onSurfaceVariant,
+                        color = if (clearHover.isHovered) colors.onSurface else colors.onSurfaceVariant,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
                             .clip(ThorTheme.shapes.pill)
+                            .background(
+                                if (clearHover.isHovered) {
+                                    colors.surfaceHighest
+                                } else {
+                                    Color.Transparent
+                                },
+                            )
+                            .pointerHover(clearHover)
                             .clickable(onClick = onDismissAll)
                             .padding(horizontal = 7.dp, vertical = 3.dp),
                     )
@@ -480,10 +514,19 @@ private fun PromptButton(
     content: Color = Color.White,
     onClick: () -> Unit,
 ) {
+    val hover = rememberPointerHover()
     Box(
         modifier = Modifier
             .clip(ThorTheme.shapes.pill)
             .background(background)
+            .then(
+                if (hover.isHovered) {
+                    Modifier.border(2.dp, ThorTheme.colors.cursor, ThorTheme.shapes.pill)
+                } else {
+                    Modifier
+                },
+            )
+            .pointerHover(hover)
             .clickable(onClick = onClick)
             .padding(horizontal = 15.dp, vertical = 8.dp),
     ) {
@@ -522,11 +565,16 @@ private fun NotificationRow(
     onDismiss: () -> Unit,
 ) {
     val colors = ThorTheme.colors
+    // Lit under the pointer. From a sofa the shade is a list of small targets
+    // with no cursor of its own, so without this there is nothing to say which
+    // notification a click is about to open.
+    val hover = rememberPointerHover()
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(ThorTheme.shapes.small)
-            .background(colors.surfaceElevated)
+            .background(if (hover.isHovered) colors.surfaceHighest else colors.surfaceElevated)
+            .pointerHover(hover)
             .clickable(onClick = onOpen)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(9.dp),
@@ -577,7 +625,7 @@ private fun NotificationRow(
                 tint = colors.onSurfaceVariant,
                 modifier = Modifier
                     .size(16.dp)
-                    .clip(CircleShape)
+                    .clip(ThorTheme.shapes.pill)
                     .clickable(onClick = onDismiss),
             )
         }

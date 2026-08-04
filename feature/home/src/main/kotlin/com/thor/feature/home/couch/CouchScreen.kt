@@ -36,7 +36,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -97,6 +96,8 @@ import com.thor.core.ui.icon.PlatformIcons
 import com.thor.core.ui.component.LauncherStatusBar
 import com.thor.core.ui.profile.NotificationShadePanel
 import com.thor.core.ui.profile.ProfileClusterHeader
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.core.ui.profile.ShellStatus
 import com.thor.core.ui.profile.ShellStatusActions
 import com.thor.feature.home.LauncherUiState
@@ -664,7 +665,7 @@ fun CouchNavigationBar(
                     Box(
                         modifier = Modifier
                             .size(6.dp)
-                            .clip(CircleShape)
+                            .clip(ThorTheme.shapes.pill)
                             .background(colors.cursor),
                     )
                     Text(
@@ -706,21 +707,29 @@ private fun CouchNavItem(
 ) {
     val colors = ThorTheme.colors
     val shape = ThorTheme.shapes.small
+    // Lit by the pointer exactly as by the controller cursor, but without moving
+    // it: the nav cursor also decides what the *controller* does next — up from
+    // the dashboard lands on it — and having the pointer drag that around while
+    // crossing the bar on the way to something else would leave the stick
+    // starting somewhere the user never chose.
+    val hover = rememberPointerHover()
+    val lit = focused || hover.isHovered
     Column(
         modifier = Modifier
             .fillMaxHeight()
             .clip(shape)
             .background(
-                if (focused) colors.surfaceHighest.copy(alpha = 0.74f)
+                if (lit) colors.surfaceHighest.copy(alpha = 0.74f)
                 else Color.Transparent,
             )
             .then(
-                if (focused) Modifier.border(
+                if (lit) Modifier.border(
                     1.dp,
                     colors.cursor.copy(alpha = 0.56f),
                     shape,
                 ) else Modifier,
             )
+            .pointerHover(hover)
             .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -734,14 +743,14 @@ private fun CouchNavItem(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (selected || focused) colors.onSurface else colors.onSurfaceVariant,
+                tint = if (selected || lit) colors.onSurface else colors.onSurfaceVariant,
                 modifier = Modifier.size(17.dp),
             )
             Text(
                 text = label,
                 style = MaterialTheme.typography.titleSmall,
-                color = if (selected || focused) colors.onSurface else colors.onSurfaceVariant,
-                fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
+                color = if (selected || lit) colors.onSurface else colors.onSurfaceVariant,
+                fontWeight = if (selected || lit) FontWeight.Bold else FontWeight.Medium,
             )
         }
         Box(
@@ -1584,7 +1593,25 @@ internal fun CouchCard(
     resting: Boolean = false,
 ) {
     val colors = ThorTheme.colors
-    val lit = focused && !resting
+    /*
+     * The pointer moves the shelf cursor rather than merely lighting a card.
+     *
+     * The spotlight above describes whatever the shelf is on, so a pointer that
+     * only highlighted would leave the largest panel on the television describing
+     * a different game from the one being pointed at. Reporting the hover as a
+     * focus keeps one answer to "what is selected" whichever input is driving.
+     *
+     * It is also how a pointer browses at all. Clicking a card launches it, so
+     * without this the only reachable games were the ones already on screen —
+     * moving onto a card at the edge now focuses it, and the shelf's own
+     * scroll-into-view brings the next ones along.
+     */
+    val hover = rememberPointerHover()
+    val hovered = hover.isHovered
+    LaunchedEffect(hovered, focused) {
+        if (hovered && !focused) onFocus()
+    }
+    val lit = (focused && !resting) || hovered
     val focusColor = platform?.let { Color(it.accentArgb) } ?: colors.cursor
     val scale by animateFloatAsState(
         targetValue = if (lit) 1.035f else 1f,
@@ -1619,6 +1646,10 @@ internal fun CouchCard(
             .width(size)
             .aspectRatio(1f)
             .zIndex(if (focused) 1f else 0f)
+            // Before the scale, so the hover target is the card's resting box.
+            // Measured inside it, the box grows when the highlight appears and
+            // the element's own state becomes an input to the test that made it.
+            .pointerHover(hover)
             .scale(scale)
             .shadow(elevation = elevation, shape = shape, clip = false)
             .clip(shape)

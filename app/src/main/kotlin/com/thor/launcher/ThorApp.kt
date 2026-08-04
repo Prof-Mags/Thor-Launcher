@@ -2296,9 +2296,24 @@ fun ThorApp(
          * recorder, a cast target — would otherwise become somewhere the pointer
          * could wander to and not come back from.
          */
-        LaunchedEffect(primaryPanel, secondary) {
+        LaunchedEffect(primaryPanel, secondary, mode) {
             val top = primaryPanel ?: return@LaunchedEffect
-            val panels = listOfNotNull(top, secondary)
+            /*
+             * Couch mode has one panel, whatever the hardware has.
+             *
+             * The second one is held dark and takes no focus — see the COUCH arm
+             * below — so reporting it here gave the pointer somewhere to go that
+             * nobody can see. Pushing the stick down ran the cursor off the
+             * bottom of the television onto a switched-off screen, where it drew
+             * nothing, clicked nothing, and could only be recovered by pushing
+             * blindly back up. The panel is not part of the pointer's world when
+             * it is not part of the user's.
+             */
+            val panels = if (mode == DualScreenMode.COUCH) {
+                listOf(top)
+            } else {
+                listOfNotNull(top, secondary)
+            }
             var offset = 0
             mouse.setDisplays(
                 panels.map { panel ->

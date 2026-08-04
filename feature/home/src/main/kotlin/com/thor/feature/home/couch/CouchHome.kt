@@ -5,6 +5,7 @@ import android.os.StatFs
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,8 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Download
@@ -66,6 +65,8 @@ import com.thor.core.model.Platform
 import com.thor.core.model.ShortcutAction
 import com.thor.core.model.PlatformFolders
 import com.thor.core.ui.component.ArtworkImage
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.feature.home.LauncherUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -272,20 +273,28 @@ private fun CouchSideRail(
             val isDownloads = destination.railIndex == DOWNLOADS_DESTINATION
             val reachable = isDownloads || destination.railIndex >= 0
             val selected = position == litDestination
+            // The pointer lights an icon the same way the rail's own selection
+            // does; see [CouchCard] for why hover reuses the existing language
+            // rather than inventing a second one. Only where there is somewhere
+            // to go — lighting a dead icon promises a jump that will not happen.
+            val hover = rememberPointerHover()
+            val lit = selected || (reachable && hover.isHovered)
+            val shape = ThorTheme.shapes.small
             Box(
                 modifier = Modifier
                     .size(SIDE_RAIL_ITEM.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(shape)
                     .background(
-                        if (selected) accent.copy(alpha = 0.18f) else Color.Transparent,
+                        if (lit) accent.copy(alpha = 0.18f) else Color.Transparent,
                     )
                     .then(
-                        if (selected) {
-                            Modifier.border(1.dp, accent.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
+                        if (lit) {
+                            Modifier.border(1.dp, accent.copy(alpha = 0.7f), shape)
                         } else {
                             Modifier
                         },
                     )
+                    .pointerHover(hover)
                     .clickable(enabled = reachable) {
                         if (isDownloads) {
                             onOpenDownloads()
@@ -299,7 +308,7 @@ private fun CouchSideRail(
                     imageVector = destination.icon,
                     contentDescription = destination.label,
                     tint = when {
-                        selected -> accent
+                        lit -> accent
                         reachable -> colors.onSurfaceVariant
                         else -> colors.onSurfaceVariant.copy(alpha = PLACEHOLDER_ALPHA)
                     },
@@ -357,13 +366,14 @@ private fun CouchSpotlight(
             )
             return@Column
         }
+        val panelShape = ThorTheme.shapes.panel
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(panelShape)
                 .background(colors.surface.copy(alpha = 0.55f))
-                .border(1.dp, colors.outline.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+                .border(1.dp, colors.outline.copy(alpha = 0.18f), panelShape)
                 .padding(HERO_PADDING.dp),
             horizontalArrangement = Arrangement.spacedBy(HERO_PADDING.dp),
         ) {
@@ -375,7 +385,7 @@ private fun CouchSpotlight(
                 modifier = Modifier
                     .fillMaxHeight()
                     .aspectRatio(HERO_ART_ASPECT)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(ThorTheme.shapes.small),
             )
 
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -488,7 +498,7 @@ private fun CouchCompletionBar(game: GameEntry?, accent: Color) {
             modifier = Modifier
                 .weight(1f)
                 .height(4.dp)
-                .clip(CircleShape)
+                .clip(ThorTheme.shapes.pill)
                 .background(colors.outline.copy(alpha = 0.25f)),
         ) {
             if (progress != null) {
@@ -496,7 +506,7 @@ private fun CouchCompletionBar(game: GameEntry?, accent: Color) {
                     modifier = Modifier
                         .fillMaxWidth(progress)
                         .fillMaxHeight()
-                        .clip(CircleShape)
+                        .clip(ThorTheme.shapes.pill)
                         .background(accent),
                 )
             }
@@ -575,13 +585,14 @@ private fun CouchLibraryPanel(
     Column(modifier = modifier) {
         CouchSectionLabel("Your library")
         Spacer(Modifier.height(10.dp))
+        val panelShape = ThorTheme.shapes.panel
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(panelShape)
                 .background(colors.surface.copy(alpha = 0.55f))
-                .border(1.dp, colors.outline.copy(alpha = 0.18f), RoundedCornerShape(14.dp)),
+                .border(1.dp, colors.outline.copy(alpha = 0.18f), panelShape),
         ) {
             CouchLibraryRow(
                 Icons.Rounded.GridView, "All games", counts.allGames,
@@ -626,11 +637,16 @@ private fun CouchLibraryRow(
     // trophy chip and the unreachable rail icons do with the same alpha.
     val live = onClick != null
     val alpha = if (live) 1f else PLACEHOLDER_ALPHA
+    // A dead row does not light under the pointer either, for the same reason it
+    // is drawn faint: the highlight is a promise that a press does something.
+    val hover = rememberPointerHover()
+    val lit = focused || (live && hover.isHovered)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(LIBRARY_ROW_HEIGHT.dp)
-            .background(if (focused) colors.cursor.copy(alpha = 0.16f) else Color.Transparent)
+            .background(if (lit) colors.cursor.copy(alpha = 0.16f) else Color.Transparent)
+            .pointerHover(hover)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -702,20 +718,36 @@ private fun CouchGamesShelf(
     LaunchedEffect(rail?.id, focusedItem) {
         if (rail == null || focusedItem !in rail.entries.indices) return@LaunchedEffect
         /*
-         * Scroll only at an edge.
+         * Scroll only at an edge, and only by the overhang.
          *
          * This animated to the focused item on every change, which on a stick
          * that repeats means re-laying out and re-animating the whole rail for
          * each press — including the presses where the card was already fully on
-         * screen and nothing needed to move. The deck's own rail has done the
-         * visibility check since it was written; this one was missed.
+         * screen and nothing needed to move.
+         *
+         * The size of the move matters as much as whether there is one.
+         * `animateScrollToItem` puts the card at the *start* of the row, so
+         * stepping one card to the right threw the whole shelf sideways. Under a
+         * pointer that is worse than untidy: the card jumps out from under the
+         * cursor, whatever lands there is hovered next, and the shelf chases the
+         * cursor across the screen. Nudging by exactly the part hanging off the
+         * edge leaves the card where the eye — or the cursor — already is.
          */
         val layout = listState.layoutInfo
         val visible = layout.visibleItemsInfo.firstOrNull { it.index == focusedItem }
-        val fullyVisible = visible != null &&
-            visible.offset >= layout.viewportStartOffset &&
-            visible.offset + visible.size <= layout.viewportEndOffset
-        if (!fullyVisible) listState.animateScrollToItem(focusedItem)
+        if (visible == null) {
+            // Nowhere near the viewport, so there is no overhang to measure.
+            listState.animateScrollToItem(focusedItem)
+            return@LaunchedEffect
+        }
+        val start = visible.offset
+        val end = visible.offset + visible.size
+        val overhang = when {
+            start < layout.viewportStartOffset -> start - layout.viewportStartOffset
+            end > layout.viewportEndOffset -> end - layout.viewportEndOffset
+            else -> 0
+        }
+        if (overhang != 0) listState.animateScrollBy(overhang.toFloat())
     }
 
     Column(modifier = modifier) {
@@ -789,11 +821,12 @@ private fun CouchDashboardBar(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    val panelShape = ThorTheme.shapes.panel
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(panelShape)
             .background(colors.surface.copy(alpha = 0.45f))
-            .border(1.dp, colors.outline.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
+            .border(1.dp, colors.outline.copy(alpha = 0.14f), panelShape)
             .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SECTION_GAP.dp),
@@ -885,14 +918,14 @@ private fun CouchStorageMeter(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(4.dp)
-                .clip(CircleShape)
+                .clip(ThorTheme.shapes.pill)
                 .background(colors.outline.copy(alpha = 0.25f)),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(storage.usedFraction)
                     .fillMaxHeight()
-                    .clip(CircleShape)
+                    .clip(ThorTheme.shapes.pill)
                     .background(colors.cursor),
             )
         }
@@ -946,7 +979,7 @@ private fun CouchFactChip(
     val alpha = if (placeholder) PLACEHOLDER_ALPHA else 1f
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(ThorTheme.shapes.small)
             .background(colors.surfaceElevated.copy(alpha = 0.7f * alpha))
             .padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -977,23 +1010,27 @@ private fun CouchActionButton(
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
+    val shape = ThorTheme.shapes.small
+    val hover = rememberPointerHover()
+    val lit = focused || hover.isHovered
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(shape)
             .background(if (primary) accent else colors.surfaceHighest.copy(alpha = 0.8f))
             .then(
                 when {
                     // The cursor outranks the button's own outline: on a
                     // television the only question is which one a press hits.
-                    focused -> Modifier.border(2.dp, colors.cursor, RoundedCornerShape(8.dp))
+                    lit -> Modifier.border(2.dp, colors.cursor, shape)
                     primary -> Modifier
                     else -> Modifier.border(
                         1.dp,
                         colors.outline.copy(alpha = 0.3f),
-                        RoundedCornerShape(8.dp),
+                        shape,
                     )
                 },
             )
+            .pointerHover(hover)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1025,21 +1062,25 @@ private fun CouchDashboardButton(
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
+    val shape = ThorTheme.shapes.small
+    val hover = rememberPointerHover()
+    val lit = focused || hover.isHovered
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(shape)
             .background(
-                if (focused) {
+                if (lit) {
                     colors.cursor.copy(alpha = 0.22f)
                 } else {
                     colors.surfaceElevated.copy(alpha = 0.55f)
                 },
             )
             .border(
-                if (focused) 2.dp else 1.dp,
-                if (focused) colors.cursor else colors.outline.copy(alpha = 0.18f),
-                RoundedCornerShape(8.dp),
+                if (lit) 2.dp else 1.dp,
+                if (lit) colors.cursor else colors.outline.copy(alpha = 0.18f),
+                shape,
             )
+            .pointerHover(hover)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1063,11 +1104,12 @@ private fun CouchDashboardButton(
 @Composable
 private fun CouchEmptyPanel(message: String, modifier: Modifier = Modifier) {
     val colors = ThorTheme.colors
+    val panelShape = ThorTheme.shapes.panel
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(panelShape)
             .background(colors.surface.copy(alpha = 0.35f))
-            .border(1.dp, colors.outline.copy(alpha = 0.12f), RoundedCornerShape(14.dp)),
+            .border(1.dp, colors.outline.copy(alpha = 0.12f), panelShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(

@@ -454,6 +454,9 @@ fun BottomScreen(
             onToggleFavorite = { couchDetailsEntry?.let(onCouchDetailsFavorite) },
             onMore = { couchDetailsEntry?.let(onCouchDetailsMore) },
             onDismiss = onCouchDetailsDismissed,
+            // Hosted here rather than by [CouchScreen], so the scale it composes
+            // everything else through has to be handed over explicitly.
+            uiScale = couchUiScale,
         )
 
         SortDialog(

@@ -39,6 +39,8 @@ import com.thor.core.model.GridEntry
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.input.LocalThorTextInput
 import com.thor.core.ui.input.ThorInputField
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 
 /**
  * The global search overlay.
@@ -157,11 +159,19 @@ private fun SearchResultRow(
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    // The pointer marks a result the same way the cursor does; see the note in
+    // `GridCell` for why hover reuses the launcher's own language for "this is
+    // what a press acts on" rather than inventing a second one.
+    val hover = rememberPointerHover()
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .thorCursor(focused = focused, cornerRadius = dimens.cornerRadiusSmall)
+            .thorCursor(
+                focused = focused || hover.isHovered,
+                cornerRadius = dimens.cornerRadiusSmall,
+            )
+            .pointerHover(hover)
             .clickable(onClick = onClick)
             .padding(dimens.spacingSmall),
         verticalAlignment = Alignment.CenterVertically,
