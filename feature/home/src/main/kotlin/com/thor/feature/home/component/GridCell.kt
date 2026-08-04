@@ -352,27 +352,27 @@ private fun FolderShell(
             .background(accent.copy(alpha = 0.28f), shape),
         contentAlignment = Alignment.Center,
     ) {
+        val bundled = PlatformIcons.preferredOver(platform?.artwork, platform?.id)
         when {
+            /*
+             * The shipped artwork outranks whatever a scraper found, but not a
+             * pack the user installed or an image they picked — see
+             * [PlatformIcons.preferredOver]. Ordering these the other way round
+             * showed none of them on a library that had ever been scraped, which
+             * is every library.
+             */
+            bundled != null -> ArtworkImage(
+                model = bundled,
+                contentDescription = folder.title,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(BUILT_IN_ICON_FRACTION).clip(shape),
+            )
+
             folder.artworkUri != null -> ArtworkImage(
                 model = folder.artworkUri,
                 contentDescription = folder.title,
                 fallbackText = folder.title,
                 modifier = Modifier.fillMaxSize().clip(shape),
-            )
-
-            /*
-             * The artwork Loki ships for the systems it knows.
-             *
-             * Resolved here, at draw time, rather than written onto the folder
-             * when it is created — so an installed pack or a hand-picked image
-             * takes the branch above and wins without this having to be undone,
-             * and nothing is copied into every profile's database.
-             */
-            PlatformIcons.forPlatform(platform?.id) != null -> ArtworkImage(
-                model = PlatformIcons.forPlatform(platform?.id),
-                contentDescription = folder.title,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(BUILT_IN_ICON_FRACTION).clip(shape),
             )
 
             // A system this set has no artwork for: its own short name, which is

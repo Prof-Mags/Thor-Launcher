@@ -1573,24 +1573,25 @@ private fun CouchCard(
 private fun FolderCard(folder: FolderEntry, platform: Platform?) {
     val colors = ThorTheme.colors
     val art = folder.artworkUri ?: platform?.artwork?.heroUri
-    val bundled = PlatformIcons.forPlatform(platform?.id)
-    if (art != null) {
+    val bundled = PlatformIcons.preferredOver(platform?.artwork, platform?.id)
+    if (bundled != null) {
+        // Fitted rather than cropped, unlike scraped artwork: these are console
+        // renders on transparency, and cropping one to fill a card cuts the
+        // hardware off at the edges. Ahead of `art` for the same reason as on the
+        // grid — a scraped platform image is not a chosen one.
+        ArtworkImage(
+            model = bundled,
+            contentDescription = folder.title,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(BUILT_IN_ICON_FRACTION),
+        )
+    } else if (art != null) {
         ArtworkImage(
             model = art,
             contentDescription = folder.title,
             fallbackText = folder.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
-        )
-    } else if (bundled != null) {
-        // Fitted rather than cropped, unlike the artwork above: these are console
-        // renders on transparency, and cropping one to fill a card cuts the
-        // hardware off at the edges.
-        ArtworkImage(
-            model = bundled,
-            contentDescription = folder.title,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize(BUILT_IN_ICON_FRACTION),
         )
     } else {
         // A folder with no artwork still has to read as a folder rather than as

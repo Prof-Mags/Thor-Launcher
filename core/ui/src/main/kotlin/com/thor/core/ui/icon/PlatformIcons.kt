@@ -1,6 +1,7 @@
 package com.thor.core.ui.icon
 
 import androidx.annotation.DrawableRes
+import com.thor.core.model.PlatformArtwork
 import com.thor.core.ui.R
 
 /**
@@ -23,6 +24,26 @@ object PlatformIcons {
     /** The bundled icon for a platform, or null if this set has none. */
     @DrawableRes
     fun forPlatform(platformId: String?): Int? = platformId?.let(ICONS::get)
+
+    /**
+     * The bundled icon, unless something with a better claim is already there.
+     *
+     * The rule the user asked for is "these, unless another icon pack is
+     * selected" — and mere presence of artwork is not that. A platform folder
+     * usually *has* an icon already: the scraper writes one onto the platform
+     * and the folder wears it from the moment it is created, which is why simply
+     * preferring existing artwork showed none of these on a scraped library.
+     *
+     * Ownership is the question, and [PlatformArtwork.packId] answers it. A pack
+     * the user installed, or an image they picked by hand, keeps its place.
+     * Anything a scraper happened to find does not: this set is chosen, and one
+     * console render beats a stray platform image pulled off the internet.
+     */
+    @DrawableRes
+    fun preferredOver(artwork: PlatformArtwork?, platformId: String?): Int? {
+        val ownedByUserOrPack = artwork?.packId != null
+        return if (ownedByUserOrPack) null else forPlatform(platformId)
+    }
 
     /**
      * Keyed by platform id rather than by the artwork's own filename.
