@@ -188,6 +188,11 @@ class IgdbProvider @Inject constructor(
 
     private fun IgdbGame.toCandidate(query: MetadataQuery): MetadataCandidate {
         val companies = involvedCompanies.orEmpty()
+
+        // Captures first, then whichever promotional art is the right shape.
+        val wide = (landscapeImages(screenshots.orEmpty()) + landscapeImages(artworks.orEmpty()))
+            .distinct()
+
         return MetadataCandidate(
             providerId = ID,
             remoteId = id.toString(),
@@ -213,22 +218,20 @@ class IgdbProvider @Inject constructor(
                 boxArt = cover?.imageId?.let { igdbImage(it, COVER_SIZE) },
                 // Artwork ahead of captures for the backdrop, which wants a
                 // painted image behind text rather than a busy game frame.
-                hero = artworks.orEmpty().firstOrNull()?.imageId
-                    ?.let { igdbImage(it, WIDE_SIZE) }
-                    ?: screenshots.orEmpty().firstOrNull()?.imageId
-                        ?.let { igdbImage(it, WIDE_SIZE) },
+                hero = wide.firstOrNull()?.let { igdbImage(it, WIDE_SIZE) },
                 /*
-                 * Everything else, at a fixed sixteen by nine.
+                 * Everything else, filtered to the shape the strip is.
                  *
-                 * The one already behind the panel is left out so the strip does
-                 * not show it twice, which is the same rule every other provider
-                 * here follows.
+                 * Screenshots lead because they are the only class IGDB keeps at
+                 * a consistent size — 1280 by 720, every one of them. Artworks
+                 * are whatever was uploaded and come second, once [landscapeImages]
+                 * has discarded the portrait and square ones.
+                 *
+                 * The first is dropped because it is already the backdrop, and
+                 * showing it again in the row in front of the panel is the rule
+                 * every provider here follows.
                  */
-                screenshots = (artworks.orEmpty() + screenshots.orEmpty())
-                    .mapNotNull { it.imageId }
-                    .map { igdbImage(it, WIDE_SIZE) }
-                    .distinct()
-                    .drop(1),
+                screenshots = wide.drop(1).map { igdbImage(it, WIDE_SIZE) },
             ),
         )
     }
@@ -315,7 +318,11 @@ private data class IgdbGame(
 )
 
 @Serializable
-private data class IgdbImage(@SerialName("image_id") val imageId: String? = null)
+internal data class IgdbImage(
+    @SerialName("image_id") val imageId: String? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+)
 
 @Serializable
 private data class IgdbNamed(val name: String? = null)
@@ -368,7 +375,11 @@ internal fun igdbSearchBody(
     return buildString {
         append("search \"${title.escapedForApicalypse()}\";")
         append("fields name,summary,storyline,first_release_date,total_rating,")
-        append("cover.image_id,screenshots.image_id,artworks.image_id,")
+        append("cover.image_id,")
+        // Dimensions come back with the images so the shapes can be filtered
+        // before anything is downloaded; see [landscapeImages].
+        append("screenshots.image_id,screenshots.width,screenshots.height,")
+        append("artworks.image_id,artworks.width,artworks.height,")
         append("genres.name,involved_companies.developer,involved_companies.publisher,")
         append("involved_companies.company.name;")
         append("where ${conditions.joinToString(" & ")};")
@@ -381,3 +392,38 @@ internal const val IGDB_MAIN_GAME_TYPES = "0,8,9,10,11"
 
 /** Enough that the real game survives IGDB's own ranking of mods above it. */
 internal const val IGDB_MAX_CANDIDATES = 8
+
+/**
+ * Keeps the images that are actually the shape the panel draws.
+ *
+ * IGDB reports each image's real dimensions, which turns out to matter a great
+ * deal: `screenshots` are uniformly 1280 by 720, but `artworks` are whatever was
+ * uploaded — 720 by 1280 portrait, 1200 square, 640 by 399. Feeding those to a
+ * widescreen strip is how a row of mismatched shapes appears, and no framing
+ * decision downstream can repair an image that is taller than it is wide.
+ *
+ * Filtered rather than corrected, because there is nothing to correct: a
+ * portrait key art is a fine picture that is not this picture's shape. The band
+ * is generous — anything from three-by-two to two-by-one — since the frame crops
+ * a little either way and being strict would empty the strip for games whose
+ * only images are slightly off.
+ *
+ * Small images are dropped as well. A 640-wide capture upscaled into a panel
+ * looks worse than one fewer screenshot.
+ */
+internal fun landscapeImages(images: List<IgdbImage>): List<String> = images
+    .filter { image ->
+        val width = image.width ?: return@filter false
+        val height = image.height ?: return@filter false
+        if (height <= 0 || width < MIN_IMAGE_WIDTH) return@filter false
+        val ratio = width.toFloat() / height
+        ratio in MIN_WIDE_RATIO..MAX_WIDE_RATIO
+    }
+    .mapNotNull(IgdbImage::imageId)
+
+/** Three-by-two through two-by-one; sixteen-by-nine sits in the middle at 1.78. */
+private const val MIN_WIDE_RATIO = 1.5f
+private const val MAX_WIDE_RATIO = 2.1f
+
+/** Below this the panel is upscaling, which reads worse than one fewer image. */
+private const val MIN_IMAGE_WIDTH = 900

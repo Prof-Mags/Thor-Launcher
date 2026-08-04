@@ -193,8 +193,19 @@ class MetadataAggregator @Inject constructor(
         config: MetadataSettings,
         replaceArtwork: Boolean = false,
     ): GameMetadata {
+        /*
+         * Confident matches as a band, then priority inside it.
+         *
+         * Priority alone decided this, which meant a preferred provider's weak
+         * match outranked another's exact one â€” a 0.5 guess from the top of the
+         * list beat a 1.0 hit from the bottom, and the game got somebody else's
+         * cover. Priority is the right tie-breaker between two providers that
+         * both found the game; it is the wrong way to choose between one that did
+         * and one that did not.
+         */
         val ranked = candidates.sortedWith(
-            compareBy<MetadataCandidate> { config.providerPriority[it.providerId] ?: Int.MAX_VALUE }
+            compareByDescending<MetadataCandidate> { it.confidence >= STRONG_CONFIDENCE }
+                .thenBy { config.providerPriority[it.providerId] ?: Int.MAX_VALUE }
                 .thenByDescending { it.confidence },
         )
 
@@ -206,14 +217,22 @@ class MetadataAggregator @Inject constructor(
         val locked = existing.lockedFields
         fun <T> pick(field: String, current: T?, selector: (MetadataCandidate) -> T?): T? =
             if (field in locked) current else current ?: textual.firstNotNullOfOrNull(selector)
+        /*
+         * `preferred` names the provider that owns this field when it answers.
+         *
+         * The description is Wikipedia's: it writes a paragraph about the game
+         * rather than a marketing blurb, and it is the only source here with no
+         * credential to go missing. Everything else falls through to the ranking.
+         */
         fun pickText(
             field: String,
             current: String?,
+            preferred: String? = null,
             selector: (MetadataCandidate) -> String?,
         ): String? = selectNonBlankMetadataText(
             current = current,
             locked = field in locked,
-            candidates = textual.map(selector),
+            candidates = (preferred?.let(textual::preferring) ?: textual).map(selector),
         )
 
         val sources = existing.providerSources.toMutableMap()
@@ -232,7 +251,11 @@ class MetadataAggregator @Inject constructor(
         }
 
         return existing.copy(
-            description = pickText(GameMetadata.FIELD_DESCRIPTION, existing.description) {
+            description = pickText(
+                GameMetadata.FIELD_DESCRIPTION,
+                existing.description,
+                preferred = DESCRIPTION_PROVIDER,
+            ) {
                 it.metadata.description
             },
             genres = if (GameMetadata.FIELD_GENRES in locked || existing.genres.isNotEmpty()) {
@@ -286,11 +309,26 @@ class MetadataAggregator @Inject constructor(
         fun slot(current: String?, fetched: String?): String? =
             if (replaceArtwork) fetched ?: current else current ?: fetched
 
+        /*
+         * Each slot goes to whoever is best at it, not to whoever ranks highest
+         * overall.
+         *
+         * A single priority order cannot say this. IGDB has the landscape
+         * artwork — uniform captures with real dimensions to filter on — while
+         * SteamGridDB has the square grid that a cell wants and nobody else
+         * offers. Ranking IGDB above SteamGridDB to get the first would hand it
+         * the descriptions too, and ranking it below gives the panel a banner.
+         * So the preference is per slot, and the general order still decides
+         * everything it is not stated for.
+         */
+        val forArtwork = ranked.preferring(ARTWORK_PROVIDER)
+        val forIcon = ranked.preferring(ICON_PROVIDER)
+
         return ArtworkSet(
-            boxArt = slot(existing.boxArt, ranked.firstNotNullOfOrNull { it.artwork.boxArt }),
-            hero = slot(existing.hero, ranked.firstNotNullOfOrNull { it.artwork.hero }),
+            boxArt = slot(existing.boxArt, forArtwork.firstNotNullOfOrNull { it.artwork.boxArt }),
+            hero = slot(existing.hero, forArtwork.firstNotNullOfOrNull { it.artwork.hero }),
             logo = slot(existing.logo, ranked.firstNotNullOfOrNull { it.artwork.logo }),
-            icon = slot(existing.icon, ranked.firstNotNullOfOrNull { it.artwork.icon }),
+            icon = slot(existing.icon, forIcon.firstNotNullOfOrNull { it.artwork.icon }),
             /*
              * Topped up, not replaced and not skipped.
              *
@@ -306,8 +344,8 @@ class MetadataAggregator @Inject constructor(
                 // Fetched first on a re-scrape, so a full set of stale images
                 // cannot fill the cap and shut the new ones out.
                 replaceArtwork ->
-                    (ranked.flatMap { it.artwork.screenshots } + existing.screenshots)
-                else -> (existing.screenshots + ranked.flatMap { it.artwork.screenshots })
+                    (forArtwork.flatMap { it.artwork.screenshots } + existing.screenshots)
+                else -> (existing.screenshots + forArtwork.flatMap { it.artwork.screenshots })
             }
                 .distinct()
                 .take(ArtworkSet.MAX_SCREENSHOTS),
@@ -348,6 +386,27 @@ class MetadataAggregator @Inject constructor(
         const val MIN_CONFIDENCE = 0.45f
 
         /**
+         * At or above this, a match is treated as certainly the right game.
+         *
+         * Only used for ordering, not for rejecting: everything above
+         * [MIN_CONFIDENCE] is still allowed to contribute, but a provider that is
+         * sure gets asked before one that is merely preferred.
+         */
+        const val STRONG_CONFIDENCE = 0.85f
+
+        /**
+         * Who owns a slot when they answer at all.
+         *
+         * Stated rather than derived from the priority order, because the order
+         * is one list and these are three different questions. IGDB has the
+         * landscape artwork, SteamGridDB the square grid a cell wants, and
+         * Wikipedia the prose — and no single ranking puts all three first.
+         */
+        const val ARTWORK_PROVIDER = "igdb"
+        const val ICON_PROVIDER = "steamgriddb"
+        const val DESCRIPTION_PROVIDER = "wikidata"
+
+        /**
          * Concurrent provider requests per game.
          *
          * Fixed rather than user-tunable: there are only ever three providers to
@@ -372,3 +431,15 @@ internal fun selectNonBlankMetadataText(
     return current?.takeIf(String::isNotBlank)
         ?: candidates.firstNotNullOfOrNull { it?.takeIf(String::isNotBlank) }
 }
+
+/**
+ * Moves one provider's candidates to the front, leaving the rest in order.
+ *
+ * A stable sort, so this expresses "ask this one first" rather than reordering
+ * anything else: the preferred provider gets first refusal on the slot, and if
+ * it has nothing the ranking decides exactly as it did before. Nothing is
+ * excluded â€” a preference is not a requirement, and a game IGDB has never heard
+ * of still gets whatever artwork anybody else found.
+ */
+internal fun List<MetadataCandidate>.preferring(providerId: String): List<MetadataCandidate> =
+    sortedByDescending { it.providerId == providerId }
