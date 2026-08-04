@@ -1874,12 +1874,19 @@ fun ThorApp(
                                 hasNextEpisode = moviesViewModel.nextEpisode() != null,
                                 skipSeconds = moviesSettings.skipSeconds,
                                 onTypeSelected = moviesViewModel::switchType,
+                                // The pointer moves the browse cursor without
+                                // opening anything, so the billboard follows the
+                                // mouse the way it follows the stick.
+                                onItemFocused = { row, column ->
+                                    moviesViewModel.selectBrowseItem(row, column)
+                                },
                                 onItemSelected = moviesSection::pickTitle,
                                 onPlayerAction = moviesSection::perform,
                                 onSeek = moviesSection::seekTo,
                                 onSourcePicked = moviesSection::pickSource,
                                 onSeasonSelected = moviesSection::pickSeason,
                                 onEpisodeSelected = moviesSection::pickEpisode,
+                                onPlayBest = { moviesViewModel.playBest() },
                                 query = moviesState.query,
                                 onQueryChanged = moviesViewModel::onQueryChanged,
                                 searchRequested = moviesSection.searchRequested,

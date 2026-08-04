@@ -250,7 +250,7 @@ internal fun InformationPanel(
  * show sources immediately.
  */
 @Composable
-private fun PlaybackPanel(
+internal fun PlaybackPanel(
     detail: DetailState,
     sources: SourceState,
     focusedSource: Int?,
@@ -606,7 +606,7 @@ private fun HeroIdentity(item: MediaItem, loading: Boolean) {
 }
 
 @Composable
-private fun ResumeSummary(progress: WatchProgress) {
+internal fun ResumeSummary(progress: WatchProgress) {
     val colors = ThorTheme.colors
     val episode = if (progress.seasonNumber != null && progress.episodeNumber != null) {
         "S%02dE%02d".format(progress.seasonNumber, progress.episodeNumber)
@@ -675,7 +675,7 @@ private fun FactLine(item: MediaItem) {
 }
 
 @Composable
-private fun Ratings(ratings: MediaRatings) {
+internal fun Ratings(ratings: MediaRatings) {
     if (ratings.isEmpty) return
 
     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -725,7 +725,7 @@ private fun CreditBlock(label: String, value: String, modifier: Modifier = Modif
 }
 
 @Composable
-private fun SectionLabel(text: String) {
+internal fun SectionLabel(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelSmall,
