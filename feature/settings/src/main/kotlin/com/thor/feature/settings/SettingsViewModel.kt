@@ -66,7 +66,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.update
@@ -1133,6 +1135,35 @@ class SettingsViewModel @Inject constructor(
      */
     private val _noScreenshotProvider = MutableStateFlow(false)
     val noScreenshotProvider: StateFlow<Boolean> = _noScreenshotProvider.asStateFlow()
+
+    /**
+     * Whether this build carries ScreenScraper developer credentials.
+     *
+     * Worth its own signal because the account fields sit right there and look
+     * like the thing that turns the provider on. They are not: the developer
+     * pair is compiled in, the account only raises the quota, and a user who
+     * fills in both fields and sees nothing change has no way to know that.
+     */
+    private val _screenScraperKeyMissing = MutableStateFlow(false)
+    val screenScraperKeyMissing: StateFlow<Boolean> = _screenScraperKeyMissing.asStateFlow()
+
+    init {
+        /*
+         * Recomputed whenever the credentials change, not only when the user
+         * presses Check. These warnings answer "why is nothing arriving", and
+         * requiring a button press to find out was asking the user to suspect the
+         * settings they were already looking at.
+         */
+        settingsRepository.metadata
+            .onEach {
+                _artworkOnlyProviders.value =
+                    aggregator.hasUsableProvider() && !aggregator.hasDescriptionProvider()
+                _noScreenshotProvider.value =
+                    aggregator.hasUsableProvider() && !aggregator.hasScreenshotProvider()
+                _screenScraperKeyMissing.value = !aggregator.isProviderConfigured("screenscraper")
+            }
+            .launchIn(viewModelScope)
+    }
 
     /**
      * Whether THOR is the system home app.

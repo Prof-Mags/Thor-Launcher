@@ -101,6 +101,17 @@ class MetadataAggregator @Inject constructor(
         usableProviders(settings.metadata.first()).any { it.id in SCREENSHOT_PROVIDERS }
 
     /**
+     * Whether one named provider could issue a request right now.
+     *
+     * Asked of the provider rather than inferred from the settings map, because
+     * what a provider needs is its own business — ScreenScraper is gated on
+     * credentials compiled into the build, which no amount of reading the user's
+     * settings would reveal.
+     */
+    suspend fun isProviderConfigured(id: String): Boolean =
+        providers.firstOrNull { it.id == id }?.isConfigured() == true
+
+    /**
      * Probes every provider, concurrently, and reports what each one said.
      *
      * @return provider id to its status

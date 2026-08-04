@@ -82,6 +82,8 @@ fun SettingsPageContent(
     artworkOnlyProviders: Boolean,
     /** Whether anything configured can supply a landscape image. */
     noScreenshotProvider: Boolean = false,
+    /** Whether the build carries ScreenScraper developer credentials. */
+    screenScraperKeyMissing: Boolean = false,
     isDefaultLauncher: Boolean,
     keyCaptureEnabled: Boolean,
     capturedKeys: List<RawKeyPress>,
@@ -126,6 +128,7 @@ fun SettingsPageContent(
             SettingsPage.METADATA -> MetadataPage(
                 settings, focusedRow, viewModel, scrapeState, providerStatus,
                 checkingProviders, artworkOnlyProviders, noScreenshotProvider,
+                screenScraperKeyMissing,
             )
             SettingsPage.SORTING -> SortingPage(settings, focusedRow, viewModel)
 
@@ -946,6 +949,7 @@ private fun MetadataPage(
     checking: Boolean,
     artworkOnly: Boolean,
     noScreenshots: Boolean,
+    screenScraperKeyMissing: Boolean,
 ) {
     val metadata = settings.metadata
 
@@ -1079,7 +1083,15 @@ private fun MetadataPage(
     RowDivider()
     TextFieldRow(
         title = "ScreenScraper account",
-        subtitle = "Optional — raises the daily quota and image quality",
+        // Says outright when the account cannot do anything on its own. These
+        // fields look like the switch that turns the provider on and are not:
+        // the developer pair is compiled into the build.
+        subtitle = if (screenScraperKeyMissing) {
+            "This build has no ScreenScraper developer key, so the provider is off " +
+                "and an account cannot turn it on"
+        } else {
+            "Optional — raises the daily quota and image quality"
+        },
         value = metadata.screenScraperUser,
         placeholder = "Username",
         focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 2,

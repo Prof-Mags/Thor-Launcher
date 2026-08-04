@@ -81,21 +81,21 @@ class CouchLibraryStatsTest {
 
     @Test
     fun `card size takes the preferred edge when the slot has room`() {
-        assertThat(couchCardSize(400.dp)).isEqualTo(144.dp)
+        assertThat(couchCardSize(400.dp)).isEqualTo(173.dp)
     }
 
     @Test
     fun `card size shrinks to fit a short slot instead of overflowing it`() {
-        // 150 less the 26dp header and the 22dp rail inset leaves 102, which is
-        // under the preferred edge and above the floor, so it is taken as is.
-        assertThat(couchCardSize(150.dp)).isEqualTo(102.dp)
-        // 200 leaves 152, over the preferred edge, so the edge caps it.
-        assertThat(couchCardSize(200.dp)).isEqualTo(144.dp)
+        // 150 less the 26dp header and the 22dp rail inset leaves 102, below the
+        // floor, so the floor takes it.
+        assertThat(couchCardSize(150.dp)).isEqualTo(104.dp)
+        // 200 leaves 152: under the preferred edge and over the floor, taken as is.
+        assertThat(couchCardSize(200.dp)).isEqualTo(152.dp)
     }
 
     @Test
     fun `card size never collapses on an absurdly short slot`() {
-        assertThat(couchCardSize(0.dp)).isEqualTo(87.dp)
+        assertThat(couchCardSize(0.dp)).isEqualTo(104.dp)
     }
 
     private fun platform(id: String, short: String = id.uppercase()) = Platform(

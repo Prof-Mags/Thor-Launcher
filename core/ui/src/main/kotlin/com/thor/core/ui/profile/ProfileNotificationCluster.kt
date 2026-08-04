@@ -146,11 +146,23 @@ private fun ClusterHeader(
             horizontalArrangement = Arrangement.spacedBy(9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Bell, name, then face. The picture is the anchor of the cluster and
-            // sits hard against the screen corner, so the eye finds the corner
-            // first and reads inward — the reverse put the count at the edge,
-            // where it read as a stray badge on nothing in particular.
-            NotificationBell(count = count, granted = granted, accent = accent, open = expanded)
+            /*
+             * Name, face, bell — or bell, name, face when the header has a
+             * surface of its own.
+             *
+             * On a pill the bell leads, so the count sits inside the shape
+             * rather than on its rounded end. On the couch bar there is no pill:
+             * the picture is the thing the eye goes to, and the bell belongs
+             * beside it as its companion rather than a screen-width away.
+             */
+            if (surfaced) {
+                NotificationBell(
+                    count = count,
+                    granted = granted,
+                    accent = accent,
+                    open = expanded,
+                )
+            }
             Text(
                 text = profile?.name.orEmpty(),
                 style = MaterialTheme.typography.labelMedium,
@@ -162,6 +174,14 @@ private fun ClusterHeader(
                 modifier = Modifier.weight(1f),
             )
             ProfileAvatar(profile = profile, avatarPath = avatarPath, accent = accent, size = 28)
+            if (!surfaced) {
+                NotificationBell(
+                    count = count,
+                    granted = granted,
+                    accent = accent,
+                    open = expanded,
+                )
+            }
         }
     }
 

@@ -362,6 +362,34 @@ fun CouchScreen(
                                 modifier = Modifier.fillMaxWidth().weight(1f),
                                 verticalArrangement = Arrangement.Center,
                             ) {
+                                /*
+                                 * Which shelf you are on, above the card.
+                                 *
+                                 * The rail's own title used to be the only place
+                                 * this was said, down at the shelf — so on a
+                                 * screen showing one rail at a time, the answer
+                                 * to "where am I in the library" was at the far
+                                 * edge of it. Above the card is where the eye
+                                 * already is.
+                                 */
+                                rails.getOrNull(safeRail)?.title?.let { railTitle ->
+                                    Text(
+                                        text = railTitle.uppercase(),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = focusedPlatform
+                                            ?.let { Color(it.accentArgb) }
+                                            ?: colors.cursor,
+                                        fontWeight = FontWeight.Black,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(
+                                            start = SCREEN_INSET.dp,
+                                            end = SCREEN_INSET.dp,
+                                            bottom = 6.dp,
+                                        ),
+                                    )
+                                }
+
                                 CouchHero(
                                     entry = focusedEntry,
                                     platform = focusedEntry.platform(state.platformsById),
@@ -1765,15 +1793,15 @@ private const val INFO_PANEL_ALPHA = 0.82f
 private const val INFO_DESCRIPTION_LINES = 5
 private const val CARD_GAP = 14
 /** Preferred card edge, subject to what the shelf slot can hold. */
-private const val SQUARE_CARD_SIZE = 144
-private const val MIN_CARD_SIZE = 87
+private const val SQUARE_CARD_SIZE = 173
+private const val MIN_CARD_SIZE = 104
 private const val CARD_RAIL_EXTRA_HEIGHT = 22
 /** Room the rail's title row takes above the cards. */
 private const val RAIL_HEADER_HEIGHT = 26
-private const val HERO_CARD_WIDTH = 0.36f
+private const val HERO_CARD_WIDTH = 0.46f
 
 /** The information card.s own height, now that it no longer shares a weight. */
-private const val HERO_HEIGHT = 148
+private const val HERO_HEIGHT = 196
 
 /**
  * What the shelf reserves at the bottom of the screen.
@@ -1783,9 +1811,9 @@ private const val HERO_HEIGHT = 148
  * which is what puts the panel in the middle of the screen rather than at the
  * top of it.
  */
-private const val SHELF_HEIGHT = 200
+private const val SHELF_HEIGHT = 232
 private const val HERO_ACTION_HEIGHT = 40
-private const val LIBRARY_SUMMARY_HEIGHT = 76
+private const val LIBRARY_SUMMARY_HEIGHT = 94
 private const val BACKDROP_SETTLE_MS = 105L
 private const val BACKDROP_CROSSFADE_MS = 300
 private const val RAIL_TRANSITION_MS = 220
