@@ -86,15 +86,13 @@ fun ProfileNotificationCluster(
         modifier = modifier.width(CLUSTER_WIDTH.dp),
         horizontalAlignment = Alignment.End,
     ) {
-        ClusterHeader(
+        ProfileClusterHeader(
             profile = profile,
             avatarPath = avatarPath,
-            accent = accent,
-            count = notifications.count(LauncherNotification::isClearable),
-            granted = access !is NotificationAccess.Denied,
+            access = access,
             expanded = expanded,
+            onToggleExpanded = onToggleExpanded,
             surfaced = surfaced,
-            onClick = onToggleExpanded,
         )
 
         AnimatedVisibility(
@@ -104,9 +102,9 @@ fun ProfileNotificationCluster(
             enter = expandVertically(tween(SHADE_MS)) + fadeIn(tween(SHADE_MS)),
             exit = shrinkVertically(tween(SHADE_MS)) + fadeOut(tween(SHADE_MS)),
         ) {
-            NotificationShade(
+            NotificationShadePanel(
+                profile = profile,
                 access = access,
-                accent = accent,
                 onGrantAccess = onGrantAccess,
                 onOpenAppInfo = onOpenAppInfo,
                 onNotificationOpened = onNotificationOpened,
@@ -116,6 +114,66 @@ fun ProfileNotificationCluster(
             )
         }
     }
+}
+
+/**
+ * The collapsed half of the cluster: name, face and bell.
+ *
+ * Public because the two halves do not always live in the same place. The
+ * information panel stacks them, which is what [ProfileNotificationCluster]
+ * does. Couch mode cannot: its header belongs in a navigation bar of fixed
+ * height, and a shade expanding inside that bar is a shade expanding into
+ * nothing — it opened, it was clipped to the height of the row it sat in, and
+ * from the sofa the bell simply did not work. There the header stays in the bar
+ * and [NotificationShadePanel] is drawn over the screen beneath it.
+ */
+@Composable
+fun ProfileClusterHeader(
+    profile: LauncherProfile?,
+    avatarPath: String?,
+    access: NotificationAccess,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    surfaced: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    val notifications = (access as? NotificationAccess.Connected)?.notifications.orEmpty()
+    Box(modifier = modifier) {
+        ClusterHeader(
+            profile = profile,
+            avatarPath = avatarPath,
+            accent = profile?.let { Color(it.accentArgb) } ?: ThorTheme.colors.cursor,
+            count = notifications.count(LauncherNotification::isClearable),
+            granted = access !is NotificationAccess.Denied,
+            expanded = expanded,
+            surfaced = surfaced,
+            onClick = onToggleExpanded,
+        )
+    }
+}
+
+/** The opened half. See [ProfileClusterHeader] for why it is separable. */
+@Composable
+fun NotificationShadePanel(
+    profile: LauncherProfile?,
+    access: NotificationAccess,
+    onGrantAccess: () -> Unit,
+    onOpenAppInfo: () -> Unit,
+    onNotificationOpened: (String) -> Unit,
+    onNotificationDismissed: (String) -> Unit,
+    onDismissAll: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    NotificationShade(
+        access = access,
+        accent = profile?.let { Color(it.accentArgb) } ?: ThorTheme.colors.cursor,
+        onGrantAccess = onGrantAccess,
+        onOpenAppInfo = onOpenAppInfo,
+        onNotificationOpened = onNotificationOpened,
+        onNotificationDismissed = onNotificationDismissed,
+        onDismissAll = onDismissAll,
+        modifier = modifier,
+    )
 }
 
 @Composable

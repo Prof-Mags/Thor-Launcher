@@ -1,6 +1,7 @@
 package com.thor.feature.home.couch
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -12,6 +13,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -93,7 +95,8 @@ import com.thor.core.model.PlatformFolders
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.icon.PlatformIcons
 import com.thor.core.ui.component.LauncherStatusBar
-import com.thor.core.ui.profile.ProfileNotificationCluster
+import com.thor.core.ui.profile.NotificationShadePanel
+import com.thor.core.ui.profile.ProfileClusterHeader
 import com.thor.core.ui.profile.ShellStatus
 import com.thor.core.ui.profile.ShellStatusActions
 import com.thor.feature.home.LauncherUiState
@@ -498,6 +501,63 @@ fun CouchScreen(
                 }
             }
         }
+
+        /*
+         * The notification shade, over the screen rather than inside the bar.
+         *
+         * It used to be stacked under its own header, which works on the
+         * information panel because that header floats over a panel with room
+         * beneath it. In couch mode the header lives in a navigation bar with a
+         * fixed height, so the shade expanded into a container that had no space
+         * to give it: it was clipped to the bar, and from the sofa the bell did
+         * nothing at all.
+         *
+         * Drawn here instead, last in the root box so it lies over everything,
+         * hung directly under the bar and aligned to the same corner its header
+         * is in — which is what makes it read as having come from the bell
+         * rather than as a panel that appeared. The scrim behind it closes it,
+         * because a shade with no way out but the same small target that opened
+         * it is a trap on a television.
+         */
+        if (status != null) AnimatedVisibility(
+            // Kept outside the condition rather than inside it: `status` stays
+            // non-null while the shade fades out, so the panel animates away
+            // with its contents instead of emptying first and then fading.
+            visible = status.shadeOpen && !fullscreenSection,
+            enter = fadeIn(tween(SHADE_MS)),
+            exit = fadeOut(tween(SHADE_MS)),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(colors.scrim.copy(alpha = SHADE_SCRIM_ALPHA))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = statusActions.onToggleShade,
+                        ),
+                )
+                // The same density the bar was measured at, so the offset below
+                // it is the bar's real height and not its unscaled one.
+                CompositionLocalProvider(LocalDensity provides scaledDensity) {
+                    NotificationShadePanel(
+                        profile = status.profile,
+                        access = status.notifications,
+                        onGrantAccess = statusActions.onGrantAccess,
+                        onOpenAppInfo = statusActions.onOpenAppInfo,
+                        onNotificationOpened = statusActions.onNotificationOpened,
+                        onNotificationDismissed = statusActions.onNotificationDismissed,
+                        onDismissAll = statusActions.onDismissAll,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = TOP_BAR_HEIGHT.dp + SHADE_GAP.dp, end = SCREEN_INSET.dp)
+                            .width(COUCH_SHADE_WIDTH.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -531,34 +591,50 @@ fun CouchNavigationBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(
-                text = "LOKI",
-                style = MaterialTheme.typography.titleLarge,
-                color = colors.cursor,
-                fontWeight = FontWeight.Black,
-                modifier = Modifier.padding(end = 14.dp),
-            )
-            tabs.forEach { tab ->
+            /*
+             * The destinations take what is left, not what they want.
+             *
+             * They used to be laid out first at their natural width with a
+             * weighted spacer after them, which meant a long tab list pushed the
+             * corner off the end of the bar — and the corner is where the clock
+             * and the profile are. Weighting this group instead makes the
+             * trailing group the fixed part: the time is always drawn, and it is
+             * a destination label that ellipsises when the bar runs out of room.
+             */
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "LOKI",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = colors.cursor,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    modifier = Modifier.padding(end = 14.dp),
+                )
+                tabs.forEach { tab ->
+                    CouchNavItem(
+                        label = tab.label,
+                        icon = tab.couchIcon(),
+                        selected = !settingsSelected && tab == selectedTab,
+                        focused = !settingsFocused && tab == focusedTab,
+                        onClick = { onTabSelected(tab) },
+                    )
+                }
                 CouchNavItem(
-                    label = tab.label,
-                    icon = tab.couchIcon(),
-                    selected = !settingsSelected && tab == selectedTab,
-                    focused = !settingsFocused && tab == focusedTab,
-                    onClick = { onTabSelected(tab) },
+                    label = "Settings",
+                    icon = Icons.Rounded.Settings,
+                    selected = settingsSelected,
+                    focused = settingsFocused,
+                    onClick = onSettingsSelected,
                 )
             }
-            CouchNavItem(
-                label = "Settings",
-                icon = Icons.Rounded.Settings,
-                selected = settingsSelected,
-                focused = settingsFocused,
-                onClick = onSettingsSelected,
-            )
-            Spacer(modifier = Modifier.weight(1f))
             Row(
                 modifier = Modifier.padding(start = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 /*
                  * Who is signed in, where the mode label used to be.
@@ -568,22 +644,21 @@ fun CouchNavigationBar(
                  * of corner a television interface has for the things a
                  * television interface actually needs: whose profile this is, and
                  * whether anything is waiting.
+                 *
+                 * The header only. The shade it opens is drawn by [CouchScreen]
+                 * over the screen below this bar — see [ProfileClusterHeader].
                  */
                 if (status != null) {
-                    ProfileNotificationCluster(
+                    ProfileClusterHeader(
                         profile = status.profile,
                         avatarPath = status.avatarPath,
                         access = status.notifications,
                         expanded = status.shadeOpen,
                         onToggleExpanded = statusActions.onToggleShade,
-                        onGrantAccess = statusActions.onGrantAccess,
-                        onOpenAppInfo = statusActions.onOpenAppInfo,
-                        onNotificationOpened = statusActions.onNotificationOpened,
-                        onNotificationDismissed = statusActions.onNotificationDismissed,
-                        onDismissAll = statusActions.onDismissAll,
                         // The bar already has a background; a pill on top of it
                         // would box something that is already in a box.
                         surfaced = false,
+                        modifier = Modifier.width(COUCH_PROFILE_WIDTH.dp),
                     )
                 } else {
                     Box(
@@ -600,17 +675,15 @@ fun CouchNavigationBar(
                     )
                 }
                 if (showStatusBar) {
-                    Box(
-                        modifier = Modifier
-                            .padding(start = 2.dp)
-                            .width(COUCH_STATUS_WIDTH.dp),
-                    ) {
-                        LauncherStatusBar(
-                            clockStyle = clockStyle,
-                            visible = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    LauncherStatusBar(
+                        clockStyle = clockStyle,
+                        visible = true,
+                        // Packed against the right edge rather than centred in a
+                        // fixed 126dp box, which on a bar this wide left the time
+                        // floating in the middle of its own empty column.
+                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier.width(COUCH_STATUS_WIDTH.dp),
+                    )
                 }
             }
         }
@@ -1794,6 +1867,32 @@ internal fun Long.asCouchRelativeTime(): String {
 private const val TOP_BAR_HEIGHT = 64
 private const val COUCH_STATUS_WIDTH = 126
 private const val SCREEN_INSET = 32
+
+/** Name, face and bell in the bar's corner. */
+private const val COUCH_PROFILE_WIDTH = 176
+
+/**
+ * The opened shade.
+ *
+ * Wider than the 196dp the information panel gives it: that width is set by the
+ * panel it shares a screen with, and a notification read from a sofa needs the
+ * line length a television can afford rather than the one a handheld can.
+ */
+private const val COUCH_SHADE_WIDTH = 380
+
+/** Clear of the bar, so the shade reads as hanging from it rather than joined. */
+private const val SHADE_GAP = 8
+
+/**
+ * How far the screen behind the shade is dimmed.
+ *
+ * Lighter than the theme's own scrim, which is set for a dialog that takes the
+ * whole screen. This is a corner panel, and dimming the dashboard to dialog
+ * strength for it would say the launcher had been interrupted.
+ */
+private const val SHADE_SCRIM_ALPHA = 0.45f
+
+private const val SHADE_MS = 200
 private const val INFO_COVER_WIDTH = 104
 private const val INFO_COLUMN_GAP = 14
 private const val INFO_PANEL_PADDING = 15

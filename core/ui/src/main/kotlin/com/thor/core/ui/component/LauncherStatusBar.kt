@@ -47,6 +47,16 @@ fun LauncherStatusBar(
     clockStyle: ClockStyle,
     visible: Boolean,
     modifier: Modifier = Modifier,
+    /**
+     * Where the strip sits inside the width it is given.
+     *
+     * Centred over the information panel, which is the only thing on that row.
+     * Couch mode packs it against the right edge instead: it shares a navigation
+     * bar with the profile cluster, and centring it there left the time floating
+     * in the middle of its own empty column rather than in the corner where a
+     * television puts a clock.
+     */
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.Center,
 ) {
     if (!visible) return
 
@@ -98,9 +108,7 @@ fun LauncherStatusBar(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = dimens.spacing, vertical = 6.dp),
-        // Centred, and on the information panel only. Duplicating it on both
-        // screens meant two clocks visible at once.
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = horizontalArrangement,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         batteryPercent?.let { percent ->

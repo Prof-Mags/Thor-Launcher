@@ -511,8 +511,17 @@ fun StreamBottomPanel(
 
 /**
  * Remote play laid out for one television instead of two handheld panels.
- * The host list remains visible beside the selected PC and every visible action
- * is the same controller-driven action exposed by [StreamUiState.hostActions].
+ *
+ * The host list sits beside the selected PC and every visible action is the same
+ * controller-driven action exposed by [StreamUiState.hostActions].
+ *
+ * The list is the point of this screen and it was not being drawn. The panel
+ * built a `LazyListState`, ran a `LaunchedEffect` to keep the cursor scrolled
+ * into view, and then rendered only a header and an empty-state block — so the
+ * one branch that mattered, the one where the user has PCs, produced an empty
+ * bordered rectangle. Every paired machine was invisible from the sofa while the
+ * handheld screen listed them all, which is why it looked like discovery was
+ * broken rather than like the view was.
  */
 @Composable
 fun StreamCouchScreen(
@@ -531,7 +540,14 @@ fun StreamCouchScreen(
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
 
-    Row(
+    val listState = rememberLazyListState()
+    LaunchedEffect(state.cursor, state.hosts.size) {
+        if (state.hosts.isNotEmpty()) {
+            listState.animateScrollToItem(state.cursor.coerceIn(0, state.hosts.lastIndex))
+        }
+    }
+
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(
@@ -540,74 +556,106 @@ fun StreamCouchScreen(
                 ),
             )
             .padding(dimens.spacingSmall),
-        horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
     ) {
-        Box(
-            modifier = Modifier
-                .weight(0.88f)
-                .fillMaxHeight()
-                .clip(ThorTheme.shapes.panel)
-                .border(1.dp, colors.outline.copy(alpha = 0.24f), ThorTheme.shapes.panel),
+        /*
+         * The header runs the width of the screen rather than sitting inside the
+         * left column.
+         *
+         * Boxed into the column it was a title for the host list, which is not
+         * what it says: "PC streaming" and the host/online/ready counts describe
+         * the whole screen, and a heading for a screen that stops a third of the
+         * way across reads as a heading for the wrong thing.
+         */
+        StreamHeader(state)
+
+        Row(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
         ) {
-            val listState = rememberLazyListState()
-            LaunchedEffect(state.cursor, state.hosts.size) {
-                if (state.hosts.isNotEmpty()) {
-                    listState.animateScrollToItem(state.cursor.coerceIn(0, state.hosts.lastIndex))
-                }
-            }
             Column(
-                modifier = Modifier.fillMaxSize().padding(dimens.spacingSmall),
+                modifier = Modifier.weight(0.88f).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
             ) {
-                StreamHeader(state)
                 if (state.hosts.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize().weight(1f),
-                        contentAlignment = Alignment.Center,
+                    /*
+                     * The same panel the handheld shows, not a shorter one.
+                     *
+                     * This said "No PCs available" under an icon and stopped
+                     * there, which on a television is a dead end: the user is
+                     * across the room from the machine, and what they need to
+                     * know is that Sunshine has to be running on it.
+                     * `EmptyDiscovery` says that, and the two other things that
+                     * fix it.
+                     */
+                    EmptyDiscovery(modifier = Modifier.fillMaxWidth().weight(1f))
+                } else {
+                    StreamListLabel()
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentPadding = PaddingValues(vertical = 2.dp),
+                        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Rounded.Computer,
-                                contentDescription = null,
-                                tint = colors.onSurfaceVariant,
-                                modifier = Modifier.size(54.dp),
-                            )
-                            Text(
-                                text = "No PCs available",
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = colors.onSurface,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(top = 10.dp),
+                        itemsIndexed(
+                            items = state.hosts,
+                            key = { _, host -> host.address },
+                        ) { index, host ->
+                            HostCard(
+                                host = host,
+                                status = state.statusOf(host),
+                                selected = index == state.cursor,
+                                connecting = state.connecting && index == state.cursor,
+                                onClick = { onHostSelected(index) },
                             )
                         }
                     }
                 }
             }
-        }
 
-        Column(
-            modifier = Modifier.weight(1.12f).fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-        ) {
-            SelectedHostPanel(
-                state = state,
-                clientName = clientName,
-                onRefreshHost = onRefreshHost,
-                onStartStream = onStartStream,
-                onPairHost = onPairHost,
-                onCancelPairing = onCancelPairing,
-                onStopStream = onStopStream,
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
-            CouchManualHostBar(
-                address = state.newAddress,
-                focusRequest = state.addressFocusRequest,
-                onAddressChanged = onAddressChanged,
-                onAddHost = onAddHost,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column(
+                modifier = Modifier.weight(1.12f).fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+            ) {
+                SelectedHostPanel(
+                    state = state,
+                    clientName = clientName,
+                    onRefreshHost = onRefreshHost,
+                    onStartStream = onStartStream,
+                    onPairHost = onPairHost,
+                    onCancelPairing = onCancelPairing,
+                    onStopStream = onStopStream,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
+                CouchManualHostBar(
+                    address = state.newAddress,
+                    focusRequest = state.addressFocusRequest,
+                    onAddressChanged = onAddressChanged,
+                    onAddHost = onAddHost,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
+}
+
+/**
+ * Says what the column under it is, the way every other couch shelf does.
+ *
+ * No count of its own. The obvious one to put here would be how many are
+ * paired, and that is not the same number as how many are listed — a host can
+ * be saved and unpaired, or paired and offline. The header above already
+ * separates hosts, online and ready, and each card carries its own badge.
+ */
+@Composable
+private fun StreamListLabel() {
+    Text(
+        text = "YOUR PCS",
+        style = MaterialTheme.typography.labelMedium,
+        color = ThorTheme.colors.onSurfaceVariant,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 2.dp, top = 2.dp),
+    )
 }
 
 @Composable
