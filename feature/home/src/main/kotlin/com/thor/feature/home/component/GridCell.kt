@@ -56,6 +56,7 @@ import com.thor.core.model.IconShape
 import com.thor.core.model.Platform
 import com.thor.core.model.ShortcutEntry
 import com.thor.core.ui.component.ArtworkImage
+import com.thor.core.ui.icon.PlatformIcons
 
 /**
  * One cell of the bottom-screen grid.
@@ -359,7 +360,22 @@ private fun FolderShell(
                 modifier = Modifier.fillMaxSize().clip(shape),
             )
 
-            // A system, with no pack to dress it: its own short name, which is
+            /*
+             * The artwork Loki ships for the systems it knows.
+             *
+             * Resolved here, at draw time, rather than written onto the folder
+             * when it is created — so an installed pack or a hand-picked image
+             * takes the branch above and wins without this having to be undone,
+             * and nothing is copied into every profile's database.
+             */
+            PlatformIcons.forPlatform(platform?.id) != null -> ArtworkImage(
+                model = PlatformIcons.forPlatform(platform?.id),
+                contentDescription = folder.title,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(BUILT_IN_ICON_FRACTION).clip(shape),
+            )
+
+            // A system this set has no artwork for: its own short name, which is
             // the one thing that identifies it and never changes under a rescan.
             platform != null -> Text(
                 text = platform.shortName.ifBlank { platform.name },
@@ -475,6 +491,15 @@ private const val BASE_ICON_FILL = 0.84f
  * bleed into the cursor ring, and that is a fixed optical distance.
  */
 private const val ARTWORK_INSET = 2
+/**
+ * How much of a folder cell the shipped platform artwork fills.
+ *
+ * Short of the edge, unlike a pack icon: these are console renders drawn to
+ * fill a square, and running one to the cell boundary loses the shape of the
+ * hardware against the cell behind it.
+ */
+private const val BUILT_IN_ICON_FRACTION = 0.88f
+
 private const val FAVOURITE_BADGE_FRACTION = 0.24f
 private const val JIGGLE_DEGREES = 2.6f
 private const val JIGGLE_PERIOD_MS = 140

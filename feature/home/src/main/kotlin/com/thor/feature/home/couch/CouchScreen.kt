@@ -89,6 +89,7 @@ import com.thor.core.model.LauncherTab
 import com.thor.core.model.Platform
 import com.thor.core.model.PlatformFolders
 import com.thor.core.ui.component.ArtworkImage
+import com.thor.core.ui.icon.PlatformIcons
 import com.thor.core.ui.component.LauncherStatusBar
 import com.thor.feature.home.LauncherUiState
 import com.thor.feature.home.component.AppIcon
@@ -1572,6 +1573,7 @@ private fun CouchCard(
 private fun FolderCard(folder: FolderEntry, platform: Platform?) {
     val colors = ThorTheme.colors
     val art = folder.artworkUri ?: platform?.artwork?.heroUri
+    val bundled = PlatformIcons.forPlatform(platform?.id)
     if (art != null) {
         ArtworkImage(
             model = art,
@@ -1579,6 +1581,16 @@ private fun FolderCard(folder: FolderEntry, platform: Platform?) {
             fallbackText = folder.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
+        )
+    } else if (bundled != null) {
+        // Fitted rather than cropped, unlike the artwork above: these are console
+        // renders on transparency, and cropping one to fill a card cuts the
+        // hardware off at the edges.
+        ArtworkImage(
+            model = bundled,
+            contentDescription = folder.title,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(BUILT_IN_ICON_FRACTION),
         )
     } else {
         // A folder with no artwork still has to read as a folder rather than as
@@ -1684,6 +1696,9 @@ private const val LIBRARY_SUMMARY_HEIGHT = 76
 private const val BACKDROP_SETTLE_MS = 105L
 private const val BACKDROP_CROSSFADE_MS = 300
 private const val RAIL_TRANSITION_MS = 220
+
+/** How much of a card the shipped platform artwork fills. */
+private const val BUILT_IN_ICON_FRACTION = 0.86f
 
 /** How much of an artless folder card its glyph fills. */
 private const val FOLDER_GLYPH_FRACTION = 0.42f

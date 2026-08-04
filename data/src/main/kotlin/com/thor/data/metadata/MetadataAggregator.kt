@@ -253,14 +253,19 @@ class MetadataAggregator @Inject constructor(
             hero = existing.hero ?: ranked.firstNotNullOfOrNull { it.artwork.hero },
             logo = existing.logo ?: ranked.firstNotNullOfOrNull { it.artwork.logo },
             icon = existing.icon ?: ranked.firstNotNullOfOrNull { it.artwork.icon },
-            screenshots = existing.screenshots
-                .ifEmpty {
-                    // Pooled across providers rather than taken from the first
-                    // that has any: one provider often returns a single shot, and
-                    // the slideshow is better with four from two sources than one
-                    // from the highest-ranked.
-                    ranked.flatMap { it.artwork.screenshots }.distinct()
-                }
+            /*
+             * Topped up, not replaced and not skipped.
+             *
+             * `ifEmpty` here meant a game that already had a single shot kept
+             * that one for good: the branch only ran when there were none, so
+             * re-scraping a library that had been through a provider returning
+             * one image could never reach three however many providers were
+             * added afterwards. Existing shots stay at the front, so nothing the
+             * user is looking at reshuffles, and the rest of the room is filled
+             * from whoever has more.
+             */
+            screenshots = (existing.screenshots + ranked.flatMap { it.artwork.screenshots })
+                .distinct()
                 .take(ArtworkSet.MAX_SCREENSHOTS),
             videoUri = existing.videoUri ?: ranked.firstNotNullOfOrNull { it.artwork.videoUri },
             dominantArgb = existing.dominantArgb,

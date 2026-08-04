@@ -98,10 +98,27 @@ class SteamGridDbProvider @Inject constructor(
      * rather than losing the whole set, because a game with a grid but no logo
      * is still far better than a game with nothing.
      */
-    private suspend fun fetchArtwork(gameId: Int, apiKey: String): ArtworkSet = ArtworkSet(
-        boxArt = firstImageUrl("$BASE_URL/grids/game/$gameId?dimensions=600x900", apiKey),
-        hero = firstImageUrl("$BASE_URL/heroes/game/$gameId", apiKey),
-        logo = firstImageUrl("$BASE_URL/logos/game/$gameId", apiKey),
+    private suspend fun fetchArtwork(gameId: Int, apiKey: String): ArtworkSet {
+        /*
+         * Heroes are this provider's wide artwork, and there is usually more
+         * than one.
+         *
+         * Only the first was ever read, into the `hero` slot, and the rest were
+         * dropped on the floor — so SteamGridDB contributed nothing at all to the
+         * screenshot strip despite holding exactly the kind of image it wants:
+         * banner-shaped, drawn for the game rather than captured from it, and
+         * the closest thing any provider offers to the panel's ratio. A game with
+         * no ScreenScraper entry therefore had a single image or none.
+         */
+        val heroes = imageUrls("$BASE_URL/heroes/game/$gameId", apiKey)
+
+        return ArtworkSet(
+            boxArt = firstImageUrl("$BASE_URL/grids/game/$gameId?dimensions=600x900", apiKey),
+            hero = heroes.firstOrNull(),
+            logo = firstImageUrl("$BASE_URL/logos/game/$gameId", apiKey),
+            // The one already used as the backdrop is not offered again in the
+            // strip, which would show the same picture twice.
+            screenshots = heroes.drop(1),
         /*
          * Square *box art*, from the grids endpoint — not the icons endpoint.
          *
@@ -114,24 +131,29 @@ class SteamGridDbProvider @Inject constructor(
          * then have to be letterboxed in the cell — the thing that made the grid
          * look full of wide artwork in the first place.
          */
-        icon = firstImageUrl(
-            "$BASE_URL/grids/game/$gameId?dimensions=$SQUARE_GRID_DIMENSIONS",
-            apiKey,
-        ),
-    )
+            icon = firstImageUrl(
+                "$BASE_URL/grids/game/$gameId?dimensions=$SQUARE_GRID_DIMENSIONS",
+                apiKey,
+            ),
+        )
+    }
 
-    private suspend fun firstImageUrl(url: String, apiKey: String): String? = try {
+    private suspend fun firstImageUrl(url: String, apiKey: String): String? =
+        imageUrls(url, apiKey).firstOrNull()
+
+    /** Every image an endpoint offers, in SteamGridDB's own order — best first. */
+    private suspend fun imageUrls(url: String, apiKey: String): List<String> = try {
         get(url, apiKey)?.let { body ->
             json.decodeFromString<SgdbResponse<List<SgdbImage>>>(body)
                 .data
-                ?.firstOrNull()
-                ?.url
-        }
+                ?.mapNotNull(SgdbImage::url)
+                .orEmpty()
+        }.orEmpty()
     } catch (e: IOException) {
         ThorLog.d(TAG) { "Artwork request failed: $url" }
-        null
+        emptyList()
     } catch (e: IllegalStateException) {
-        null
+        emptyList()
     }
 
     private suspend fun get(url: String, apiKey: String): String? {
