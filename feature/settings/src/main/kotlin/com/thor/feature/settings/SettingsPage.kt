@@ -38,15 +38,15 @@ enum class SettingsPage(
 
     // ---- Home screen -------------------------------------------------------
     GRID(
-        SettingsCategory.APPEARANCE, "Home grid",
+        SettingsCategory.HOME_SCREEN, "Home grid",
         "Size, spacing, icon shape and labels",
     ),
     DOCK(
-        SettingsCategory.APPEARANCE, "Dock",
+        SettingsCategory.HOME_SCREEN, "Dock",
         "Size, transparency and behaviour",
     ),
     CURSOR(
-        SettingsCategory.APPEARANCE, "Selection cursor",
+        SettingsCategory.HOME_SCREEN, "Selection cursor",
         "Selection highlight style and glow",
     ),
 
@@ -70,11 +70,11 @@ enum class SettingsPage(
 
     // ---- Artwork -----------------------------------------------------------
     METADATA(
-        SettingsCategory.LIBRARY, "Metadata & scraping",
+        SettingsCategory.ARTWORK, "Metadata & scraping",
         "Artwork providers and their credentials",
     ),
     ICON_PACKS(
-        SettingsCategory.LIBRARY, "Platform artwork",
+        SettingsCategory.ARTWORK, "Platform artwork",
         "Platform artwork imported from a pack",
     ),
 
@@ -116,19 +116,22 @@ enum class SettingsPage(
         "Haptics and interface sound",
     ),
 
+    // ---- Profiles ----------------------------------------------------------
+    // The list first, then the one profile you are actually signed in as. Whose
+    // launcher this is comes before what it is called.
+    PROFILES(
+        SettingsCategory.PROFILES, "Profiles",
+        "Switch, add and remove the people using this device",
+    ),
+    PROFILE_EDIT(
+        SettingsCategory.PROFILES, "This profile",
+        "Name, picture and colour for whoever is signed in",
+    ),
+
     // ---- System ------------------------------------------------------------
     // Display and performance live here rather than in a category of their own.
     // Two pages is not a category, and "how the screens behave" is the same visit
     // as "how it reads and how hard it works".
-    /**
-     * First in System, and deliberately: it is the widest-reaching page in the
-     * launcher, because every other setting belongs to whichever profile this
-     * one selects.
-     */
-    PROFILES(
-        SettingsCategory.SYSTEM, "Profiles",
-        "Separate settings and library for each person",
-    ),
     DUAL_SCREEN(
         SettingsCategory.SYSTEM, "Dual screen",
         "How the two panels are used",

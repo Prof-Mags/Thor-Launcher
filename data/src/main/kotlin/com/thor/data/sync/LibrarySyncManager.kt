@@ -9,6 +9,7 @@ import com.thor.core.common.log.ThorLog
 import com.thor.core.database.dao.AppDao
 import com.thor.core.database.dao.GameDao
 import com.thor.core.database.dao.PlatformDao
+import com.thor.core.common.profile.ActiveProfileId
 import com.thor.core.datastore.SettingsRepository
 import com.thor.data.repository.GridLayoutRepository
 import com.thor.data.repository.LibraryRepository
@@ -19,10 +20,15 @@ import com.thor.data.scanner.ScanProgress
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -56,6 +62,7 @@ class LibrarySyncManager @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val gridRepository: GridLayoutRepository,
     private val settings: SettingsRepository,
+    @ActiveProfileId profileIds: Flow<String>,
     @ApplicationScope private val scope: CoroutineScope,
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
 ) {
@@ -64,6 +71,27 @@ class LibrarySyncManager @Inject constructor(
     val state: StateFlow<SyncState> = _state.asStateFlow()
 
     private var runningJob: Job? = null
+
+    init {
+        /*
+         * Every profile gets the installed applications, including a brand new one.
+         *
+         * Installed apps are a fact about the device, not a preference — the same
+         * packages exist for everyone using the handheld — but each profile keeps
+         * its own library database, so nothing would have written them into a
+         * profile created after this one started. Its drawer would simply be
+         * empty, and no amount of looking through settings would explain why.
+         *
+         * The scan is a package-manager enumeration, so re-running it per profile
+         * costs nothing worth saving. What stays per profile is what each person
+         * did with those apps: which are hidden, and where they sit on the grid.
+         */
+        profileIds
+            .filter(String::isNotEmpty)
+            .distinctUntilChanged()
+            .onEach { requestAppRefresh() }
+            .launchIn(scope)
+    }
 
     /** True while a scan is in flight. */
     val isScanning: Boolean get() = runningJob?.isActive == true

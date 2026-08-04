@@ -32,9 +32,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.GameEntry
@@ -158,26 +161,11 @@ private fun GameProfileCard(
             if (description != null) {
                 GameDivider()
                 GameSectionTitle("DESCRIPTION")
-                /*
-                 * The description takes the panel's slack rather than a fixed
-                 * three lines, which was cutting most synopses off mid-sentence
-                 * while empty space sat underneath them. It still ellipsizes, but
-                 * only once it has genuinely run out of panel.
-                 */
-                val style = MaterialTheme.typography.bodySmall
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    val lineHeight = with(LocalDensity.current) {
-                        style.lineHeight.takeIf { it.isSp }?.toDp()
-                            ?: (style.fontSize.toDp() * DEFAULT_LINE_SPACING)
-                    }
-                    Text(
-                        text = description,
-                        style = style,
-                        color = colors.onSurfaceVariant,
-                        maxLines = gameDescriptionLines(maxHeight, lineHeight),
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                GameDescription(
+                    text = description,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
             } else {
                 Spacer(modifier = Modifier.weight(1f))
             }
@@ -698,22 +686,87 @@ private const val GAME_SECTION_GAP = 5
 private const val GAME_HEADER_GAP = 16
 private const val GAME_COVER_WIDTH = 128
 /**
- * How many lines of synopsis fit in the space the panel has left over.
+ * The synopsis, wrapped to as many lines as it takes.
  *
- * A constant cap cannot know how tall the panel is — the masthead grows with the
- * title, the activity row is fixed, and whatever remains before the media strip
- * is the description's. Deriving the count from that leftover keeps long
- * synopses readable without letting one push the media off the bottom.
+ * Capping the line count — at three, or at whatever the leftover height
+ * divides into — truncates the sentence, and a synopsis that stops mid-clause
+ * tells you less than no synopsis at all. So the text wraps freely and the
+ * *size* gives way instead: it is measured against the space actually available
+ * and stepped down until the whole thing fits, which on a panel this size is
+ * one or two points for a long description and nothing at all for a short one.
  */
-internal fun gameDescriptionLines(available: Dp, lineHeight: Dp): Int =
-    if (lineHeight <= 0.dp) MIN_DESCRIPTION_LINES
-    else (available / lineHeight).toInt().coerceAtLeast(MIN_DESCRIPTION_LINES)
+@Composable
+private fun GameDescription(text: String, color: Color, modifier: Modifier = Modifier) {
+    val base = MaterialTheme.typography.bodySmall
+    val measurer = rememberTextMeasurer()
 
-/** Never show less than this, even when the panel is squeezed. */
-private const val MIN_DESCRIPTION_LINES = 2
+    BoxWithConstraints(modifier = modifier) {
+        val available = constraints
+        val style = remember(text, available, base) {
+            val scale = fittedTextScale(
+                available = available.maxHeight,
+                measureHeight = { candidate ->
+                    measurer.measure(
+                        text = AnnotatedString(text),
+                        style = base.scaledBy(candidate),
+                        constraints = Constraints(maxWidth = available.maxWidth),
+                    ).size.height
+                },
+            )
+            base.scaledBy(scale)
+        }
 
-/** Fallback line spacing when a text style leaves its line height unset. */
-private const val DEFAULT_LINE_SPACING = 1.35f
+        Text(
+            text = text,
+            style = style,
+            color = color,
+            // No line cap: the fitted size is what keeps it inside the panel, and
+            // a cap on top of it would truncate text that had already been made
+            // to fit.
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * Largest scale at which the text still fits [available].
+ *
+ * Steps down rather than binary-searching: the range is narrow and the whole
+ * search is at most a handful of measurements, done once per game, and a linear
+ * walk returns the *largest* fitting size rather than merely a fitting one.
+ *
+ * An unbounded height — a parent that does not constrain — means nothing needs
+ * shrinking, so the text is left at full size.
+ */
+internal fun fittedTextScale(available: Int, measureHeight: (Float) -> Int): Float {
+    if (available <= 0 || available == Constraints.Infinity) return 1f
+    var scale = 1f
+    while (scale > MIN_DESCRIPTION_SCALE) {
+        if (measureHeight(scale) <= available) return scale
+        scale -= DESCRIPTION_SCALE_STEP
+    }
+    return MIN_DESCRIPTION_SCALE
+}
+
+/**
+ * The floor on shrinking.
+ *
+ * Below this the text is smaller than anything else on the panel and stops
+ * looking like a deliberate choice; a synopsis long enough to need it is better
+ * ellipsised than rendered at a size nobody reads.
+ */
+private const val MIN_DESCRIPTION_SCALE = 0.72f
+private const val DESCRIPTION_SCALE_STEP = 0.04f
+
+/** Scales both the size and its leading, so the text keeps its proportions. */
+private fun TextStyle.scaledBy(scale: Float): TextStyle = if (scale == 1f) {
+    this
+} else {
+    copy(
+        fontSize = fontSize * scale,
+        lineHeight = if (lineHeight.isSp) lineHeight * scale else lineHeight,
+    )
+}
 private const val GAME_STAT_CARD_HEIGHT = 44
 private const val GAME_STAT_GAP = 7
 private const val GAME_STAT_ICON_SHELL = 28

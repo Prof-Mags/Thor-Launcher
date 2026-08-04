@@ -147,6 +147,7 @@ fun SettingsPageContent(
             SettingsPage.FEEDBACK -> FeedbackPage(settings, focusedRow, viewModel)
 
             SettingsPage.PROFILES -> ProfilesPage(profileRegistry, focusedRow, viewModel)
+            SettingsPage.PROFILE_EDIT -> ProfileEditPage(profileRegistry, focusedRow, viewModel)
             SettingsPage.DUAL_SCREEN -> DualScreenPage(settings, focusedRow, viewModel)
             SettingsPage.PERFORMANCE -> PerformancePage(settings, focusedRow, viewModel)
 
@@ -200,7 +201,8 @@ fun rowCountFor(
     // Enable, permission, speed, span, then one row per bindable button.
     SettingsPage.POINTER -> 4 + MouseButton.entries.size
     SettingsPage.FEEDBACK -> 5
-    SettingsPage.PROFILES -> profilesRowCount(profileRegistry, activeProfileHasAvatar)
+    SettingsPage.PROFILES -> profilesRowCount(profileRegistry)
+    SettingsPage.PROFILE_EDIT -> profileEditRowCount(activeProfileHasAvatar)
     SettingsPage.DUAL_SCREEN -> 6
     SettingsPage.PERFORMANCE -> 3
     SettingsPage.EXTENSIONS -> EXTENSIONS_ROWS

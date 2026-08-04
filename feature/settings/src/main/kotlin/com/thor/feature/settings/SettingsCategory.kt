@@ -9,6 +9,7 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Monitor
+import androidx.compose.material.icons.rounded.ManageAccounts
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -31,9 +32,15 @@ import com.thor.core.model.LauncherExtension
  * had stopped making one.
  *
  * These group by the question being asked, and none holds more than four pages:
- * how does it look, where do my games live, where does artwork come from, what
- * am I watching, how do I drive it, how is it displayed, how does it run, what
- * is it.
+ * who am I, how does it look, how is the home screen laid out, where do my games
+ * live, where does artwork come from, what am I watching, how do I drive it, how
+ * does it run, what is it.
+ *
+ * Home screen and Artwork were folded away for a while, on the reasoning that a
+ * category holding two or three pages does not earn a rail entry. That put six
+ * pages each into Personalization and Library, which is the failure this whole
+ * arrangement exists to avoid — the reasoning in their own notes below is why
+ * they are back. A short category is cheap to walk past; a long one is not.
  */
 enum class SettingsCategory(
     val id: String,
@@ -50,9 +57,22 @@ enum class SettingsCategory(
      */
     val extension: LauncherExtension? = null,
 ) {
+    /**
+     * Who is using the launcher, first because it contains all the rest.
+     *
+     * Every other category configures the *active* profile, so this is the one
+     * that decides what the others are even editing. It was briefly a page under
+     * System, which put the widest-reaching control in the launcher three rows
+     * down a list of screen and performance options.
+     */
+    PROFILES(
+        "profiles", "Profiles", Icons.Rounded.ManageAccounts,
+        "Who is signed in, and their name and picture",
+    ),
+
     APPEARANCE(
         "appearance", "Personalization", Icons.Rounded.Palette,
-        "Theme, wallpaper, interface and home layout",
+        "Theme, wallpaper and how the interface reads",
     ),
 
     /**
@@ -67,11 +87,10 @@ enum class SettingsCategory(
     HOME_SCREEN(
         "home", "Home screen", Icons.Rounded.GridView,
         "Grid layout, icon shape, dock and cursor",
-        visible = false,
     ),
     LIBRARY(
-        "library", "Games & artwork", Icons.AutoMirrored.Rounded.LibraryBooks,
-        "Platforms, ROMs, scanning, metadata and artwork",
+        "library", "Games", Icons.AutoMirrored.Rounded.LibraryBooks,
+        "Platforms, ROM folders, scanning and sorting",
     ),
 
     /**
@@ -85,7 +104,6 @@ enum class SettingsCategory(
     ARTWORK(
         "artwork", "Artwork", Icons.Rounded.Image,
         "Scrapers, credentials and icon packs",
-        visible = false,
     ),
 
     /**

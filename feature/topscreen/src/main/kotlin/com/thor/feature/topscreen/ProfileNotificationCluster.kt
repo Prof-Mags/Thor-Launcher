@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -120,7 +121,10 @@ private fun ClusterHeader(
 ) {
     val colors = ThorTheme.colors
     GlassSurface(
-        modifier = Modifier.clickable(onClick = onClick),
+        // Same width as the shade below it: the two are one control, and a pill
+        // narrower than the panel it opens reads as a button that happens to sit
+        // above an unrelated box.
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = ThorTheme.shapes.pill,
         level = SurfaceLevel.RAISED,
     ) {
@@ -129,7 +133,11 @@ private fun ClusterHeader(
             horizontalArrangement = Arrangement.spacedBy(9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ProfileAvatar(profile = profile, avatarPath = avatarPath, accent = accent, size = 26)
+            // Bell, name, then face. The picture is the anchor of the cluster and
+            // sits hard against the screen corner, so the eye finds the corner
+            // first and reads inward — the reverse put the count at the edge,
+            // where it read as a stray badge on nothing in particular.
+            NotificationBell(count = count, granted = granted, accent = accent, open = expanded)
             Text(
                 text = profile?.name.orEmpty(),
                 style = MaterialTheme.typography.labelMedium,
@@ -137,9 +145,10 @@ private fun ClusterHeader(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(IntrinsicNameWidth),
+                textAlign = TextAlign.End,
+                modifier = Modifier.weight(1f),
             )
-            NotificationBell(count = count, granted = granted, accent = accent, open = expanded)
+            ProfileAvatar(profile = profile, avatarPath = avatarPath, accent = accent, size = 28)
         }
     }
 }
@@ -469,7 +478,7 @@ private fun NotificationRow(
     }
 }
 
-private const val CLUSTER_WIDTH = 268
+private const val CLUSTER_WIDTH = 340
 private const val SHADE_PADDING = 12
 private const val SHADE_MAX_HEIGHT = 290
 private const val SHADE_MS = 220
@@ -478,5 +487,3 @@ private const val BADGE_MAX = 9
 private const val NOTIFICATION_BAR_HEIGHT = 30
 private const val NOTIFICATION_BODY_LINES = 2
 
-/** Keeps a long profile name from pushing the bell off the pill. */
-private val IntrinsicNameWidth = 108.dp
