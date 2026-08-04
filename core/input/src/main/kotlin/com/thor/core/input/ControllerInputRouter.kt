@@ -348,6 +348,34 @@ class ControllerInputRouter(
     fun onGenericMotionEvent(event: MotionEvent): Boolean {
         // The stick would otherwise still move the cursor behind an open field.
         if (textInputActive) return false
+
+        /*
+         * A mouse wheel walks the shelf.
+         *
+         * Ahead of the joystick guard because a wheel is a pointer source, not a
+         * joystick, and was being dropped by it — the launcher took keyboard and
+         * pad input on a screen a mouse could reach but not drive.
+         *
+         * Left and right rather than up and down, which reads backwards until you
+         * see what the wheel is over: couch mode shows one rail at a time and the
+         * games in it run across, so a wheel notch moves along that rail. Up and
+         * down are how you change rails, and they are already on the pad and the
+         * arrow keys.
+         */
+        if (event.action == MotionEvent.ACTION_SCROLL) {
+            val scroll = event.getAxisValue(MotionEvent.AXIS_VSCROLL) +
+                event.getAxisValue(MotionEvent.AXIS_HSCROLL)
+            if (abs(scroll) < SCROLL_THRESHOLD) return false
+            emitCommand(
+                if (scroll > 0f) {
+                    ControllerCommand.NAVIGATE_LEFT
+                } else {
+                    ControllerCommand.NAVIGATE_RIGHT
+                },
+            )
+            return true
+        }
+
         if (event.source and InputDevice.SOURCE_CLASS_JOYSTICK == 0) return false
         if (event.action != MotionEvent.ACTION_MOVE) return false
 
@@ -599,6 +627,14 @@ class ControllerInputRouter(
 
     private companion object {
         const val TRIGGER_THRESHOLD = 0.6f
+
+        /**
+         * How far a wheel has to turn to count as one step.
+         *
+         * A trackpad reports fractional scroll continuously, and without a floor
+         * a resting finger walks the shelf on its own.
+         */
+        const val SCROLL_THRESHOLD = 0.4f
 
         /**
          * Ceiling on one pointer frame.

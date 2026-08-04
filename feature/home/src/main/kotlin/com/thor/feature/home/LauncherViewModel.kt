@@ -1402,7 +1402,8 @@ class LauncherViewModel @Inject constructor(
                 ControllerCommand.NAVIGATE_UP, ControllerCommand.BACK -> enterNavBar()
                 ControllerCommand.OPEN_SIDE_MENU -> toggleCouchPlatformMenu()
                 ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
-                ControllerCommand.OPEN_APP_DRAWER -> openAppDrawer()
+                // As above: Tab reaches the system list, not the drawer.
+                ControllerCommand.OPEN_APP_DRAWER -> toggleCouchPlatformMenu()
                 ControllerCommand.SEARCH -> emit(LauncherEffect.OpenSearch)
                 ControllerCommand.GO_HOME -> goHome()
                 else -> Unit
@@ -1445,7 +1446,16 @@ class LauncherViewModel @Inject constructor(
             ControllerCommand.TOGGLE_FAVORITE -> focusedEntry?.let(::toggleFavorite)
             ControllerCommand.BACK -> if (state.isFolderOpen) closeFolder() else enterNavBar()
             ControllerCommand.OPEN_SIDE_MENU -> toggleCouchPlatformMenu()
-            ControllerCommand.OPEN_APP_DRAWER -> openAppDrawer()
+            /*
+             * Tab opens the platform menu here, not the app drawer.
+             *
+             * On a keyboard Tab is bound to the drawer, which is the right
+             * answer on the handheld grid — the drawer is what a keyboard user
+             * reaches for. Couch mode has no grid to add anything to, and its
+             * apps are a rail like any other; what a keyboard user wants from
+             * this screen is the system list, which otherwise has no key at all.
+             */
+            ControllerCommand.OPEN_APP_DRAWER -> toggleCouchPlatformMenu()
             ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
             ControllerCommand.GO_HOME -> goHome()
             ControllerCommand.SEARCH -> emit(LauncherEffect.OpenSearch)
