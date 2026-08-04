@@ -98,6 +98,19 @@ import com.thor.feature.home.LauncherUiState
 import com.thor.feature.home.component.AppIcon
 import kotlinx.coroutines.delay
 
+/**
+ * Whether Couch Mode draws the television dashboard.
+ *
+ * On: the hero, the library counts, one shelf and the system row, with a rail
+ * down the side. Off: the earlier single-column shelf, which is kept whole
+ * rather than deleted because the shape of this screen is not settled — the same
+ * reasoning `LauncherFeatures` records for the dock.
+ *
+ * A constant rather than a setting for that same reason: an unsettled question
+ * presented as a preference is one the user has to answer.
+ */
+internal const val COUCH_DASHBOARD_LAYOUT = true
+
 /** Controller position in Couch Mode's rail-based library. */
 data class CouchFocus(val rail: Int = 0, val item: Int = 0)
 
@@ -342,6 +355,28 @@ fun CouchScreen(
                 } else if (selectedTab.isHome) {
                     if (focusedEntry == null) {
                         EmptyCouchLibrary(modifier = Modifier.weight(1f))
+                    } else if (COUCH_DASHBOARD_LAYOUT) {
+                        /*
+                         * The television dashboard: hero, library counts, one
+                         * shelf and a system row, with a rail down the side.
+                         *
+                         * The rail deck below is kept whole behind the flag
+                         * rather than deleted — see [LauncherFeatures] for why
+                         * an unsettled shape is decided in code. Everything the
+                         * controller does is unchanged: this draws the same
+                         * rails from the same focus, so up and down still walk
+                         * the library and the shelf still moves with it.
+                         */
+                        CouchHome(
+                            state = state,
+                            rails = rails,
+                            focus = CouchFocus(safeRail, safeItem),
+                            onEntryFocused = onEntryFocused,
+                            onEntrySelected = onEntrySelected,
+                            onEntryLongPressed = onEntryLongPressed,
+                            onRailSelected = { rail -> onEntryFocused(rail, 0) },
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                        )
                     } else {
                         Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
                             /*
@@ -1498,7 +1533,7 @@ private fun CouchRailContent(
 }
 
 @Composable
-private fun CouchCard(
+internal fun CouchCard(
     entry: GridEntry,
     platform: Platform?,
     size: Dp,
@@ -1678,7 +1713,7 @@ private fun CouchCard(
 }
 
 @Composable
-private fun FolderCard(folder: FolderEntry, platform: Platform?) {
+internal fun FolderCard(folder: FolderEntry, platform: Platform?) {
     val colors = ThorTheme.colors
     val art = folder.artworkUri ?: platform?.artwork?.heroUri
     val bundled = PlatformIcons.preferredOverEnabled(platform?.artwork, platform?.id)
@@ -1736,7 +1771,7 @@ private fun EmptyCouchLibrary(modifier: Modifier = Modifier) {
     }
 }
 
-private fun GridEntry.lastPlayedAt(): Long? = when (this) {
+internal fun GridEntry.lastPlayedAt(): Long? = when (this) {
     is GameEntry -> stats.lastPlayedEpochMs
     is AppEntry -> lastPlayedEpochMs
     else -> null
@@ -1749,27 +1784,27 @@ private fun GridEntry.couchBackdropArtwork(): String? = when (this) {
     else -> null
 }
 
-private fun GridEntry.platform(platforms: Map<String, Platform>): Platform? = when (this) {
+internal fun GridEntry.platform(platforms: Map<String, Platform>): Platform? = when (this) {
     is GameEntry -> platforms[platformId]
     is FolderEntry -> PlatformFolders.platformIdOf(id)?.let(platforms::get)
     else -> null
 }
 
-private fun GridEntry.typeLabel(): String = when (this) {
+internal fun GridEntry.typeLabel(): String = when (this) {
     is GameEntry -> "${platformId.uppercase()} GAME"
     is AppEntry -> "ANDROID APP"
     is FolderEntry -> "COLLECTION"
     else -> "LIBRARY"
 }
 
-private fun Long.asCouchPlaytime(): String {
+internal fun Long.asCouchPlaytime(): String {
     val totalMinutes = this / 60_000L
     val hours = totalMinutes / 60L
     val minutes = totalMinutes % 60L
     return if (hours > 0L) "${hours}h ${minutes}m" else "${minutes}m"
 }
 
-private fun Long.asCouchRelativeTime(): String {
+internal fun Long.asCouchRelativeTime(): String {
     val elapsedMinutes = ((System.currentTimeMillis() - this).coerceAtLeast(0L)) / 60_000L
     val elapsedHours = elapsedMinutes / 60L
     val elapsedDays = elapsedHours / 24L
