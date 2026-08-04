@@ -37,6 +37,8 @@ import com.thor.core.model.LauncherAction
 import com.thor.core.model.SortOrder
 import com.thor.core.ui.component.AnimatedWallpaperBackground
 import com.thor.core.ui.component.ModeChangeVeil
+import com.thor.core.ui.profile.ShellStatus
+import com.thor.core.ui.profile.ShellStatusActions
 import com.thor.feature.home.component.ContextAction
 import com.thor.feature.home.component.EntryContextMenu
 import com.thor.feature.home.component.FloatingDock
@@ -147,6 +149,9 @@ fun BottomScreen(
      * of all of it. Only the grid, the wallpaper and the section bar differ.
      */
     couchMode: Boolean = false,
+    /** Profile and notifications for couch mode.s corner. */
+    status: ShellStatus? = null,
+    statusActions: ShellStatusActions = ShellStatusActions(),
     modifier: Modifier = Modifier,
 ) {
     val dimens = ThorTheme.dimens
@@ -251,6 +256,8 @@ fun BottomScreen(
                 fullscreenSection = couchFullscreenSection,
                 sectionContent = sectionContent,
                 settingsContent = couchSettingsContent,
+                status = status,
+                statusActions = statusActions,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {

@@ -134,8 +134,8 @@ import com.thor.feature.settings.tutorial.TutorialPanel
 import com.thor.feature.settings.tutorial.TutorialScreen
 import com.thor.feature.settings.tutorial.TutorialStep
 import com.thor.feature.settings.tutorial.rememberPermissionItems
-import com.thor.feature.topscreen.ShellStatus
-import com.thor.feature.topscreen.ShellStatusActions
+import com.thor.core.ui.profile.ShellStatus
+import com.thor.core.ui.profile.ShellStatusActions
 import com.thor.feature.topscreen.TopScreen
 
 /** Which full-screen overlay, if any, is showing on the info surface. */
@@ -1782,7 +1782,7 @@ fun ThorApp(
                     // treatments on one panel would contradict each other.
                     focused = activeSurface == InputSurface.TOP && !overlayIsOpen,
                     // Null hides the cluster; see LauncherFeatures.
-                    status = shellStatus.takeIf { LauncherFeatures.PROFILE_CLUSTER_ENABLED },
+                    status = shellStatus.takeIf { LauncherFeatures.TOP_SCREEN_PROFILE_CLUSTER },
                     statusActions = shellStatusActions,
                 )
                 infoOverlays()
@@ -2008,6 +2008,10 @@ fun ThorApp(
                 // control, matching whatever its top panel is showing.
                 sectionContent = sectionHost,
                 couchMode = mode == DualScreenMode.COUCH,
+                // Couch mode has the corner for it and the top screen does not,
+                // which is why this is not behind the same flag.
+                status = shellStatus,
+                statusActions = shellStatusActions,
                 modifier = Modifier.fillMaxSize(),
             )
 

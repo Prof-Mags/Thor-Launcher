@@ -1,4 +1,4 @@
-package com.thor.feature.topscreen
+package com.thor.core.ui.profile
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween

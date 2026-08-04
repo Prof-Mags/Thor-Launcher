@@ -1,4 +1,4 @@
-package com.thor.feature.topscreen
+package com.thor.core.ui.profile
 
 import androidx.compose.runtime.Immutable
 import com.thor.core.model.LauncherProfile

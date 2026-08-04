@@ -91,6 +91,9 @@ import com.thor.core.model.PlatformFolders
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.icon.PlatformIcons
 import com.thor.core.ui.component.LauncherStatusBar
+import com.thor.core.ui.profile.ProfileNotificationCluster
+import com.thor.core.ui.profile.ShellStatus
+import com.thor.core.ui.profile.ShellStatusActions
 import com.thor.feature.home.LauncherUiState
 import com.thor.feature.home.component.AppIcon
 import kotlinx.coroutines.delay
@@ -213,6 +216,9 @@ fun CouchScreen(
     fullscreenSection: Boolean = false,
     sectionContent: (@Composable (LauncherTab) -> Unit)? = null,
     settingsContent: (@Composable () -> Unit)? = null,
+    /** Profile and notifications for the corner; null keeps the plain label. */
+    status: ShellStatus? = null,
+    statusActions: ShellStatusActions = ShellStatusActions(),
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -304,6 +310,8 @@ fun CouchScreen(
                         showStatusBar = showStatusBar,
                         onTabSelected = onTabSelected,
                         onSettingsSelected = onSettingsSelected,
+                        status = status,
+                        statusActions = statusActions,
                     )
                 }
 
@@ -440,6 +448,9 @@ fun CouchNavigationBar(
     showStatusBar: Boolean,
     onTabSelected: (LauncherTab) -> Unit,
     onSettingsSelected: () -> Unit,
+    /** Who is signed in, drawn in the corner. Null draws the plain mode label. */
+    status: ShellStatus? = null,
+    statusActions: ShellStatusActions = ShellStatusActions(),
 ) {
     val colors = ThorTheme.colors
     Column(
@@ -485,18 +496,42 @@ fun CouchNavigationBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(colors.cursor),
-                )
-                Text(
-                    text = "COUCH",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold,
-                )
+                /*
+                 * Who is signed in, where the mode label used to be.
+                 *
+                 * "COUCH" told the user something they could see for themselves —
+                 * the whole interface had changed shape — and took the one piece
+                 * of corner a television interface has for the things a
+                 * television interface actually needs: whose profile this is, and
+                 * whether anything is waiting.
+                 */
+                if (status != null) {
+                    ProfileNotificationCluster(
+                        profile = status.profile,
+                        avatarPath = status.avatarPath,
+                        access = status.notifications,
+                        expanded = status.shadeOpen,
+                        onToggleExpanded = statusActions.onToggleShade,
+                        onGrantAccess = statusActions.onGrantAccess,
+                        onOpenAppInfo = statusActions.onOpenAppInfo,
+                        onNotificationOpened = statusActions.onNotificationOpened,
+                        onNotificationDismissed = statusActions.onNotificationDismissed,
+                        onDismissAll = statusActions.onDismissAll,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(colors.cursor),
+                    )
+                    Text(
+                        text = "COUCH",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
                 if (showStatusBar) {
                     Box(
                         modifier = Modifier
@@ -1685,13 +1720,13 @@ private const val INFO_PANEL_ALPHA = 0.82f
 private const val INFO_DESCRIPTION_LINES = 5
 private const val CARD_GAP = 14
 /** Preferred card edge, subject to what the shelf slot can hold. */
-private const val SQUARE_CARD_SIZE = 192
-private const val MIN_CARD_SIZE = 116
+private const val SQUARE_CARD_SIZE = 144
+private const val MIN_CARD_SIZE = 87
 private const val CARD_RAIL_EXTRA_HEIGHT = 22
 /** Room the rail's title row takes above the cards. */
 private const val RAIL_HEADER_HEIGHT = 26
-private const val HERO_WEIGHT = 0.47f
-private const val HERO_CARD_WIDTH = 0.48f
+private const val HERO_WEIGHT = 0.35f
+private const val HERO_CARD_WIDTH = 0.36f
 private const val HERO_ACTION_HEIGHT = 40
 private const val LIBRARY_SUMMARY_HEIGHT = 76
 private const val BACKDROP_SETTLE_MS = 105L

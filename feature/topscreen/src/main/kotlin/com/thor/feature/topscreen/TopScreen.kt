@@ -40,6 +40,9 @@ import com.thor.core.model.GridEntry
 import com.thor.core.model.Platform
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.component.LauncherStatusBar
+import com.thor.core.ui.profile.ProfileNotificationCluster
+import com.thor.core.ui.profile.ShellStatus
+import com.thor.core.ui.profile.ShellStatusActions
 import kotlinx.coroutines.delay
 
 /**

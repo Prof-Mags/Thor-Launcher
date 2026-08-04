@@ -33,12 +33,14 @@ object LauncherFeatures {
     /**
      * Whether the top screen shows the profile and notification cluster.
      *
-     * Off: the corner is quiet again while the rest of the panel is being
-     * settled. Everything behind it is intact and working — the shade, the
-     * listener service and its permission prompt, the avatar, the switcher —
-     * and profiles themselves are entirely unaffected: they still own the
-     * settings and the library, and are still managed from their own settings
-     * category. This hides one corner of one screen, not the feature.
+     * Off: that corner is quiet while the rest of the panel is being settled.
+     * Couch mode draws the same cluster and is not covered by this — it has a
+     * top bar with room for it, where the information panel does not.
+     *
+     * Everything behind it is intact either way: the shade, the listener service
+     * and its permission prompt, the avatar and the switcher. Profiles are
+     * entirely unaffected — they still own the settings and the library, and are
+     * still managed from their own settings category.
      */
-    const val PROFILE_CLUSTER_ENABLED = false
+    const val TOP_SCREEN_PROFILE_CLUSTER = false
 }
