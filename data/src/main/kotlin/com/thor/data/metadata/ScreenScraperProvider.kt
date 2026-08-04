@@ -44,18 +44,32 @@ class ScreenScraperProvider @Inject constructor(
     override val displayName: String = "ScreenScraper"
 
     /**
-     * ScreenScraper needs only the application's own developer key to answer.
+     * Either credential will do: the user's account, or the build's developer
+     * key, or both.
      *
-     * A user account is optional — it raises the daily quota and unlocks the
-     * higher-resolution media, but anonymous requests against a registered
-     * developer key work. That is why a launcher never asks the user for
-     * anything to make ScreenScraper function.
+     * This used to demand the developer key and nothing else, which was wrong in
+     * the way that matters most — a user who had entered their ScreenScraper
+     * username and password got a provider that refused to make a single
+     * request, and settings that told them their account could not help. An
+     * account is a login to the same service; if it authorises requests, the
+     * launcher has no business insisting on a second credential it does not have.
+     *
+     * Both are sent when both exist. The developer key raises what the
+     * application is allowed, the account raises what the user is allowed, and
+     * they are not alternatives so much as two halves of the same quota.
      */
-    override suspend fun isConfigured(): Boolean = hasDeveloperKey
+    override suspend fun isConfigured(): Boolean = hasDeveloperKey || hasUserAccount()
+
+    private suspend fun hasUserAccount(): Boolean {
+        val config = settings.metadata.first()
+        return config.screenScraperUser.isNotBlank() && config.screenScraperPassword.isNotBlank()
+    }
 
     override suspend fun checkConnection(): ProviderStatus {
-        if (!hasDeveloperKey) {
-            return ProviderStatus.Error("This build has no ScreenScraper developer key")
+        if (!isConfigured()) {
+            return ProviderStatus.Error(
+                "Sign in with a ScreenScraper account, or build with a developer key",
+            )
         }
         val config = settings.metadata.first()
 
@@ -64,13 +78,11 @@ class ScreenScraperProvider @Inject constructor(
             ?.newBuilder()
             ?.addQueryParameter("output", "json")
             ?.addQueryParameter("softname", SOFT_NAME)
-            ?.addQueryParameter("devid", DEV_ID)
-            ?.addQueryParameter("devpassword", DEV_PASSWORD)
             ?.apply {
-                config.screenScraperUser.takeIf(String::isNotBlank)
-                    ?.let { addQueryParameter("ssid", it) }
-                config.screenScraperPassword.takeIf(String::isNotBlank)
-                    ?.let { addQueryParameter("sspassword", it) }
+                // Only what exists. An empty `devid` is not the same as no
+                // `devid` — it is a credential presented and blank, which is a
+                // rejection rather than an anonymous request.
+                addCredentials(config)
             }
             ?.build()
             ?: return ProviderStatus.Error("Malformed URL")
@@ -92,7 +104,7 @@ class ScreenScraperProvider @Inject constructor(
     }
 
     override suspend fun search(query: MetadataQuery): List<MetadataCandidate> {
-        if (!hasDeveloperKey) return emptyList()
+        if (!isConfigured()) return emptyList()
         val config = settings.metadata.first()
 
         val systemId = query.providerPlatformIds["screenscraper"] ?: run {
@@ -108,17 +120,7 @@ class ScreenScraperProvider @Inject constructor(
             ?.addQueryParameter("romnom", query.fileName)
             // Size narrows an ambiguous filename to a specific dump.
             ?.addQueryParameter("romtaille", query.fileSizeBytes.toString())
-            ?.addQueryParameter("devid", DEV_ID)
-            ?.addQueryParameter("devpassword", DEV_PASSWORD)
-            ?.apply {
-                // The user's own account is optional; it lifts the quota.
-                config.screenScraperUser.takeIf(String::isNotBlank)?.let {
-                    addQueryParameter("ssid", it)
-                }
-                config.screenScraperPassword.takeIf(String::isNotBlank)?.let {
-                    addQueryParameter("sspassword", it)
-                }
-            }
+            ?.apply { addCredentials(config) }
             ?.build()
             ?: return emptyList()
 
@@ -139,6 +141,22 @@ class ScreenScraperProvider @Inject constructor(
             ThorLog.w(TAG, "Malformed response for '${query.fileName}'", e)
             emptyList()
         }
+    }
+
+    /**
+     * Adds whichever credentials this launcher actually has.
+     *
+     * Each is added only when it is there. A blank `devid` is not equivalent to
+     * omitting it — it is a credential offered and empty, which a service reads
+     * as a bad login rather than as an anonymous request.
+     */
+    private fun okhttp3.HttpUrl.Builder.addCredentials(config: com.thor.core.model.MetadataSettings) {
+        DEV_ID.takeIf(String::isNotBlank)?.let { addQueryParameter("devid", it) }
+        DEV_PASSWORD.takeIf(String::isNotBlank)?.let { addQueryParameter("devpassword", it) }
+        config.screenScraperUser.takeIf(String::isNotBlank)
+            ?.let { addQueryParameter("ssid", it) }
+        config.screenScraperPassword.takeIf(String::isNotBlank)
+            ?.let { addQueryParameter("sspassword", it) }
     }
 
     private suspend fun get(url: String): String? {

@@ -1032,8 +1032,8 @@ private fun MetadataPage(
         InfoRow(
             "No screenshot source",
             "SteamGridDB has covers, banners and logos but no widescreen images. " +
-                "ScreenScraper supplies them for retro systems and RAWG for modern " +
-                "ones 2014 without one of those the game panel has nothing to show.",
+                "Add IGDB credentials, a RAWG key, or a ScreenScraper account " +
+                "below — without one of those the game panel has nothing to show.",
         )
     }
 
@@ -1088,12 +1088,10 @@ private fun MetadataPage(
     RowDivider()
     TextFieldRow(
         title = "ScreenScraper account",
-        // Says outright when the account cannot do anything on its own. These
-        // fields look like the switch that turns the provider on and are not:
-        // the developer pair is compiled into the build.
+        // These fields are what turns the provider on in a build with no
+        // developer key of its own, which is this one.
         subtitle = if (screenScraperKeyMissing) {
-            "This build has no ScreenScraper developer key, so the provider is off " +
-                "and an account cannot turn it on"
+            "Signs this launcher in to ScreenScraper. From screenscraper.fr"
         } else {
             "Optional — raises the daily quota and image quality"
         },
