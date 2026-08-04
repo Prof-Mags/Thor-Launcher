@@ -36,6 +36,7 @@ import com.thor.core.model.GridEntry
 import com.thor.core.model.LauncherAction
 import com.thor.core.model.SortOrder
 import com.thor.core.ui.component.AnimatedWallpaperBackground
+import com.thor.core.ui.component.ModeChangeVeil
 import com.thor.feature.home.component.ContextAction
 import com.thor.feature.home.component.EntryContextMenu
 import com.thor.feature.home.component.FloatingDock
@@ -341,6 +342,10 @@ fun BottomScreen(
         }
 
         } // end of the handheld layout; couch mode drew its own above
+
+        // Over both layouts, so it covers the frame on which one replaces the
+        // other. Last in the box for the same reason.
+        ModeChangeVeil(key = couchMode, modifier = Modifier.fillMaxSize())
 
         if (state.isScanning) {
             ScanBanner(

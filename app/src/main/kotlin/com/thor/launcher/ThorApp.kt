@@ -486,6 +486,7 @@ fun ThorApp(
     )
     val couchModeNow = rememberUpdatedState(mode == DualScreenMode.COUCH)
 
+
     /*
      * ---- Focus -----------------------------------------------------------------
      *
@@ -677,6 +678,26 @@ fun ThorApp(
             controls = settings.controls,
             audio = settings.audio,
         )
+
+        /*
+         * The mode change announces itself.
+         *
+         * Keyed on the mode rather than on couch mode specifically, so leaving
+         * the television is as audible as arriving at it — the interface changes
+         * just as completely either way, and a cue for only one direction is one
+         * the user learns to distrust.
+         *
+         * Skipped on the first pass: starting the launcher already in couch mode
+         * is not a change of mode, and the boot cue is playing over it anyway.
+         */
+        var modeSettled by remember { mutableStateOf(false) }
+        LaunchedEffect(mode) {
+            if (!modeSettled) {
+                modeSettled = true
+                return@LaunchedEffect
+            }
+            feedback.play(FeedbackCue.MODE_CHANGE)
+        }
 
         /*
          * ---- Text entry ------------------------------------------------------

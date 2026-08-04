@@ -78,6 +78,15 @@ enum class FeedbackCue {
 
     /** The launcher started: the one cue that fires once per process. */
     BOOT,
+
+    /**
+     * The launcher moved between the handheld layout and the television one.
+     *
+     * Its own cue rather than [SUCCESS] or [BOOT]. Nothing was confirmed and
+     * nothing started; the whole interface changed shape, which on a screen
+     * across the room the user may not be looking directly at.
+     */
+    MODE_CHANGE,
 }
 
 /**
@@ -210,6 +219,10 @@ class ThorFeedback(
             // gated behind "navigation sounds" would be off for a reason that has
             // nothing to do with it.
             FeedbackCue.BOOT -> true
+            // For the same reason as BOOT: a mode change is not navigation, and
+            // silencing it with navigation sounds would be silencing the wrong
+            // thing.
+            FeedbackCue.MODE_CHANGE -> true
             FeedbackCue.NAVIGATE, FeedbackCue.SCROLL, FeedbackCue.PAGE -> audio.navigationSounds
             FeedbackCue.CONFIRM, FeedbackCue.LAUNCH -> audio.launchSounds
             else -> audio.navigationSounds
@@ -241,6 +254,9 @@ class ThorFeedback(
             FeedbackCue.HOME -> 24L to 0.65f
             // A single soft thud under the chime, not a rattle.
             FeedbackCue.BOOT -> 55L to 0.75f
+            // Shorter than boot: the handheld is usually in the hand when this
+            // fires, and boot.s thud in the palm mid-session reads as a fault.
+            FeedbackCue.MODE_CHANGE -> 34L to 0.6f
         }
 
         val amplitude = (amplitudeFraction * intensity * 255f)
@@ -326,6 +342,7 @@ class ThorFeedback(
             FeedbackCue.SETTINGS_OPEN to R.raw.ui_settings,
             FeedbackCue.HOME to R.raw.ui_home,
             FeedbackCue.BOOT to R.raw.ui_boot,
+            FeedbackCue.MODE_CHANGE to R.raw.ui_couch_mode,
         )
     }
 }
