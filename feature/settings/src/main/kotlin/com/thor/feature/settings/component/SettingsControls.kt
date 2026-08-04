@@ -26,8 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Remove
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -51,6 +49,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.component.ThorDropdownItem
+import com.thor.core.ui.component.ThorDropdownMenu
 import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
@@ -373,6 +373,18 @@ fun <T> ChoiceRow(
     selected: T,
     focused: Boolean = false,
     label: (T) -> String,
+    /**
+     * Short form for the value button, where [label] is too long for it.
+     *
+     * The button is a fixed-width pill with one line of text, so a label
+     * carrying a description ran off the end of it — and a caption cut mid-way
+     * leaves whatever happens to be at the cut, which for a layout preset was a
+     * stray column count. The full [label] still names each option in the menu,
+     * where there is room; this is only what the row reports at rest.
+     */
+    valueLabel: ((T) -> String)? = null,
+    /** A second line per option in the menu, for detail the label omits. */
+    optionDescription: ((T) -> String?)? = null,
     onSelected: (T) -> Unit,
 ) {
     val colors = ThorTheme.colors
@@ -402,7 +414,7 @@ fun <T> ChoiceRow(
             onClick = { expanded = true },
             trailing = {
                 SettingsTextButton(
-                    label = label(selected),
+                    label = (valueLabel ?: label)(selected),
                     modifier = Modifier.widthIn(max = VALUE_MAX_WIDTH.dp),
                     containerColor = if (focused) {
                         colors.cursor.copy(alpha = 0.14f)
@@ -415,31 +427,20 @@ fun <T> ChoiceRow(
             },
         )
 
-        DropdownMenu(
+        ThorDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier
-                .heightIn(max = MENU_MAX_HEIGHT.dp)
-                .background(colors.surfaceElevated),
+            modifier = Modifier.heightIn(max = MENU_MAX_HEIGHT.dp),
         ) {
             options.forEach { option ->
-                val isSelected = option == selected
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = label(option),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (isSelected) colors.cursor else colors.onSurface,
-                        )
-                    },
+                ThorDropdownItem(
+                    label = label(option),
+                    description = optionDescription?.invoke(option),
+                    selected = option == selected,
                     onClick = {
                         expanded = false
                         onSelected(option)
                     },
-                    modifier = Modifier.background(
-                        if (isSelected) colors.cursor.copy(alpha = 0.10f)
-                        else Color.Transparent,
-                    ),
                 )
             }
         }

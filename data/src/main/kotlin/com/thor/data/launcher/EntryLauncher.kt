@@ -1,4 +1,4 @@
-﻿package com.thor.data.launcher
+package com.thor.data.launcher
 
 import android.app.ActivityOptions
 import android.content.ActivityNotFoundException

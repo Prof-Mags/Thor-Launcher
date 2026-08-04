@@ -314,7 +314,7 @@ class MetadataAggregator @Inject constructor(
          * overall.
          *
          * A single priority order cannot say this. IGDB has the landscape
-         * artwork — uniform captures with real dimensions to filter on — while
+         * artwork â€” uniform captures with real dimensions to filter on â€” while
          * SteamGridDB has the square grid that a cell wants and nobody else
          * offers. Ranking IGDB above SteamGridDB to get the first would hand it
          * the descriptions too, and ranking it below gives the panel a banner.
@@ -400,7 +400,7 @@ class MetadataAggregator @Inject constructor(
          * Stated rather than derived from the priority order, because the order
          * is one list and these are three different questions. IGDB has the
          * landscape artwork, SteamGridDB the square grid a cell wants, and
-         * Wikipedia the prose — and no single ranking puts all three first.
+         * Wikipedia the prose â€” and no single ranking puts all three first.
          */
         const val ARTWORK_PROVIDER = "igdb"
         const val ICON_PROVIDER = "steamgriddb"

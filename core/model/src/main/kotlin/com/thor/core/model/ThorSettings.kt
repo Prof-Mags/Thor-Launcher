@@ -375,7 +375,7 @@ data class MetadataSettings(
      *
      * Two values rather than one key: the pair is exchanged for a bearer token
      * that the provider caches. Both are obtained from the Twitch developer
-     * console in a couple of minutes, with no approval step — which is the
+     * console in a couple of minutes, with no approval step â€” which is the
      * reason this provider exists alongside ScreenScraper rather than instead
      * of it.
      */

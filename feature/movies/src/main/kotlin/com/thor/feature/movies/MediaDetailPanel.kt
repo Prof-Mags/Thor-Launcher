@@ -22,8 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +45,8 @@ import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.component.ThorDropdownItem
+import com.thor.core.ui.component.ThorDropdownMenu
 import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.model.CacheStatus
 import com.thor.core.model.Episode
@@ -423,37 +423,17 @@ private fun SeasonDropdown(
             )
         }
 
-        DropdownMenu(
+        ThorDropdownMenu(
             expanded = expanded,
             onDismissRequest = { onExpandedChange(false) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colors.surfaceHighest),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             seasons.forEach { season ->
-                val isSelected = season.number == selected?.number
-                DropdownMenuItem(
-                    text = {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(
-                                text = seasonTitle(season),
-                                color = if (isSelected) colors.cursor else colors.onSurface,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            )
-                            Text(
-                                text = "${season.episodes.size} EP",
-                                color = colors.onSurfaceVariant,
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
-                    },
+                ThorDropdownItem(
+                    label = seasonTitle(season),
+                    trailing = "${season.episodes.size} EP",
+                    selected = season.number == selected?.number,
                     onClick = { onSelected(season.number) },
-                    modifier = Modifier.background(
-                        if (isSelected) colors.cursor.copy(alpha = 0.12f) else Color.Transparent,
-                    ),
                 )
             }
         }

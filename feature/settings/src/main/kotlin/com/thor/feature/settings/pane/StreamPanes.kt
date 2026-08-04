@@ -144,7 +144,8 @@ internal fun StreamQualityPage(
             options = StreamCodec.entries,
             selected = quality.codec,
             focused = focusedRow == 4,
-            label = { "${it.label} — ${it.detail}" },
+            label = { it.label },
+            optionDescription = { it.detail },
             onSelected = { value ->
                 viewModel.updateStream { it.copy(quality = it.quality.copy(codec = value)) }
             },
@@ -174,7 +175,8 @@ internal fun StreamQualityPage(
             options = StreamNetwork.entries,
             selected = quality.network,
             focused = focusedRow == 6,
-            label = { "${it.label} — ${it.detail}" },
+            label = { it.label },
+            optionDescription = { it.detail },
             onSelected = { value ->
                 viewModel.updateStream { it.copy(quality = it.quality.copy(network = value)) }
             },

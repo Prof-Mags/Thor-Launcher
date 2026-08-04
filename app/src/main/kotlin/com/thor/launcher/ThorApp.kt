@@ -1329,12 +1329,19 @@ fun ThorApp(
          * A lambda rather than a single overlay because the two panels are separate
          * windows — nothing can cover both — so each draws its own, from the one
          * progress value.
+         *
+         * `showContent` decides which of them runs the sequence. Only one should:
+         * the mark, the wordmark and the loading rail drawn on both panels of a
+         * device whose screens are stacked read as a mirror rather than as one
+         * launcher starting. The other takes the plate alone, which is the same
+         * colour on the same fade, so the two clear together.
          */
-        val introOverlay: @Composable () -> Unit = {
+        val introOverlay: @Composable (Boolean) -> Unit = { showContent ->
             if (introVisible) {
                 ThorIntro(
                     progress = introProgress.value,
                     motion = introMotion,
+                    showContent = showContent,
                 )
             }
         }
@@ -1740,7 +1747,7 @@ fun ThorApp(
                         onItemSelected = moviesSection::pickTitle,
                     )
                     infoOverlays()
-                    if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay()
+                    if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay(true)
                     return@Box
                 }
 
@@ -1760,7 +1767,7 @@ fun ThorApp(
                         modifier = Modifier.fillMaxSize(),
                     )
                     infoOverlays()
-                    if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay()
+                    if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay(true)
                     return@Box
                 }
 
@@ -1809,7 +1816,7 @@ fun ThorApp(
                 // single-screen modes both surfaces share one window, and two intros
                 // stacked in it would read as a mirror rather than as one launcher
                 // starting.
-                if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay()
+                if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay(true)
             }
         }
 
@@ -2139,7 +2146,11 @@ fun ThorApp(
             // Above everything on this panel, including the keyboard: at cold start
             // nothing else is open, and if anything were, the intro is what the user
             // is looking at.
-            if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay()
+            //
+            // The plate only. The sequence itself runs on the top panel, and this
+            // one carries the matching background so the pair reads as a single
+            // launcher starting rather than as two copies of it.
+            if (mode == DualScreenMode.DUAL_DISPLAY) introOverlay(false)
             }
         }
 
@@ -2615,7 +2626,7 @@ fun ThorApp(
                         }
                     }
                     // One overlay for the shared window, covering both halves.
-                    introOverlay()
+                    introOverlay(true)
                 }
             }
 
@@ -2628,7 +2639,7 @@ fun ThorApp(
                 Box(modifier = Modifier.fillMaxSize()) {
                     bottomContent(Modifier.fillMaxSize())
                     infoOverlays()
-                    introOverlay()
+                    introOverlay(true)
                 }
             }
         }

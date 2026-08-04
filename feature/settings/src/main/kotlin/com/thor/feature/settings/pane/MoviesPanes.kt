@@ -1,4 +1,4 @@
-﻿package com.thor.feature.settings.pane
+package com.thor.feature.settings.pane
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth

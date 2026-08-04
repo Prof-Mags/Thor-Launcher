@@ -28,8 +28,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -62,6 +60,8 @@ import com.thor.core.model.GameMetadata
 import com.thor.core.model.GridEntry
 import com.thor.core.model.Platform
 import com.thor.core.ui.component.ArtworkImage
+import com.thor.core.ui.component.ThorDropdownItem
+import com.thor.core.ui.component.ThorDropdownMenu
 
 /** The edited values handed back when the dialog is confirmed. */
 data class EntryEdits(
@@ -472,10 +472,11 @@ private fun PickerRow(
             )
         }
 
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        ThorDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { (id, optionLabel) ->
-                DropdownMenuItem(
-                    text = { Text(optionLabel) },
+                ThorDropdownItem(
+                    label = optionLabel,
+                    selected = optionLabel == selected,
                     onClick = {
                         onSelected(id)
                         expanded = false

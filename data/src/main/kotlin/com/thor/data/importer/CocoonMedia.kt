@@ -51,7 +51,7 @@ data class CocoonImage(
      * Byte length, which is how one picture is told from three copies of it.
      *
      * Zero when the source could not say, which is treated as "unknown" rather
-     * than as a size — see [selectCocoonArtwork].
+     * than as a size â€” see [selectCocoonArtwork].
      */
     val sizeBytes: Long = 0L,
 )
@@ -120,7 +120,7 @@ fun selectCocoonArtwork(images: List<CocoonImage>): CocoonArtwork {
      * update and Android's `(1)` and `(2)` downloads all reduce to one title,
      * and comparing their locations finds four different things. In a real
      * folder three of the four Batman Arkham Asylum captures are 272233 bytes to
-     * the byte and the fourth is 100766 — one picture and a genuinely different
+     * the byte and the fourth is 100766 â€” one picture and a genuinely different
      * one, which is exactly the distinction wanted.
      *
      * A size of zero means the source would not say, and those are all kept:

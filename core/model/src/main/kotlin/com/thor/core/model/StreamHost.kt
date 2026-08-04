@@ -174,7 +174,9 @@ enum class StreamAudio(
 enum class StreamNetwork(val label: String, val detail: String) {
     AUTO("Automatic", "Let the connection decide, from the PC's address"),
     LOCAL("Same network", "Largest packets. Only for a PC on your own LAN"),
-    REMOTE("Over a VPN or the internet", "Smaller packets that survive a lower MTU"),
+    // Short enough for the settings row's value button, which is one line wide
+    // and ellipsises rather than wraps. The detail carries the rest.
+    REMOTE("VPN or internet", "Smaller packets that survive a lower MTU"),
 }
 
 @Serializable

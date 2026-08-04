@@ -33,17 +33,26 @@ import com.thor.core.designsystem.theme.ThorTheme
 import kotlin.math.roundToInt
 
 /**
- * THOR's cold-start sequence, rendered from the same [progress] on both panels.
+ * THOR's cold-start sequence, driven by [progress].
  *
  * The background is deliberately one flat theme color. Motion comes from the
  * mark, rings, typography, and progress rail instead of a gradient or glow that
  * competes with the launcher before it has even appeared.
+ *
+ * @param showContent whether to draw the mark, wordmark and loader, or only the
+ *   plate they sit on. The two panels are separate windows, so each has to draw
+ *   its own overlay; drawing the whole sequence on both put two of everything on
+ *   a device whose screens sit one above the other, which read as a mirror
+ *   rather than as one launcher starting. The bottom panel takes the plate
+ *   alone — same colour, same fade, driven by the same progress, so it clears at
+ *   the same instant without competing for the eye.
  */
 @Composable
 fun ThorIntro(
     progress: Float,
     motion: Boolean,
     modifier: Modifier = Modifier,
+    showContent: Boolean = true,
 ) {
     val colors = ThorTheme.colors
     val value = progress.coerceIn(0f, 1f)
@@ -88,6 +97,10 @@ fun ThorIntro(
              */
             .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
     ) {
+        // The plate still blocks touches and still fades on the same schedule.
+        // Only the sequence itself is left off.
+        if (!showContent) return@Box
+
         Column(
             modifier = Modifier.align(Alignment.Center),
             horizontalAlignment = Alignment.CenterHorizontally,

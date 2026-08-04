@@ -558,7 +558,11 @@ private fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: Setting
         options = GridSpec.PRESETS,
         selected = grid.preset,
         focused = focusedRow == 0,
-        label = { "${it.label}  ·  ${it.columns} × ${it.rows}" },
+        label = { it.label },
+        // The dimensions belong here, not in the button: at rest the row reports
+        // which preset is on, and "Comfortable  ·  5 × 4" did not fit the pill,
+        // so the part that survived the cut was a bare column count.
+        optionDescription = { "${it.columns} × ${it.rows}" },
         onSelected = { preset -> viewModel.updateGrid(preset::applyTo) },
     )
     RowDivider()

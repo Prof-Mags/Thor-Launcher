@@ -1,4 +1,4 @@
-﻿package com.thor.core.model
+package com.thor.core.model
 
 import kotlinx.serialization.Serializable
 

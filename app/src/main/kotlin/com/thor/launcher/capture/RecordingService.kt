@@ -108,13 +108,13 @@ class RecordingService : Service() {
         /*
          * The stacked frame, not the raw display.
          *
-         * This asked for `screen()` — the default display, 1920 by 1080 — and then
+         * This asked for `screen()` â€” the default display, 1920 by 1080 â€” and then
          * drew the same two-panel composition into it. The lid alone fills a
          * sixteen-by-nine canvas at that size, so the base had nowhere to go and
          * ended up inside the picture of the top screen: a recording containing
          * neither panel as itself. The frame the launcher recorder uses is the
          * shape this content was written for, and there is no reason for the two
-         * kinds of recording to differ — they draw the same thing.
+         * kinds of recording to differ â€” they draw the same thing.
          */
         val frame = geometry.frame()
         val state = recorder.startProjection(
