@@ -52,6 +52,8 @@ import com.thor.data.media.MediaRepository
 import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.ProviderStatus
 import com.thor.data.repository.GridLayoutRepository
+import com.thor.data.importer.CocoonImportResult
+import com.thor.data.importer.CocoonImporter
 import com.thor.data.profile.ProfileRepository
 import com.thor.data.repository.LibraryRepository
 import com.thor.data.scanner.EmulatorRegistry
@@ -104,6 +106,7 @@ class SettingsViewModel @Inject constructor(
     private val pointerService: PointerServiceManager,
     private val mediaRepository: MediaRepository,
     private val profileRepository: ProfileRepository,
+    private val cocoonImporter: CocoonImporter,
     mouse: MouseController,
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val appContext: Context,
@@ -182,6 +185,31 @@ class SettingsViewModel @Inject constructor(
             started = SharingStarted.Eagerly,
             initialValue = emptySet(),
         )
+
+    private val _importStatus = MutableStateFlow<String?>(null)
+
+    /** What the last artwork import did, or null if there has not been one. */
+    val importStatus: StateFlow<String?> = _importStatus.asStateFlow()
+
+    /**
+     * Copies artwork out of another launcher's media folder.
+     *
+     * Worth having because that data is already matched: somebody decided which
+     * game each picture belongs to, correctly, once. Every scraper here has to
+     * guess the same thing on every run.
+     */
+    fun importArtworkFolder(uri: String) {
+        viewModelScope.launchSafely(TAG) {
+            _importStatus.value = "Importing2026"
+            _importStatus.value = when (val result = cocoonImporter.import(uri.toUri())) {
+                is CocoonImportResult.Success ->
+                    "Imported ${result.images} images for ${result.games} games"
+                CocoonImportResult.NothingFound ->
+                    "Nothing in that folder matched a game in this library"
+                is CocoonImportResult.Failed -> result.reason
+            }
+        }
+    }
 
     private val _extensionStatus = MutableStateFlow<String?>(null)
 

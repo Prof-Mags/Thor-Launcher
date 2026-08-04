@@ -99,6 +99,8 @@ fun SettingsPageContent(
     addonStatus: Map<Int, String>,
     /** What the last extension import said, or null if there has not been one. */
     extensionStatus: String?,
+    /** What the last artwork import said, or null if there has not been one. */
+    importStatus: String? = null,
     /** Everyone on the device, for the profiles page. */
     profileRegistry: ProfileRegistry = ProfileRegistry.EMPTY,
 ) {
@@ -123,7 +125,7 @@ fun SettingsPageContent(
             SettingsPage.SCANNING ->
                 ScanningPage(settings, focusedRow, viewModel, gridClearResult)
             SettingsPage.ICON_PACKS -> IconPacksPage(
-                focusedRow, viewModel, iconPacks, iconPackStatus,
+                focusedRow, viewModel, iconPacks, iconPackStatus, importStatus,
             )
             SettingsPage.METADATA -> MetadataPage(
                 settings, focusedRow, viewModel, scrapeState, providerStatus,
@@ -191,7 +193,8 @@ fun rowCountFor(
     SettingsPage.ROM_FOLDERS -> extraRomFolderCount + 1
     SettingsPage.SCANNING -> 8
     // Two import rows, then one row per installed pack.
-    SettingsPage.ICON_PACKS -> 2 + iconPackCount
+    // Two pack imports, the artwork import, then one row per installed pack.
+    SettingsPage.ICON_PACKS -> IMPORT_ROWS + iconPackCount
     // Scrape, only-missing, trailers, check, one per provider, then four credentials.
     // Four credential rows plus IGDB.s pair.
     SettingsPage.METADATA -> PROVIDER_FIRST_ROW + PROVIDERS.size + 6
@@ -294,6 +297,7 @@ private fun IconPacksPage(
     viewModel: SettingsViewModel,
     packs: List<IconPack>,
     status: IconPackStatus,
+    importStatus: String?,
 ) {
     DirectoryPickerRow(
         title = "Import from folder",
@@ -309,6 +313,27 @@ private fun IconPacksPage(
         focused = focusedRow == 2,
         onPicked = { uri, _ -> viewModel.installIconPackFromZip(uri) },
     )
+
+    /*
+     * Game artwork from another launcher, on the same page as platform artwork.
+     *
+     * Different in what it fills — this one dresses games rather than systems —
+     * but the same question from the user's side: where does the picture come
+     * from. Worth more than any scraper for a library that has already been
+     * curated once, because it inherits decisions somebody made by hand instead
+     * of guessing them again.
+     */
+    RowDivider()
+    DirectoryPickerRow(
+        title = "Import game artwork",
+        subtitle = "Pick another launcher2019s downloaded media folder",
+        focused = focusedRow == 3,
+        onPicked = { uri, _ -> viewModel.importArtworkFolder(uri) },
+    )
+    importStatus?.let { message ->
+        RowDivider()
+        InfoRow("Last artwork import", message)
+    }
 
     // Said out loud rather than left to be inferred from the list: an import can
     // succeed for most platforms and hold artwork for the rest, and a silent
@@ -360,7 +385,8 @@ private val ZIP_MIME_TYPES = arrayOf(
 )
 
 /** Rows above the list of installed packs. */
-private const val IMPORT_ROWS = 2
+/** Two pack imports and the game-artwork import above the installed list. */
+private const val IMPORT_ROWS = 4
 
 /**
  * The controller pointer.

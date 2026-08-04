@@ -103,6 +103,7 @@ fun SettingsScreen(
     val indexerStatus by viewModel.indexerStatus.collectAsStateWithLifecycle()
     val addonStatus by viewModel.addonStatus.collectAsStateWithLifecycle()
     val extensionStatus by viewModel.extensionStatus.collectAsStateWithLifecycle()
+    val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
     val profileRegistry by viewModel.profiles.collectAsStateWithLifecycle()
 
     // Recomputed with the registry: the picture row adds a "Remove" row beneath
@@ -369,6 +370,7 @@ fun SettingsScreen(
                                 indexerStatus = indexerStatus,
                                 addonStatus = addonStatus,
                                 extensionStatus = extensionStatus,
+                                importStatus = importStatus,
                                 profileRegistry = profileRegistry,
                             )
                         }
