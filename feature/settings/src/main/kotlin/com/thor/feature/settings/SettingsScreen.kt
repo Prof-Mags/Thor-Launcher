@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -258,7 +259,29 @@ fun SettingsScreen(
 
                     Column(modifier = Modifier.fillMaxSize()) {
                         entries.forEach { entry ->
-                            Box(modifier = Modifier.weight(1f, fill = false)) {
+                            /*
+                             * The rows share the rail rather than taking their
+                             * natural height and leaving the remainder.
+                             *
+                             * `fill = false` was the reason for the gap at the
+                             * bottom: it lets a row be *at most* its share and
+                             * settle for less, so eight rows drawn at the height
+                             * their content wanted left everything below them
+                             * empty. Filling divides the rail exactly, whatever
+                             * the count, which is the same answer as making the
+                             * rows bigger, arrived at once instead of re-tuned
+                             * every time a category is added or removed.
+                             *
+                             * Capped, because a television in couch mode has far
+                             * more height than eight rows should spend, and a
+                             * rail of enormous bars is its own kind of wrong.
+                             */
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .heightIn(max = MAX_CATEGORY_ROW.dp),
+                            ) {
                                 CategoryRow(
                                     category = entry,
                                     selected = entry == category,
@@ -641,7 +664,10 @@ private fun CategoryRow(
 
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            // Fills the slot it was given rather than wrapping its content, so a
+            // row that shares a tall rail is a tall row, background and cursor ring
+            // included, instead of a short one floating at the top of its share.
+            .fillMaxSize()
             .padding(
                 horizontal = dimens.spacingSmall,
                 vertical = if (compact) 1.dp else 4.dp,
@@ -705,6 +731,9 @@ private fun CategoryRow(
         }
     }
 }
+
+/** Beyond this a row is a bar rather than a row; couch mode would reach it. */
+private const val MAX_CATEGORY_ROW = 88
 
 /**
  * Height a category row needs for its icon tile and both lines of text.
