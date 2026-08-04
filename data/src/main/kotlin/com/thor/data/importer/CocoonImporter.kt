@@ -120,7 +120,7 @@ class CocoonImporter @Inject constructor(
                 if (classMime != DocumentsContract.Document.MIME_TYPE_DIR) return@queryChildren
                 val slot = CocoonSlot.of(className) ?: return@queryChildren
 
-                queryChildren(treeUri, classId) { fileName, fileId, fileMime, _ ->
+                queryChildren(treeUri, classId) { fileName, fileId, fileMime, size ->
                     if (fileMime == DocumentsContract.Document.MIME_TYPE_DIR) {
                         return@queryChildren
                     }
@@ -132,8 +132,17 @@ class CocoonImporter @Inject constructor(
                     if (title.isBlank()) return@queryChildren
 
                     val document = DocumentsContract.buildDocumentUriUsingTree(treeUri, fileId)
-                    byTitle.getOrPut(title) { mutableListOf() }
-                        .add(CocoonImage(title, slot, document.toString()))
+                    byTitle.getOrPut(title) { mutableListOf() }.add(
+                        CocoonImage(
+                            title = title,
+                            slot = slot,
+                            source = document.toString(),
+                            // Carried through because it is what tells one
+                            // picture from three copies of it; see
+                            // [selectCocoonArtwork].
+                            sizeBytes = size,
+                        ),
+                    )
                 }
             }
         }

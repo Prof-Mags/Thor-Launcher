@@ -95,6 +95,47 @@ class CocoonMediaTest {
     }
 
     @Test
+    fun `the same picture saved several times is imported once`() {
+        // The real case: a base game, its update and Android's duplicate copies.
+        // Three of these are 272233 bytes to the byte in an actual folder; the
+        // fourth is a genuinely different capture.
+        val images = listOf(
+            image("v0", CocoonSlot.SCREENSHOT_GAMEPLAY, 272233),
+            image("copy-1", CocoonSlot.SCREENSHOT_GAMEPLAY, 272233),
+            image("copy-2", CocoonSlot.SCREENSHOT_GAMEPLAY, 272233),
+            image("update", CocoonSlot.SCREENSHOT_GAMEPLAY, 100766),
+        )
+
+        assertThat(selectCocoonArtwork(images).screenshots)
+            .containsExactly("v0", "update").inOrder()
+    }
+
+    @Test
+    fun `a duplicate is dropped even across the two screenshot classes`() {
+        val images = listOf(
+            image("play", CocoonSlot.SCREENSHOT_GAMEPLAY, 5000),
+            image("title-same", CocoonSlot.SCREENSHOT_TITLE, 5000),
+            image("title-other", CocoonSlot.SCREENSHOT_TITLE, 9000),
+        )
+
+        assertThat(selectCocoonArtwork(images).screenshots)
+            .containsExactly("play", "title-other").inOrder()
+    }
+
+    @Test
+    fun `images whose size is unknown are all kept`() {
+        // Zero means the source would not say. Treating that as a value would
+        // collapse every such file into one and lose real pictures.
+        val images = listOf(
+            image("a", CocoonSlot.SCREENSHOT_GAMEPLAY, 0),
+            image("b", CocoonSlot.SCREENSHOT_GAMEPLAY, 0),
+            image("c", CocoonSlot.SCREENSHOT_GAMEPLAY, 0),
+        )
+
+        assertThat(selectCocoonArtwork(images).screenshots).hasSize(3)
+    }
+
+    @Test
     fun `one image per slot is kept, and gameplay leads the screenshots`() {
         // Cocoon holds a base game, its update and Android's duplicates, all of
         // which reduce to the same title and the same picture.
@@ -127,6 +168,6 @@ class CocoonMediaTest {
         assertThat(selectCocoonArtwork(emptyList()).isEmpty).isTrue()
     }
 
-    private fun image(source: String, slot: CocoonSlot) =
-        CocoonImage(title = "Game", slot = slot, source = source)
+    private fun image(source: String, slot: CocoonSlot, size: Long = 0L) =
+        CocoonImage(title = "Game", slot = slot, source = source, sizeBytes = size)
 }

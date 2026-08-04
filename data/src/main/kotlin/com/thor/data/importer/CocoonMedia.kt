@@ -47,6 +47,13 @@ data class CocoonImage(
     val slot: CocoonSlot,
     /** Where the file is, in whatever form the caller can reopen it. */
     val source: String,
+    /**
+     * Byte length, which is how one picture is told from three copies of it.
+     *
+     * Zero when the source could not say, which is treated as "unknown" rather
+     * than as a size — see [selectCocoonArtwork].
+     */
+    val sizeBytes: Long = 0L,
 )
 
 /**
@@ -106,10 +113,26 @@ fun selectCocoonArtwork(images: List<CocoonImage>): CocoonArtwork {
     fun first(slot: CocoonSlot): String? =
         images.firstOrNull { it.slot == slot }?.source
 
+    /*
+     * Deduplicated by size, not by path.
+     *
+     * The copies are separate files holding the same picture: a base game, its
+     * update and Android's `(1)` and `(2)` downloads all reduce to one title,
+     * and comparing their locations finds four different things. In a real
+     * folder three of the four Batman Arkham Asylum captures are 272233 bytes to
+     * the byte and the fourth is 100766 — one picture and a genuinely different
+     * one, which is exactly the distinction wanted.
+     *
+     * A size of zero means the source would not say, and those are all kept:
+     * treating "unknown" as a value would collapse every such file into one.
+     */
     val screenshots = buildList {
-        images.filter { it.slot == CocoonSlot.SCREENSHOT_GAMEPLAY }.forEach { add(it.source) }
-        images.filter { it.slot == CocoonSlot.SCREENSHOT_TITLE }.forEach { add(it.source) }
-    }.distinct().take(ArtworkSet.MAX_SCREENSHOTS)
+        addAll(images.filter { it.slot == CocoonSlot.SCREENSHOT_GAMEPLAY })
+        addAll(images.filter { it.slot == CocoonSlot.SCREENSHOT_TITLE })
+    }
+        .distinctBySize()
+        .map(CocoonImage::source)
+        .take(ArtworkSet.MAX_SCREENSHOTS)
 
     return CocoonArtwork(
         icon = first(CocoonSlot.ICON),
@@ -144,3 +167,20 @@ private val SIZE_SUFFIX = Regex("""\s*\(\s*[\d.]+\s*[KMGT]B\s*\)\s*$""", RegexOp
 private val DUPLICATE_COUNTER = Regex("""\s*\(\d+\)\s*$""")
 
 private val WHITESPACE = Regex("""\s+""")
+
+/**
+ * Drops images whose byte length has already been seen.
+ *
+ * Length is a cheap stand-in for content and an exact one here, because the
+ * duplicates are literally the same download saved twice rather than two
+ * encodings of one picture. Two genuinely different captures agreeing to the
+ * byte is possible and would cost one screenshot; reading every file to hash it
+ * would cost the whole import.
+ */
+private fun List<CocoonImage>.distinctBySize(): List<CocoonImage> {
+    val seen = mutableSetOf<Long>()
+    return filter { image ->
+        // Unknown lengths are never equal to anything, including each other.
+        image.sizeBytes <= 0L || seen.add(image.sizeBytes)
+    }
+}
