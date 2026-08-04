@@ -37,6 +37,39 @@ object ProfileFiles {
     fun avatar(context: Context, profileId: String, fileName: String): File =
         File(directory(context, profileId), fileName)
 
+    /**
+     * Profile directories already on disk, newest first.
+     *
+     * Deliberately does not create anything — unlike [directory], which mkdirs
+     * as a side effect. This is asked *before* a profile exists, to find out
+     * whether one already does.
+     */
+    fun existingIds(context: Context): List<String> =
+        root(context).listFiles().orEmpty()
+            .filter(File::isDirectory)
+            .sortedByDescending(File::lastModified)
+            .map(File::getName)
+
+    /**
+     * How much a directory looks like somebody's actual profile.
+     *
+     * Not a byte count, a ranking. A settings file outranks any database,
+     * because it exists only once something has been configured — where Room
+     * creates a database the instant it is opened, so a profile nobody ever used
+     * still has one, and going by mere existence would rate an empty directory
+     * as highly as a full one. Below that, the larger library wins.
+     *
+     * Zero means nothing worth recovering.
+     */
+    fun dataWeight(context: Context, profileId: String): Long {
+        val directory = File(root(context), profileId)
+        val settings = if (File(directory, SETTINGS).exists()) SETTINGS_WEIGHT else 0L
+        return settings + File(directory, DATABASE).length()
+    }
+
+    /** Dominates any plausible database size, so settings always win the ranking. */
+    private const val SETTINGS_WEIGHT = 1L shl 40
+
     /** Removes a profile's entire directory. Safe to call for an unknown id. */
     fun delete(context: Context, profileId: String): Boolean =
         File(root(context), profileId).deleteRecursively()
