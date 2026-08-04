@@ -300,7 +300,7 @@ class MetadataAggregator @Inject constructor(
         val TRAILER_PROVIDERS = setOf("screenscraper", "rawg")
 
         /** Sources whose payloads contain prose rather than facts or artwork only. */
-        val DESCRIPTION_PROVIDERS = setOf("screenscraper", "rawg", "wikidata")
+        val DESCRIPTION_PROVIDERS = setOf("screenscraper", "rawg", "wikidata", "igdb")
 
         /**
          * Sources that carry landscape images of a game.
@@ -310,7 +310,7 @@ class MetadataAggregator @Inject constructor(
          * an ultra-wide banner — so a launcher configured with SteamGridDB alone
          * fills every cover and leaves the panel with nothing to show.
          */
-        val SCREENSHOT_PROVIDERS = setOf("screenscraper", "rawg")
+        val SCREENSHOT_PROVIDERS = setOf("screenscraper", "rawg", "igdb")
 
         /**
          * Below this, a title match is more likely to be a different game than

@@ -344,6 +344,7 @@ data class MetadataSettings(
         "steamgriddb",
         "wikidata",
         "rawg",
+        "igdb",
     ),
     /** Provider id -> priority; lower wins when merging conflicting fields. */
     val providerPriority: Map<String, Int> = mapOf(
@@ -352,7 +353,11 @@ data class MetadataSettings(
         // Above RAWG: Wikidata needs no key, so on a fresh install it is the
         // only one of the two that can answer at all.
         "wikidata" to 2,
-        "rawg" to 3,
+        // Above RAWG for artwork reasons rather than textual ones: IGDB is the
+        // only source that lets the *shape* of an image be asked for, so where
+        // both answer, its screenshots are the ones that fit the panel.
+        "igdb" to 3,
+        "rawg" to 4,
     ),
     /** Provider id -> API key/token. Stored encrypted at rest by the datastore. */
     val apiKeys: Map<String, String> = emptyMap(),
@@ -365,6 +370,17 @@ data class MetadataSettings(
      */
     val screenScraperUser: String = "",
     val screenScraperPassword: String = "",
+    /**
+     * IGDB, which authenticates through Twitch because Amazon owns both.
+     *
+     * Two values rather than one key: the pair is exchanged for a bearer token
+     * that the provider caches. Both are obtained from the Twitch developer
+     * console in a couple of minutes, with no approval step — which is the
+     * reason this provider exists alongside ScreenScraper rather than instead
+     * of it.
+     */
+    val igdbClientId: String = "",
+    val igdbClientSecret: String = "",
     val scrapeOnlyMissing: Boolean = true,
 )
 

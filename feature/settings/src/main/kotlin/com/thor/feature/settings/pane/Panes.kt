@@ -193,7 +193,8 @@ fun rowCountFor(
     // Two import rows, then one row per installed pack.
     SettingsPage.ICON_PACKS -> 2 + iconPackCount
     // Scrape, only-missing, trailers, check, one per provider, then four credentials.
-    SettingsPage.METADATA -> PROVIDER_FIRST_ROW + PROVIDERS.size + 4
+    // Four credential rows plus IGDB.s pair.
+    SettingsPage.METADATA -> PROVIDER_FIRST_ROW + PROVIDERS.size + 6
     SettingsPage.SORTING -> 2
     // Two keys and the debrid status line, then one row per indexer, then the
     // add button and the summary.
@@ -1110,6 +1111,27 @@ private fun MetadataPage(
         focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 3,
         onValueChange = viewModel::setScreenScraperPassword,
     )
+    RowDivider()
+    TextFieldRow(
+        title = "IGDB client ID",
+        // Named for where they come from rather than what they are: the pair is
+        // issued by Twitch, and somebody hunting for an "IGDB key" on igdb.com
+        // will not find one.
+        subtitle = "Screenshots at a fixed 16:9. From the Twitch developer console",
+        value = metadata.igdbClientId,
+        placeholder = "Client ID",
+        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 4,
+        onValueChange = viewModel::setIgdbClientId,
+    )
+    RowDivider()
+    TextFieldRow(
+        title = "IGDB client secret",
+        value = metadata.igdbClientSecret,
+        placeholder = "Client secret",
+        isSecret = true,
+        focused = focusedRow == PROVIDER_FIRST_ROW + PROVIDERS.size + 5,
+        onValueChange = viewModel::setIgdbClientSecret,
+    )
 }
 
 /**
@@ -1519,6 +1541,7 @@ const val ABOUT_ROWS = 5
 
 private const val PROVIDER_STEAMGRIDDB = "steamgriddb"
 private const val PROVIDER_RAWG = "rawg"
+private const val PROVIDER_IGDB = "igdb"
 
 private val ACCENT_SWATCHES = listOf(
     Color(0xFF4F8CFF), Color(0xFF8B5CF6), Color(0xFF00E5FF), Color(0xFF39FF14),
@@ -1529,6 +1552,7 @@ private val PROVIDERS = listOf(
     PROVIDER_STEAMGRIDDB to "SteamGridDB",
     "wikidata" to "Wikidata",
     PROVIDER_RAWG to "RAWG",
+    PROVIDER_IGDB to "IGDB",
     "screenscraper" to "ScreenScraper",
 )
 
@@ -1537,6 +1561,7 @@ private val IMPLEMENTED_PROVIDERS = setOf(
     PROVIDER_STEAMGRIDDB,
     "wikidata",
     PROVIDER_RAWG,
+    PROVIDER_IGDB,
     "screenscraper",
 )
 

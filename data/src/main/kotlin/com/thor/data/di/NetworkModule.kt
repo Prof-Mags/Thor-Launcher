@@ -1,6 +1,7 @@
 package com.thor.data.di
 
 import android.content.Context
+import com.thor.data.metadata.IgdbProvider
 import com.thor.data.metadata.MetadataProvider
 import com.thor.data.metadata.RawgProvider
 import com.thor.data.metadata.ScreenScraperProvider
@@ -67,6 +68,10 @@ interface MetadataProviderModule {
     @Binds
     @IntoSet
     fun bindsRawg(provider: RawgProvider): MetadataProvider
+
+    @Binds
+    @IntoSet
+    fun bindsIgdb(provider: IgdbProvider): MetadataProvider
 
     @Binds
     @IntoSet

@@ -1033,6 +1033,14 @@ class SettingsViewModel @Inject constructor(
     fun setScreenScraperPassword(value: String) =
         updateScreenScraper { it.copy(screenScraperPassword = value) }
 
+    // Trimmed on the way in: both are copied out of a web console, and a pasted
+    // trailing space turns a correct credential into a rejected one.
+    fun setIgdbClientId(value: String) =
+        updateScreenScraper { it.copy(igdbClientId = value.trim()) }
+
+    fun setIgdbClientSecret(value: String) =
+        updateScreenScraper { it.copy(igdbClientSecret = value.trim()) }
+
 
 
     private fun updateScreenScraper(transform: (MetadataSettings) -> MetadataSettings) {
