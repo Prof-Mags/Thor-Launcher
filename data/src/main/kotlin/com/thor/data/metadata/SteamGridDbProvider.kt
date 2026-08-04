@@ -100,32 +100,22 @@ class SteamGridDbProvider @Inject constructor(
      */
     private suspend fun fetchArtwork(gameId: Int, apiKey: String): ArtworkSet {
         /*
-         * Heroes fill the backdrop. Grids fill the strip.
+         * This provider fills slots. It does not fill the strip.
          *
-         * A hero is 1920 by 620 — a banner, and a banner is a crop. Feeding the
-         * strip from them gave three letterbox slivers of the same key art,
-         * which is not what "images of the game" means. Grids are the artwork
-         * proper: the cover as it is drawn for a store front, complete rather
-         * than cropped to a bar. Undimensioned deliberately, so the response
-         * carries every shape SteamGridDB holds — portrait covers, wide key art,
-         * square — instead of one pinned ratio.
+         * Nothing SteamGridDB holds is sixteen by nine: a grid is 2:3 or square,
+         * and a hero is 1920 by 620 — an ultra-wide banner, which is a crop of
+         * key art rather than the art. Offering either as a screenshot is what
+         * put a row of mismatched shapes and letterbox slivers in the panel.
+         * They are excellent at the jobs they are shaped for, which is the cover
+         * on the grid cell and the backdrop behind the panel, and those are the
+         * only two they are given.
          */
         val heroes = imageUrls("$BASE_URL/heroes/game/$gameId", apiKey)
-        val grids = imageUrls("$BASE_URL/grids/game/$gameId", apiKey)
-        val cover = firstImageUrl("$BASE_URL/grids/game/$gameId?dimensions=600x900", apiKey)
 
         return ArtworkSet(
-            boxArt = cover,
+            boxArt = firstImageUrl("$BASE_URL/grids/game/$gameId?dimensions=600x900", apiKey),
             hero = heroes.firstOrNull(),
             logo = firstImageUrl("$BASE_URL/logos/game/$gameId", apiKey),
-            /*
-             * Artwork already doing another job is left out — the cover is on
-             * the cell and the hero is behind the panel, and offering either
-             * again shows the same picture twice. Grids lead because they are
-             * whole images; leftover heroes follow, since a second banner is
-             * still better than an empty frame.
-             */
-            screenshots = (grids + heroes.drop(1)).filterNot { it == cover }.distinct(),
         /*
          * Square *box art*, from the grids endpoint — not the icons endpoint.
          *

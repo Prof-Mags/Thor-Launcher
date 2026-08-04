@@ -327,18 +327,21 @@ class ScreenScraperProvider @Inject constructor(
         private const val BASE_URL = "https://api.screenscraper.fr/api2"
 
         /**
-         * Media offered as images of the game, best first.
+         * Landscape media only, best first.
          *
-         * Artwork before capture, deliberately. `fanart` is the key art, and the
-         * box and flyer scans are the game as it was sold — whole images, drawn
-         * to be looked at. `ss` and `sstitle` are frames grabbed from the game
-         * running, which are a different thing and rarely the more interesting
-         * one at this size; they come last so they fill the strip only when the
-         * artwork does not.
+         * Every one of these is wider than it is tall, which is the whole
+         * requirement: the strip is a sixteen-by-nine frame, and an image that
+         * arrives portrait either letterboxes into slivers or crops to a
+         * meaningless middle. `fanart` is key art and leads because it is drawn
+         * rather than captured; `ss` and `sstitle` are frames from the game,
+         * which fill the strip when there is no key art to be had.
+         *
+         * Box and flyer scans were briefly here and are the reason the panel
+         * filled with mismatched shapes — they are portrait, whatever else they
+         * are. They still reach the grid cell through the `boxArt` slot, which
+         * is the frame shaped for them.
          */
-        private val WIDE_TYPES = listOf(
-            "fanart", "box-2D", "flyer", "screenmarquee", "ss", "sstitle",
-        )
+        private val WIDE_TYPES = listOf("fanart", "screenmarquee", "ss", "sstitle")
 
         /** Identifies this client to ScreenScraper in its request logs. */
         private const val SOFT_NAME = "Loki"

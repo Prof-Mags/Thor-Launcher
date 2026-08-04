@@ -368,12 +368,13 @@ class WikidataProvider @Inject constructor(
         /**
          * Sentences asked of the MediaWiki extract.
          *
-         * Four cut synopses short at the source, and eight overflowed the panel
-         * — a synopsis the panel has to shrink to show is not more readable for
-         * being longer. Five reads as a finished summary and fits at full size,
-         * which is the point: the constraint here is the panel, not the article.
+         * Four. Eight overflowed the panel outright and five still did once the
+         * media strip went to sixteen by nine, which is taller than the shape it
+         * replaced. The constraint here is the panel rather than the article: a
+         * synopsis the panel has to truncate is worse than a shorter one that
+         * ends where it meant to.
          */
-        private const val DESCRIPTION_SENTENCES = 5
+        private const val DESCRIPTION_SENTENCES = 4
 
         /**
          * Identifies THOR to Wikidata, per their API etiquette.

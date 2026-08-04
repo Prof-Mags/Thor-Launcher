@@ -564,10 +564,20 @@ private fun GameMedia(
             ),
         contentAlignment = Alignment.Center,
     ) {
+        /*
+         * Cropped to the frame, not fitted inside it.
+         *
+         * Fitting means the frame shows whatever shape arrived — and providers
+         * hold artwork in half a dozen ratios, so the strip became a row of
+         * mismatched pictures with bars around them. Cropping makes the frame
+         * the constant: every image is a true sixteen by nine, whatever it was.
+         * Safe because these are landscape media by the time they get here, so
+         * the crop takes a little from the sides rather than the subject.
+         */
         ArtworkImage(
             model = model,
             contentDescription = null,
-            contentScale = ContentScale.Fit,
+            contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
         if (count > 1) {
@@ -694,7 +704,15 @@ private const val GAME_BOTTOM_RESERVE = 46
 private const val GAME_HINT_BOTTOM_PADDING = 13
 private const val GAME_SECTION_GAP = 5
 private const val GAME_HEADER_GAP = 16
-private const val GAME_COVER_WIDTH = 128
+/**
+ * The cover on the masthead.
+ *
+ * Down from 128. At two-to-three that block was 192dp tall before anything else
+ * was drawn, and it is the largest single claim on a panel whose description
+ * kept running out of room — the cover is also on the grid cell the user just
+ * came from, so it is the one element here that repeats.
+ */
+private const val GAME_COVER_WIDTH = 104
 /**
  * The synopsis, wrapped to as many lines as it takes.
  *
