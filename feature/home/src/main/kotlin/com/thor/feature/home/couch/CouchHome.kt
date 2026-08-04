@@ -397,7 +397,7 @@ private fun CouchSpotlight(
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(PLATFORM_LABEL_GAP.dp))
                 Text(
                     text = entry.title,
                     style = MaterialTheme.typography.headlineSmall,
@@ -750,13 +750,20 @@ private fun CouchGamesShelf(
         if (overhang != 0) listState.animateScrollBy(overhang.toFloat())
     }
 
-    Column(modifier = modifier) {
+    Column(modifier = modifier.padding(top = SHELF_HEADER_GAP.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
+            // The title here is the platform's name, and it is allowed to run the
+            // width of the shelf — without a gap a long one ellipsised straight
+            // into VIEW ALL, which read as one long label rather than as two.
+            horizontalArrangement = Arrangement.spacedBy(SECTION_GAP.dp),
         ) {
             CouchSectionLabel(rail?.title ?: "Your games", modifier = Modifier.weight(1f))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
                 Text(
                     text = "VIEW ALL",
                     style = MaterialTheme.typography.labelMedium,
@@ -1144,6 +1151,29 @@ private const val SHELF_BLOCK_HEIGHT = 200
 private const val DASHBOARD_HEIGHT = 92
 private val CARD_SIZE: Dp = 128.dp
 private const val CARD_GAP = 12
+
+/**
+ * Between a platform's name and the thing it is naming.
+ *
+ * The eyebrow over the spotlight's title had 4dp under it, which at this weight
+ * put the system's name in among the headline's ascenders — the two read as one
+ * block of text rather than as a label and its subject.
+ */
+private const val PLATFORM_LABEL_GAP = 8
+
+/**
+ * Clearance above the shelf's own title.
+ *
+ * That title is the platform's name, and the shelf is stacked directly under the
+ * spotlight and library panels — so with nothing between them the name of the
+ * system was printed hard against the bottom edge of the panel above it.
+ *
+ * Taken from inside [SHELF_BLOCK_HEIGHT] rather than added to it. The block
+ * already carries slack around its cards, whereas the panels above it are
+ * weighted: adding to the stack would spend the spotlight's height on a gap, and
+ * the spotlight is the one region here that is not a fixed size.
+ */
+private const val SHELF_HEADER_GAP = 16
 
 /** How faint a control with nothing behind it is drawn. */
 private const val PLACEHOLDER_ALPHA = 0.38f

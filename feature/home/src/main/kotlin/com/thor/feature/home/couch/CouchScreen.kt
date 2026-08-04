@@ -1713,29 +1713,48 @@ internal fun CouchCard(
                     ),
                 ),
         )
-        Box(
+        /*
+         * The platform badge and the favourite mark share a row.
+         *
+         * They used to be aligned into opposite corners of the card and measured
+         * independently, so nothing stopped the badge from running the width of
+         * the card and printing underneath the heart — the label had no ellipsis
+         * either, so a platform whose short name ran long simply overlapped it.
+         * Laid out against each other, the badge takes what it needs up to the
+         * space the heart leaves and cuts itself short after that.
+         */
+        Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(7.dp)
-                .clip(ThorTheme.shapes.small)
-                .background(Color.Black.copy(alpha = 0.68f))
-                .padding(horizontal = 7.dp, vertical = 3.dp),
+                .fillMaxWidth()
+                .padding(CARD_BADGE_INSET.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = platform?.shortName?.ifBlank { platform.name } ?: entry.typeLabel(),
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-            )
-        }
-        if (entry.isFavorite) {
-            Icon(
-                imageVector = Icons.Rounded.Favorite,
-                contentDescription = "Favorite",
-                tint = focusColor,
-                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(15.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .clip(ThorTheme.shapes.small)
+                    .background(Color.Black.copy(alpha = 0.68f))
+                    .padding(horizontal = 7.dp, vertical = 3.dp),
+            ) {
+                Text(
+                    text = platform?.shortName?.ifBlank { platform.name } ?: entry.typeLabel(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (entry.isFavorite) {
+                Spacer(modifier = Modifier.width(CARD_BADGE_GAP.dp))
+                Icon(
+                    imageVector = Icons.Rounded.Favorite,
+                    contentDescription = "Favorite",
+                    tint = focusColor,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
         }
         Column(
             modifier = Modifier
@@ -1930,6 +1949,13 @@ private const val INFO_PANEL_PADDING = 15
 private const val INFO_PANEL_ALPHA = 0.82f
 private const val INFO_DESCRIPTION_LINES = 5
 private const val CARD_GAP = 14
+
+/** How far a card's platform badge and favourite mark sit inside its corner. */
+private const val CARD_BADGE_INSET = 7
+
+/** Kept between the two, so a long badge stops short rather than meeting it. */
+private const val CARD_BADGE_GAP = 6
+
 /** Preferred card edge, subject to what the shelf slot can hold. */
 private const val SQUARE_CARD_SIZE = 173
 private const val MIN_CARD_SIZE = 104

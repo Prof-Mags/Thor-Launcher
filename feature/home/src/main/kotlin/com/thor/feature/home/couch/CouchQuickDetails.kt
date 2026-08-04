@@ -391,6 +391,11 @@ private fun DetailsHeader(
                 fontWeight = FontWeight.Black,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                // Clear of the title below it. The column's own 6dp is the gap
+                // between one fact and the next; the system's name is the label
+                // over the whole banner and reads as part of the title without
+                // more room than that under it.
+                modifier = Modifier.padding(bottom = PLATFORM_LABEL_GAP.dp),
             )
 
             if (artwork?.logo != null) {
@@ -732,6 +737,9 @@ private const val DETAILS_GAP = 24
 private const val COVER_WIDTH = 190
 private const val HEADER_HEIGHT = 250
 private const val HEADER_INSET = 20
+
+/** Added under the platform's name, on top of the header column's own spacing. */
+private const val PLATFORM_LABEL_GAP = 4
 private const val ACTION_HEIGHT = 46
 private const val LOGO_WIDTH_FRACTION = 0.62f
 private const val LOGO_MIN_HEIGHT = 46
