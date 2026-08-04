@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.component.ThorMenuRow
 import com.thor.core.model.SortOrder
 
 /**
@@ -120,32 +121,15 @@ fun SortDialog(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     orders.forEachIndexed { index, order ->
-                        val selected = order == currentOrder
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
-                                .thorCursor(
-                                    focused = index == focusedIndex,
-                                    cornerRadius = dimens.cornerRadiusSmall,
-                                )
-                                .clickable { onPick(order) }
-                                .padding(horizontal = dimens.spacingSmall, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Check,
-                                contentDescription = null,
-                                tint = if (selected) colors.cursor else Color.Transparent,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Text(
-                                text = order.label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (selected) colors.cursor else colors.onSurface,
-                            )
-                        }
+                        ThorMenuRow(
+                            label = order.label,
+                            // The order in force is marked the way every other
+                            // menu marks its current value, rather than by a
+                            // tick in a column that is empty on every other row.
+                            selected = order == currentOrder,
+                            focused = index == focusedIndex,
+                            onClick = { onPick(order) },
+                        )
                     }
                 }
             }

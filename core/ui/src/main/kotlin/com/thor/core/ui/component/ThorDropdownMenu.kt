@@ -78,7 +78,6 @@ fun ThorDropdownMenu(
  *   on its own. This is where the detail that used to be crammed into the row's
  *   button belongs — there is room for it here and there was none there.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ThorDropdownItem(
     label: String,
@@ -89,91 +88,13 @@ fun ThorDropdownItem(
     trailing: String? = null,
     selected: Boolean = false,
 ) {
-    val colors = ThorTheme.colors
-    val dimens = ThorTheme.dimens
-    val shape = ThorTheme.shapes.panel
-
-    val hover = rememberPointerHover()
-    // Selected and hovered are drawn the same. The row under the pointer is the
-    // one about to be chosen, and the one already chosen carries the marker, so
-    // both are "the row this menu is about" at the moment it is looked at.
-    val lit = selected || hover.isHovered
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = dimens.spacingSmall, vertical = 2.dp)
-            .clip(shape)
-            .background(if (lit) colors.cursor.copy(alpha = 0.12f) else Color.Transparent)
-            .pointerHover(hover)
-            .clickable(onClick = onClick)
-            .padding(horizontal = dimens.spacingSmall, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-    ) {
-        // Drawn only when lit, and holding its width either way, so the rows do
-        // not shift sideways as the pointer runs down them.
-        Box(
-            modifier = Modifier
-                .width(3.dp)
-                .height(EDGE_MARKER_HEIGHT.dp)
-                .clip(ThorTheme.shapes.pill)
-                .background(
-                    if (lit) {
-                        Brush.verticalGradient(colors.accentStops)
-                    } else {
-                        SolidColor(Color.Transparent)
-                    },
-                ),
-        )
-        icon?.let {
-            Box(
-                modifier = Modifier
-                    .size(ICON_TILE.dp)
-                    .clip(ThorTheme.shapes.small)
-                    .background(
-                        if (lit) colors.cursor.copy(alpha = 0.16f) else colors.surfaceElevated,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = it,
-                    contentDescription = null,
-                    tint = if (lit) colors.cursor else colors.onSurfaceVariant,
-                    modifier = Modifier.size(ICON_GLYPH.dp),
-                )
-            }
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (lit) colors.cursor else colors.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            description?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant.copy(alpha = 0.72f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        trailing?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-    }
+    ThorMenuRow(
+        label = label,
+        onClick = onClick,
+        modifier = modifier,
+        description = description,
+        icon = icon,
+        trailing = trailing,
+        selected = selected,
+    )
 }
-
-/** Matches the side and long-press menus, whose rows these are a copy of. */
-private const val EDGE_MARKER_HEIGHT = 22
-private const val ICON_TILE = 40
-private const val ICON_GLYPH = 21

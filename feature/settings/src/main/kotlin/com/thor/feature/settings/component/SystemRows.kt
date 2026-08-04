@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,6 +42,9 @@ import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.Platform
+import com.thor.core.ui.component.ArtworkImage
+import com.thor.core.ui.component.THOR_MENU_ICON_TILE
+import com.thor.core.ui.component.ThorMenuRow
 
 /**
  * A dropdown that adds a system to the user's setup.
@@ -238,43 +242,43 @@ private fun PickerRow(
     highlighted: Boolean,
     onClick: () -> Unit,
 ) {
-    val colors = ThorTheme.colors
-    val dimens = ThorTheme.dimens
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(ThorTheme.shapes.small)
-            .background(
-                if (highlighted) colors.cursor.copy(alpha = 0.16f) else Color.Transparent,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = dimens.spacing, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .clip(ThorTheme.shapes.pill)
-                .background(Color(platform.accentArgb)),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = platform.name,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (highlighted) colors.onSurface else colors.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = platform.subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant.copy(alpha = 0.7f),
-                maxLines = 1,
-            )
-        }
-    }
+    ThorMenuRow(
+        label = platform.name,
+        description = platform.subtitle,
+        focused = highlighted,
+        // The system's own colour, in the slot the accent gradient occupies
+        // everywhere else. A list of forty consoles is easier to run an eye down
+        // when each carries the colour it wears on the grid.
+        accent = Color(platform.accentArgb),
+        leading = {
+            Box(
+                modifier = Modifier
+                    .size(THOR_MENU_ICON_TILE.dp)
+                    .clip(ThorTheme.shapes.small)
+                    .background(Color(platform.accentArgb).copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                val image = platform.artwork.iconUri ?: platform.artwork.logoUri
+                if (image != null) {
+                    ArtworkImage(
+                        model = image,
+                        contentDescription = null,
+                        fallbackText = platform.shortName,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Text(
+                        text = platform.shortName.take(3).uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(platform.accentArgb),
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                    )
+                }
+            }
+        },
+        onClick = onClick,
+    )
 }
 
 /**

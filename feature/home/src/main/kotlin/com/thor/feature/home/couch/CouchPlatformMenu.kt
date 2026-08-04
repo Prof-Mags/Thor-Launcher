@@ -39,6 +39,8 @@ import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.Platform
 import com.thor.core.ui.component.ArtworkImage
+import com.thor.core.ui.component.THOR_MENU_ICON_TILE
+import com.thor.core.ui.component.ThorMenuRow
 
 data class CouchPlatformSummary(
     val gameCount: Int,
@@ -120,94 +122,50 @@ fun CouchPlatformMenu(
                                 val focused = index == safeIndex
                                 val accent = Color(platform.accentArgb)
                                 val summary = summaries[platform.id]
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(
-                                            if (focused) accent.copy(alpha = 0.20f)
-                                            else Color.Transparent,
-                                        )
-                                        .clickable { onPlatformSelected(index) }
-                                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(4.dp)
-                                            .height(30.dp)
-                                            .clip(ThorTheme.shapes.pill)
-                                            .background(
-                                                if (focused) accent
-                                                else colors.onSurfaceVariant.copy(alpha = 0.24f),
-                                            ),
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .size(46.dp)
-                                            .clip(ThorTheme.shapes.small)
-                                            .background(colors.surfaceHighest),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        val icon = platform.artwork.iconUri
-                                        val logo = platform.artwork.logoUri
-                                        val image = icon ?: logo ?: summary?.previewUri
-                                        if (image != null) {
-                                            ArtworkImage(
-                                                model = image,
-                                                contentDescription = platform.name,
-                                                fallbackText = platform.shortName,
-                                                contentScale = if (icon == null && logo != null) {
-                                                    ContentScale.Fit
-                                                } else {
-                                                    ContentScale.Crop
-                                                },
-                                                modifier = Modifier.fillMaxSize(),
-                                            )
-                                        } else {
-                                            Text(
-                                                text = platform.shortName,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = accent,
-                                                fontWeight = FontWeight.Black,
-                                            )
+                                ThorMenuRow(
+                                    label = platform.name,
+                                    description = platform.subtitle
+                                        .takeIf(String::isNotBlank),
+                                    trailing = "${summary?.gameCount ?: 0} games",
+                                    focused = focused,
+                                    // The system's own colour, in the slot the
+                                    // theme accent takes in the other menus.
+                                    accent = accent,
+                                    leading = {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(THOR_MENU_ICON_TILE.dp)
+                                                .clip(ThorTheme.shapes.small)
+                                                .background(colors.surfaceHighest),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            val icon = platform.artwork.iconUri
+                                            val logo = platform.artwork.logoUri
+                                            val image = icon ?: logo ?: summary?.previewUri
+                                            if (image != null) {
+                                                ArtworkImage(
+                                                    model = image,
+                                                    contentDescription = platform.name,
+                                                    fallbackText = platform.shortName,
+                                                    contentScale = if (icon == null && logo != null) {
+                                                        ContentScale.Fit
+                                                    } else {
+                                                        ContentScale.Crop
+                                                    },
+                                                    modifier = Modifier.fillMaxSize(),
+                                                )
+                                            } else {
+                                                Text(
+                                                    text = platform.shortName,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = accent,
+                                                    fontWeight = FontWeight.Black,
+                                                )
+                                            }
                                         }
-                                    }
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = platform.name,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = if (focused) colors.onSurface
-                                            else colors.onSurfaceVariant,
-                                            fontWeight = if (focused) FontWeight.Bold
-                                            else FontWeight.Medium,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                        platform.subtitle.takeIf(String::isNotBlank)?.let { subtitle ->
-                                            Text(
-                                                text = subtitle,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = colors.onSurfaceVariant.copy(alpha = 0.68f),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        }
-                                    }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(
-                                            text = (summary?.gameCount ?: 0).toString(),
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = if (focused) accent else colors.onSurfaceVariant,
-                                            fontWeight = FontWeight.Bold,
-                                        )
-                                        Text(
-                                            text = if (focused) "ACTIVE" else "GAMES",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = colors.onSurfaceVariant.copy(alpha = 0.64f),
-                                        )
-                                    }
-                                }
+                                    },
+                                    onClick = { onPlatformSelected(index) },
+                                )
                             }
 
                             if (platforms.isEmpty()) {

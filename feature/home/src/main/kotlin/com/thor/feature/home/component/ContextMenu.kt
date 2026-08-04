@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.component.ThorMenuRow
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.core.model.AppEntry
@@ -359,7 +360,6 @@ private fun ContextRow(
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
-    val dimens = ThorTheme.dimens
 
     // The favourite row reflects current state rather than being a static label.
     val label = if (action == ContextAction.TOGGLE_FAVORITE && entry.isFavorite) {
@@ -379,9 +379,6 @@ private fun ContextRow(
     }
     val destructive = action == ContextAction.UNINSTALL || action == ContextAction.DELETE_FOLDER
 
-    // Lit by the controller cursor or by the pointer, indistinguishably.
-    val hover = rememberPointerHover()
-    val lit = focused || hover.isHovered
     val requester = remember { BringIntoViewRequester() }
 
     LaunchedEffect(focused) {
@@ -391,79 +388,18 @@ private fun ContextRow(
         }
     }
 
-    // A destructive row reads in the error colour throughout, focused or not.
-    // The cursor tint would otherwise make "Uninstall" the one row that stops
-    // looking dangerous at the moment it is about to be pressed.
-    val accent = if (destructive) colors.error else colors.cursor
-    val shape = ThorTheme.shapes.panel
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .bringIntoViewRequester(requester)
-            .clip(shape)
-            .background(if (lit) colors.surfaceHighest else Color.Transparent)
-            .thorCursor(focused = lit, shape = shape)
-            .pointerHover(hover)
-            .clickable(onClick = onClick)
-            .padding(horizontal = dimens.spacingSmall, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-    ) {
-        // Drawn only when lit, and holding its width either way, so the row does
-        // not shift sideways as the cursor arrives.
-        Box(
-            modifier = Modifier
-                .width(3.dp)
-                .height(EDGE_MARKER_HEIGHT.dp)
-                .clip(ThorTheme.shapes.pill)
-                .background(
-                    when {
-                        !lit -> SolidColor(Color.Transparent)
-                        destructive -> SolidColor(colors.error)
-                        else -> Brush.verticalGradient(colors.accentStops)
-                    },
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .size(ICON_TILE.dp)
-                .clip(ThorTheme.shapes.small)
-                .background(if (lit) accent.copy(alpha = 0.16f) else colors.surfaceElevated),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = when {
-                    destructive -> colors.error
-                    lit -> colors.cursor
-                    else -> colors.onSurfaceVariant
-                },
-                modifier = Modifier.size(ICON_GLYPH.dp),
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = when {
-                    destructive -> colors.error
-                    lit -> colors.onSurface
-                    else -> colors.onSurfaceVariant
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant.copy(alpha = 0.72f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    ThorMenuRow(
+        label = label,
+        description = description,
+        icon = icon,
+        focused = focused,
+        // A destructive row reads in the error colour throughout, focused or
+        // not. The cursor tint would otherwise make "Uninstall" the one row that
+        // stops looking dangerous at the moment it is about to be pressed.
+        accent = if (destructive) colors.error else null,
+        modifier = Modifier.bringIntoViewRequester(requester),
+        onClick = onClick,
+    )
 }
 
 /** One-line description shown under the entry's title. */

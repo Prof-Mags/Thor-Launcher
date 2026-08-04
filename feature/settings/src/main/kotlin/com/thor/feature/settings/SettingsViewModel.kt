@@ -200,7 +200,7 @@ class SettingsViewModel @Inject constructor(
      */
     fun importArtworkFolder(uri: String) {
         viewModelScope.launchSafely(TAG) {
-            _importStatus.value = "Importing2026"
+            _importStatus.value = "Importing…"
             _importStatus.value = when (val result = cocoonImporter.import(uri.toUri())) {
                 is CocoonImportResult.Success ->
                     "Imported ${result.images} images for ${result.games} games"

@@ -43,6 +43,7 @@ import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.component.ThorMenuRow
 
 /**
  * The four things the Start panel does.
@@ -186,69 +187,14 @@ private fun MenuRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = ThorTheme.colors
-    val dimens = ThorTheme.dimens
-    val shape = ThorTheme.shapes.panel
-
-    Row(
-        modifier = modifier
-            .padding(horizontal = dimens.spacingSmall, vertical = 3.dp)
-            .clip(shape)
-            .background(if (focused) colors.surfaceHighest else Color.Transparent)
-            .thorCursor(focused = focused, shape = shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = dimens.spacingSmall, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-    ) {
-        // Drawn only when focused, and holding its width either way, so the row
-        // does not shift sideways as the cursor arrives.
-        Box(
-            modifier = Modifier
-                .width(3.dp)
-                .fillMaxHeight(EDGE_MARKER_FRACTION)
-                .clip(ThorTheme.shapes.pill)
-                .background(
-                    if (focused) {
-                        Brush.verticalGradient(colors.accentStops)
-                    } else {
-                        SolidColor(Color.Transparent)
-                    },
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .size(ICON_TILE.dp)
-                .clip(ThorTheme.shapes.small)
-                .background(
-                    if (focused) colors.cursor.copy(alpha = 0.16f) else colors.surfaceElevated,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = action.icon,
-                contentDescription = null,
-                tint = if (focused) colors.cursor else colors.onSurfaceVariant,
-                modifier = Modifier.size(ICON_GLYPH.dp),
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = action.label,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (focused) colors.onSurface else colors.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = action.description,
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant.copy(alpha = 0.72f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    ThorMenuRow(
+        label = action.label,
+        description = action.description,
+        icon = action.icon,
+        focused = focused,
+        modifier = modifier,
+        onClick = onClick,
+    )
 }
 
 private const val PANEL_WIDTH = 288

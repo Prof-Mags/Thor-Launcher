@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.component.ThorMenuRow
 import com.thor.core.model.FolderEntry
 import com.thor.core.ui.component.ArtworkImage
 
@@ -148,59 +149,43 @@ private fun FolderRow(
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
-            .thorCursor(focused = focused, cornerRadius = dimens.cornerRadiusSmall)
-            .clickable(onClick = onClick)
-            .padding(horizontal = dimens.spacingSmall, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(THUMB.dp)
-                .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
-                .background(accent.copy(alpha = 0.22f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (artworkUri != null) {
-                ArtworkImage(
-                    model = artworkUri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Icon(
-                    imageVector = if (isCreate) {
-                        Icons.Rounded.CreateNewFolder
-                    } else {
-                        Icons.Rounded.Folder
-                    },
-                    contentDescription = null,
-                    tint = accent,
-                    modifier = Modifier.size(18.dp),
-                )
+    ThorMenuRow(
+        label = title,
+        description = subtitle,
+        focused = focused,
+        // The folder's own colour, in the slot the accent gradient takes in
+        // every other menu.
+        accent = accent,
+        leading = {
+            Box(
+                modifier = Modifier
+                    .size(THUMB.dp)
+                    .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
+                    .background(accent.copy(alpha = 0.22f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (artworkUri != null) {
+                    ArtworkImage(
+                        model = artworkUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (isCreate) {
+                            Icons.Rounded.CreateNewFolder
+                        } else {
+                            Icons.Rounded.Folder
+                        },
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
-        }
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (focused) colors.cursor else colors.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-    }
+        },
+        onClick = onClick,
+    )
 }
 
 private const val CARD_WIDTH = 340

@@ -326,7 +326,7 @@ private fun IconPacksPage(
     RowDivider()
     DirectoryPickerRow(
         title = "Import game artwork",
-        subtitle = "Pick another launcher2019s downloaded media folder",
+        subtitle = "Pick another launcher’s downloaded media folder",
         focused = focusedRow == 3,
         onPicked = { uri, _ -> viewModel.importArtworkFolder(uri) },
     )
