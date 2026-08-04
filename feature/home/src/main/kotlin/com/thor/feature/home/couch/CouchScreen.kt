@@ -123,6 +123,14 @@ fun LauncherUiState.couchPlatforms(): List<Platform> {
         .sortedWith(compareBy<Platform> { it.sortIndex }.thenBy(Platform::name))
 }
 
+/**
+ * The shelf, one rail at a time.
+ *
+ * [selectedPlatformId] no longer decides *what* is built — every platform gets a
+ * rail — but it is kept because callers use it to work out which rail to land
+ * on, and removing it would push that lookup into each of them.
+ */
+@Suppress("UNUSED_PARAMETER")
 fun buildCouchRails(
     state: LauncherUiState,
     selectedPlatformId: String? = state.couchPlatforms().firstOrNull()?.id,
@@ -142,12 +150,6 @@ fun buildCouchRails(
     val apps = entries.filterIsInstance<AppEntry>()
     val folders = entries.filterIsInstance<FolderEntry>()
         .filter { PlatformFolders.platformIdOf(it.id) == null }
-    val selectedPlatform = selectedPlatformId?.let(state.platformsById::get)
-    val platformGames = if (selectedPlatform == null) {
-        games
-    } else {
-        games.filter { it.platformId == selectedPlatform.id }
-    }
     val playable = buildList<GridEntry> {
         addAll(games)
         addAll(apps)
@@ -163,18 +165,25 @@ fun buildCouchRails(
             .sortedBy(GridEntry::sortTitle)
             .takeIf(List<GridEntry>::isNotEmpty)
             ?.let { add(CouchRail("favourites", "Favourites", it)) }
-        platformGames.sortedBy(GameEntry::sortTitle)
-            .takeIf(List<GameEntry>::isNotEmpty)
-            ?.let {
-                add(
-                    CouchRail(
-                        id = selectedPlatform?.let { platform -> "platform:${platform.id}" }
-                            ?: "games",
-                        title = selectedPlatform?.name ?: "Game library",
-                        entries = it,
-                    ),
-                )
-            }
+        /*
+         * A rail for every system, not just the chosen one.
+         *
+         * The shelf used to hold a single "Game library" rail whose contents the
+         * platform menu swapped, which meant the only way to see what else was
+         * installed was to open a menu and change a setting. Every platform is a
+         * rail now, so up and down walk the whole library — Continue, Favourites,
+         * then each system in turn — and the menu becomes a way of jumping
+         * straight to one rather than the only way of reaching it.
+         *
+         * The deck draws one rail at a time regardless, so this costs a longer
+         * list to walk and nothing on screen.
+         */
+        state.couchPlatforms().forEach { platform ->
+            games.filter { it.platformId == platform.id }
+                .sortedBy(GameEntry::sortTitle)
+                .takeIf(List<GameEntry>::isNotEmpty)
+                ?.let { add(CouchRail("platform:${platform.id}", platform.name, it)) }
+        }
         apps.sortedBy(AppEntry::sortTitle)
             .takeIf(List<AppEntry>::isNotEmpty)
             ?.let { add(CouchRail("apps", "Apps", it)) }
@@ -182,6 +191,17 @@ fun buildCouchRails(
             .takeIf(List<FolderEntry>::isNotEmpty)
             ?.let { add(CouchRail("collections", "Collections", it)) }
     }
+}
+
+/**
+ * Which rail holds a platform's games, or null if it has none on the shelf.
+ *
+ * The platform menu picks a system; with every system already on the shelf, what
+ * that has to do is move the cursor to its rail rather than rebuild the list.
+ */
+fun couchRailIndexForPlatform(rails: List<CouchRail>, platformId: String?): Int? {
+    if (platformId == null) return null
+    return rails.indexOfFirst { it.id == "platform:$platformId" }.takeIf { it >= 0 }
 }
 
 fun LauncherUiState.couchEntry(focus: CouchFocus, selectedPlatformId: String? = null): GridEntry? {

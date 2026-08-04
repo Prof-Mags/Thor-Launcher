@@ -90,8 +90,8 @@ import com.thor.core.model.ThorSettings
 import com.thor.core.ui.feedback.FeedbackCue
 import com.thor.core.ui.component.ThorKeyboard
 import com.thor.core.ui.component.ThorIntro
-import com.thor.core.ui.component.ConsoleMockup
-import com.thor.core.ui.component.recordingFrameSize
+import com.thor.core.ui.component.StackedPanels
+import com.thor.core.ui.component.stackedFrameSize
 import com.thor.core.ui.input.LocalThorTextInput
 import com.thor.core.ui.input.ThorTextInputState
 import com.thor.core.ui.feedback.rememberThorFeedback
@@ -2176,16 +2176,14 @@ fun ThorApp(
         }
 
         /*
-         * The shape of a recording: the two panels stacked, inside a device body.
+         * The shape of a recording: the two panels stacked, and nothing else.
          *
-         * Width follows the wider panel; the height comes from
-         * [recordingFrameSize], which derives both from the same constants the body
-         * lays out with. That shared derivation is the point. The height used to be
-         * a flat 22% allowance written here while the body used its own separate
-         * fractions over there, and the two disagreed — the frame was taller than
-         * the layout needed and each panel was drawn narrower than the frame, so
-         * neither composition was ever handed the box its real screen has. Both
-         * laid out for a smaller screen and showed correspondingly less.
+         * Width is the wider panel's own pixels, so that screen records at native
+         * resolution and the narrower one sits beneath it at its true proportion;
+         * the height is simply the two of them. [stackedFrameSize] derives both
+         * from the same numbers the layout uses, which is the point — the frame
+         * and the body were once independent figures in two files, they
+         * disagreed, and a recording of two screens showed one and a half.
          */
         val primaryPanel = displays.firstOrNull { it.isPrimary }
         LaunchedEffect(primaryPanel, secondary) {
@@ -2195,9 +2193,10 @@ fun ThorApp(
             // Wider than either panel, because the console is wider than its screens:
             // the frame is sized so the lid's screen gets its panel's own pixels,
             // and brought back inside the encoder's range if that overshoots.
-            val frame = recordingFrameSize(
-                panelWidthPx = maxOf(top.widthPx, bottom.widthPx),
+            val frame = stackedFrameSize(
+                topWidthPx = top.widthPx,
                 topAspect = top.aspectRatio,
+                bottomWidthPx = bottom.widthPx,
                 bottomAspect = bottom.aspectRatio,
             )
 
@@ -2356,10 +2355,15 @@ fun ThorApp(
                     // least the right proportions and the right layout.
                     val recordedBottom = secondary ?: primaryPanel
 
-                    ConsoleMockup(
+                    StackedPanels(
                         topAspect = primaryPanel?.aspectRatio ?: DEFAULT_PANEL_ASPECT,
                         bottomAspect = recordedBottom?.aspectRatio ?: DEFAULT_PANEL_ASPECT,
-                        // The real screens' dp widths, which is what lets each panel
+                        // Pixel widths set how large each panel is relative to the
+                        // other; the bottom is narrower on this hardware and is
+                        // drawn narrower, centred, rather than stretched to match.
+                        topWidthPx = primaryPanel?.widthPx ?: DEFAULT_MIRROR_WIDTH,
+                        bottomWidthPx = recordedBottom?.widthPx ?: DEFAULT_MIRROR_WIDTH,
+                        // The real screens. dp widths, which is what lets each panel
                         // be laid out as itself and merely drawn smaller. See the
                         // density note in [StackedPanels].
                         topWidthDp = primaryPanel?.widthDp ?: DEFAULT_PANEL_WIDTH_DP,
