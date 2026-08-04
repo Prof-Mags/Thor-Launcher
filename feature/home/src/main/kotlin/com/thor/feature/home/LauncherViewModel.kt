@@ -178,6 +178,20 @@ class LauncherViewModel @Inject constructor(
     private val controlSettings: StateFlow<ControlSettings> = settingsRepository.controls
         .stateIn(viewModelScope, SharingStarted.Eagerly, ControlSettings())
 
+    /**
+     * Whether the launcher is being driven from across a room.
+     *
+     * Read from the setting rather than passed in with each command, because it
+     * has to be known in places a command never reaches — a long press, a tap on
+     * a panel's own button. The shell honours this mode exactly as it is chosen,
+     * with or without a second panel, so the setting and what is on screen cannot
+     * disagree.
+     */
+    private val couchMode: StateFlow<Boolean> = settingsRepository.display
+        .map { it.mode == DualScreenMode.COUCH }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     // ---- Sections ----------------------------------------------------------
 
     /** Which top-level section the launcher is showing. */
@@ -1747,22 +1761,13 @@ class LauncherViewModel @Inject constructor(
                 }
 
                 COUCH_DETAIL_FAVOURITE -> toggleFavorite(entry)
-                COUCH_DETAIL_MORE -> {
-                    closeCouchQuickDetails()
-                    openContextMenu(entry)
-                }
-
-                COUCH_DETAIL_CLOSE -> closeCouchQuickDetails()
             }
 
             ControllerCommand.TOGGLE_FAVORITE -> toggleFavorite(entry)
 
-            // A second Y reaches the complete legacy action menu. The first Y
-            // remains the fast, sofa-readable information view.
-            ControllerCommand.CONTEXT_MENU -> {
-                closeCouchQuickDetails()
-                openContextMenu(entry)
-            }
+            // A second Y closes the page the first one opened. It used to reach
+            // the legacy action menu, which couch mode no longer raises at all.
+            ControllerCommand.CONTEXT_MENU -> closeCouchQuickDetails()
 
             ControllerCommand.OPEN_SIDE_MENU -> {
                 closeCouchQuickDetails()
@@ -2378,6 +2383,22 @@ class LauncherViewModel @Inject constructor(
     /** Opens the context menu for whatever the cursor is on. */
     fun openContextMenu(entry: GridEntry? = uiState.value.selection) {
         val target = entry ?: return
+        /*
+         * Couch mode has no long-press menu.
+         *
+         * It is a handheld surface — a column of small rows aimed at a thumb, at
+         * a size chosen for a device held at arm's length — and on a television
+         * it was the one thing on screen not built for the distance.
+         *
+         * Guarded here rather than at each caller because the routes into it are
+         * scattered: a long press on a shelf card, the spotlight's own More info
+         * button, the app drawer. All of them mean "tell me about this and let me
+         * act on it", which from a sofa is the page Y raises.
+         */
+        if (couchMode.value) {
+            openCouchQuickDetails(target)
+            return
+        }
         // Refreshed here so the "launch on second screen" row reflects the
         // hardware as it is right now, not as it was at startup.
         hasSecondScreen.value = entryLauncher.hasSecondaryDisplay()
@@ -3348,11 +3369,18 @@ class LauncherViewModel @Inject constructor(
         const val TAG = "Launcher"
         const val STOP_TIMEOUT_MS = 5_000L
         const val DOCK_SLOTS = 5
+        /*
+         * Two, and both of them act on the game.
+         *
+         * There was a Close on the end of this row and a More beside it. B
+         * closes the page, as B closes everything in the launcher, so Close was
+         * a stop on the cursor's way round that did what the user had already
+         * been told to press. More opened the long-press menu, which couch mode
+         * no longer raises — see [openContextMenu].
+         */
         const val COUCH_DETAIL_PLAY = 0
         const val COUCH_DETAIL_FAVOURITE = 1
-        const val COUCH_DETAIL_MORE = 2
-        const val COUCH_DETAIL_CLOSE = 3
-        const val COUCH_DETAIL_ACTION_COUNT = 4
+        const val COUCH_DETAIL_ACTION_COUNT = 2
 
         /** As much of a platform message as fits on a panel beside a sentence. */
         const val DETAIL_LIMIT = 120

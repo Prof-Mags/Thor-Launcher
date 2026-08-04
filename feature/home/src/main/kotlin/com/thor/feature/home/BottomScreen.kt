@@ -133,7 +133,6 @@ fun BottomScreen(
     onCouchPlatformSelected: (Int) -> Unit = {},
     onCouchDetailsPlay: (GridEntry) -> Unit = {},
     onCouchDetailsFavorite: (GridEntry) -> Unit = {},
-    onCouchDetailsMore: (GridEntry) -> Unit = {},
     onCouchDetailsDismissed: () -> Unit = {},
     onCouchDetailsActionFocused: (Int) -> Unit = {},
     onCouchSettingsSelected: () -> Unit = {},
@@ -455,7 +454,6 @@ fun BottomScreen(
             focusedAction = couchQuickDetailsActionIndex,
             onPlay = { couchDetailsEntry?.let(onCouchDetailsPlay) },
             onToggleFavorite = { couchDetailsEntry?.let(onCouchDetailsFavorite) },
-            onMore = { couchDetailsEntry?.let(onCouchDetailsMore) },
             onDismiss = onCouchDetailsDismissed,
             onActionFocused = onCouchDetailsActionFocused,
             // Hosted here rather than by [CouchScreen], so the scale it composes
@@ -503,7 +501,16 @@ fun BottomScreen(
         )
 
         EntryContextMenu(
-            entry = state.contextMenuEntry,
+            /*
+             * Never raised from a sofa.
+             *
+             * Nothing in couch mode opens it any more — see
+             * `LauncherViewModel.openContextMenu`, which sends every one of those
+             * routes to the page Y raises instead. This guard is for the one case
+             * that cannot: a menu already open when the mode changes under it,
+             * which would otherwise be left on the television.
+             */
+            entry = state.contextMenuEntry.takeUnless { couchMode },
             hasSecondScreen = state.hasSecondScreen,
             focusedIndex = state.contextMenuIndex,
             fromDrawer = appDrawer.visible,

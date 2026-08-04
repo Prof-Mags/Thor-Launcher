@@ -3,12 +3,15 @@ package com.thor.feature.home.couch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,15 +23,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
@@ -83,11 +83,11 @@ data class CouchDetailScroll(val tick: Int = 0, val direction: Int = 0)
  * │  Logo, or the title                               ░░░░ │
  * │  1994 · Platformer · 4h 12m · 9 plays · ★ 96      ░░░░ │
  * │  ▓▓▓▓▓▓▓░░░ 62% complete                          ░░░░ │
- * │  [A PLAY] [X FAVOURITE] [Y MORE]    [B CLOSE]     ░░░░ │
- * │  ┌──────┐  ABOUT                                  ░░░░ │
- * │  │cover │  …                                      ░░░░ │
- * │  │      │  DETAILS  dev · publisher · players     ░░░░ │
- * │  └──────┘  SCREENSHOTS  ▢ ▢ ▢                     ░░░░ │
+ * │  [A PLAY] [X FAVOURITE]                           ░░░░ │
+ * │  ┌──────┐  ABOUT               ▲ scrolls          ░░░░ │
+ * │  │cover │  DETAILS  dev · publisher · players     ░░░░ │
+ * │  │      │  SCREENSHOTS                            ░░░░ │
+ * │  └──────┘  ▢▢▢▢  ▢▢▢▢  ▢▢▢▢       ▲ always here   ░░░░ │
  * └────────────────────────────────────────────────────────┘
  * ```
  *
@@ -102,10 +102,16 @@ data class CouchDetailScroll(val tick: Int = 0, val direction: Int = 0)
  * contents and the frame by different amounts and the two only agreed at one
  * setting.
  *
+ * Two buttons, and both act on the game. There is no Close — B leaves, as B
+ * leaves everywhere in the launcher, and a press on the page itself leaves too,
+ * which is what a pointer uses now that the page has no outside to click on.
+ * There is no More either: it opened the long-press menu, and couch mode does
+ * not raise that menu at all. This page is what a long press reaches instead.
+ *
  * Driven by all three inputs. The stick walks the actions left and right and
- * scrolls the reading below them up and down; the pointer lights and clicks the
- * same buttons, and its scroll is a drag into this window, so the column follows
- * the wheel wherever the cursor is over it.
+ * scrolls the reading up and down; the pointer lights and clicks the same
+ * buttons, and its scroll is a drag into this window, so the column follows the
+ * wheel wherever the cursor is over it.
  */
 @Composable
 fun CouchQuickDetails(
@@ -115,7 +121,6 @@ fun CouchQuickDetails(
     focusedAction: Int,
     onPlay: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onMore: () -> Unit,
     onDismiss: () -> Unit,
     /**
      * The pointer arriving over one of the actions.
@@ -171,7 +176,6 @@ fun CouchQuickDetails(
                 onActionFocused = onActionFocused,
                 onPlay = onPlay,
                 onToggleFavorite = onToggleFavorite,
-                onMore = onMore,
                 onDismiss = onDismiss,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -188,7 +192,6 @@ private fun DetailsPage(
     onActionFocused: (Int) -> Unit,
     onPlay: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onMore: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -219,10 +222,21 @@ private fun DetailsPage(
     Box(
         modifier = modifier
             .background(colors.background)
-            // Nothing falls through to the dashboard below: this is a page over
-            // it, not a panel floating on it, and a press that reached a card
-            // through the artwork would launch a game.
-            .clickable(enabled = false) {},
+            /*
+             * A press on the page itself closes it, and nothing falls past it.
+             *
+             * Both halves matter. This is a page over the dashboard rather than
+             * a panel floating on it, so a press that reached a card through the
+             * artwork would launch a game. And with the Close button gone — B
+             * does that, and always did — a pointer would otherwise have no way
+             * out of a screen with no outside to click on. A wheel scroll is a
+             * drag with movement in it, so it is not mistaken for this.
+             */
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onDismiss,
+            ),
     ) {
         if (backdrop != null) {
             ArtworkImage(
@@ -399,59 +413,80 @@ private fun DetailsPage(
                     onHover = { onActionFocused(ACTION_FAVOURITE) },
                     onClick = onToggleFavorite,
                 )
-                DetailAction(
-                    key = "Y",
-                    label = "MORE",
-                    icon = Icons.Rounded.MoreHoriz,
-                    accent = accent,
-                    focused = focusedAction == ACTION_MORE,
-                    onHover = { onActionFocused(ACTION_MORE) },
-                    onClick = onMore,
-                )
-                // Set apart rather than banished to the far edge: it is the one
-                // button here that does not act on the game, and on a screen this
-                // wide a pointer should not have to cross it to leave.
-                Spacer(modifier = Modifier.width(CLOSE_GAP.dp))
-                DetailAction(
-                    key = "B",
-                    label = "CLOSE",
-                    icon = Icons.Rounded.Close,
-                    accent = accent,
-                    focused = focusedAction == ACTION_CLOSE,
-                    onHover = { onActionFocused(ACTION_CLOSE) },
-                    onClick = onDismiss,
-                )
             }
 
             Spacer(modifier = Modifier.height(BODY_GAP.dp))
-            Row(
+            DetailsBody(
+                entry = entry,
+                accent = accent,
+                reading = reading,
                 modifier = Modifier.fillMaxWidth().weight(BODY_WEIGHT),
-                horizontalArrangement = Arrangement.spacedBy(BODY_COLUMN_GAP.dp),
-            ) {
-                val cover = artwork?.boxArt ?: artwork?.cellImage
-                if (cover != null) {
-                    ArtworkImage(
-                        model = cover,
-                        contentDescription = entry.title,
-                        fallbackText = entry.title,
-                        fallbackTint = accent,
-                        contentScale = ContentScale.Crop,
-                        // Sized from the height it was given rather than from a
-                        // width chosen in advance. Box art is 2:3 and this slot
-                        // is whatever the screen had left, so deriving one from
-                        // the other is what keeps it inside the page at every
-                        // scale instead of running off the bottom of it.
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .aspectRatio(COVER_ASPECT)
-                            .clip(ThorTheme.shapes.small),
-                    )
-                }
+            )
+        }
+    }
+}
 
+/**
+ * The cover, the reading, and the screenshots that no longer hide under it.
+ */
+@Composable
+private fun DetailsBody(
+    entry: GridEntry,
+    accent: Color,
+    reading: ScrollState,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ThorTheme.colors
+    val game = entry as? GameEntry
+    val artwork = game?.metadata?.artwork
+
+    BoxWithConstraints(modifier = modifier) {
+        // A share of what this region actually got, with limits. Sized off the
+        // images themselves the strip grew with the width of the column beside
+        // it, and on a screen already short of height it would have taken all of
+        // what was left for the words.
+        val shotsHeight = (maxHeight * SHOTS_HEIGHT_FRACTION)
+            .coerceIn(MIN_SHOT_HEIGHT.dp, MAX_SHOT_HEIGHT.dp)
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(BODY_COLUMN_GAP.dp),
+        ) {
+            val cover = artwork?.boxArt ?: artwork?.cellImage
+            if (cover != null) {
+                ArtworkImage(
+                    model = cover,
+                    contentDescription = entry.title,
+                    fallbackText = entry.title,
+                    fallbackTint = accent,
+                    contentScale = ContentScale.Crop,
+                    // Sized from the height it was given rather than from a
+                    // width chosen in advance. Box art is 2:3 and this slot
+                    // is whatever the screen had left, so deriving one from
+                    // the other is what keeps it inside the page at every
+                    // scale instead of running off the bottom of it.
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .aspectRatio(COVER_ASPECT)
+                        .clip(ThorTheme.shapes.small),
+                )
+            }
+
+            /*
+             * The words scroll; the pictures do not.
+             *
+             * Screenshots used to be the last section of one long scrolling
+             * column, which put the three images this page has of the game
+             * below the fold of a description that can run to any length —
+             * so the artwork was the one thing you had to go looking for.
+             * They are a sibling of the scrolling box now rather than its
+             * last child: laid out first at the height they need, with the
+             * reading taking whatever is left above them.
+             */
+            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                 Column(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .weight(1f)
-                        .fillMaxHeight()
                         .verticalScroll(reading),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -471,7 +506,9 @@ private fun DetailsPage(
                             "DEVELOPER" to metadata.developer,
                             "PUBLISHER" to metadata.publisher,
                             "PLAYERS" to metadata.players,
-                            "RELEASED" to (metadata.releaseDate ?: metadata.releaseYear?.toString()),
+                            "RELEASED" to (
+                                metadata.releaseDate ?: metadata.releaseYear?.toString()
+                                ),
                         )
                         if (details.any { !it.second.isNullOrBlank() }) {
                             DetailSectionTitle("DETAILS")
@@ -480,44 +517,20 @@ private fun DetailsPage(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                             ) {
                                 details.forEach { (label, value) ->
-                                    DetailFact(label, value ?: "—", modifier = Modifier.weight(1f))
+                                    DetailFact(
+                                        label = label,
+                                        value = value ?: "—",
+                                        modifier = Modifier.weight(1f),
+                                    )
                                 }
                             }
                         }
-
-                        artwork?.cappedScreenshots
-                            ?.takeIf(List<String>::isNotEmpty)
-                            ?.let { shots ->
-                                DetailSectionTitle("SCREENSHOTS")
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    shots.forEach { shot ->
-                                        ArtworkImage(
-                                            model = shot,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .aspectRatio(16f / 9f)
-                                                .clip(ThorTheme.shapes.small),
-                                        )
-                                    }
-                                    // Three slots whatever arrived, so two
-                                    // screenshots are two thirds of the row
-                                    // rather than two halves at a size nothing
-                                    // else on the page uses.
-                                    repeat(SCREENSHOT_SLOTS - shots.size) {
-                                        Spacer(modifier = Modifier.weight(1f))
-                                    }
-                                }
-                            }
                     } else {
                         Text(
                             text = when (entry) {
                                 is AppEntry -> "Android application"
-                                is FolderEntry -> "${entry.childIds.size} items in this collection"
+                                is FolderEntry ->
+                                    "${entry.childIds.size} items in this collection"
                                 else -> "Library item"
                             },
                             style = MaterialTheme.typography.bodyLarge,
@@ -526,10 +539,41 @@ private fun DetailsPage(
                     }
                 }
 
-                // The reading stops short of the edge and the picture carries on
-                // behind it, which is the whole reason the page is the artwork.
-                Spacer(modifier = Modifier.weight(GUTTER_WEIGHT))
+                artwork?.cappedScreenshots
+                    ?.takeIf(List<String>::isNotEmpty)
+                    ?.let { shots ->
+                        Spacer(modifier = Modifier.height(SHOTS_GAP.dp))
+                        DetailSectionTitle("SCREENSHOTS")
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth().height(shotsHeight),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            shots.forEach { shot ->
+                                ArtworkImage(
+                                    model = shot,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(ThorTheme.shapes.small),
+                                )
+                            }
+                            // Three slots whatever arrived, so two
+                            // screenshots are two thirds of the row rather
+                            // than two halves at a size nothing else on the
+                            // page uses.
+                            repeat(SCREENSHOT_SLOTS - shots.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
             }
+
+            // The reading stops short of the edge and the picture carries on
+            // behind it, which is the whole reason the page is the artwork.
+            Spacer(modifier = Modifier.weight(GUTTER_WEIGHT))
         }
     }
 }
@@ -690,8 +734,6 @@ private fun Long.asDetailsPlaytime(): String {
  */
 private const val ACTION_PLAY = 0
 private const val ACTION_FAVOURITE = 1
-private const val ACTION_MORE = 2
-private const val ACTION_CLOSE = 3
 
 /**
  * Everything the page is measured in.
@@ -712,8 +754,8 @@ private const val PAGE_INSET = 32
  * Weighted towards the reading because the backdrop is behind the whole page
  * anyway — the share above is breathing room, not the only place it is seen.
  */
-private const val ART_WEIGHT = 0.26f
-private const val BODY_WEIGHT = 0.74f
+private const val ART_WEIGHT = 0.18f
+private const val BODY_WEIGHT = 0.82f
 
 /** The reading column stops here; the rest of the row stays artwork. */
 private const val GUTTER_WEIGHT = 0.55f
@@ -723,8 +765,22 @@ private const val BODY_GAP = 20
 private const val ACTIONS_GAP = 18
 private const val ACTION_GAP = 9
 private const val ACTION_HEIGHT = 46
-private const val CLOSE_GAP = 26
 private const val PLATFORM_LABEL_GAP = 6
+
+/** Between the reading and the screenshots pinned under it. */
+private const val SHOTS_GAP = 14
+
+/**
+ * How tall the strip of screenshots is.
+ *
+ * A share of the body with limits at both ends, and the slots crop to it rather
+ * than the images setting it. Three 16:9 pictures across a wide column are tall
+ * pictures — sized off themselves they grew with the width of the reading and
+ * on a short screen would have left the description with nothing.
+ */
+private const val SHOTS_HEIGHT_FRACTION = 0.34f
+private const val MIN_SHOT_HEIGHT = 62
+private const val MAX_SHOT_HEIGHT = 124
 private const val LOGO_WIDTH_FRACTION = 0.44f
 private const val LOGO_MIN_HEIGHT = 50
 private const val LOGO_MAX_HEIGHT = 92

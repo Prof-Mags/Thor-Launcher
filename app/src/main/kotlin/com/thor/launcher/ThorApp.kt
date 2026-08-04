@@ -2039,10 +2039,6 @@ fun ThorApp(
                     viewModel.launchEntry(entry)
                 },
                 onCouchDetailsFavorite = viewModel::toggleFavorite,
-                onCouchDetailsMore = { entry ->
-                    viewModel.closeCouchQuickDetails()
-                    viewModel.openContextMenu(entry)
-                },
                 onCouchDetailsDismissed = viewModel::closeCouchQuickDetails,
                 onCouchDetailsActionFocused = viewModel::focusCouchQuickDetailsAction,
                 onCouchSettingsSelected = viewModel::openCouchSettings,
