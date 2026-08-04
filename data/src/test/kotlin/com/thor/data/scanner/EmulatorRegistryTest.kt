@@ -101,7 +101,51 @@ class EmulatorRegistryTest {
         assertThat(packagesFor("gbc")).contains("com.explusalpha.GbcEmu")
         assertThat(packagesFor("nes")).contains("com.johnemulators.johnness")
     }
+
+    /**
+     * Systems that could only be run through a many-core front-end.
+     *
+     * Each of these needed a core downloaded and assigned before RetroArch would
+     * open anything, which is a long way from "it launched". PS3 was worse than
+     * awkward: no core runs it at all, so every PS3 game in the library was
+     * unlaunchable.
+     */
+    @Test
+    fun `the systems that had no dedicated emulator now have one`() {
+        listOf("ps3", "mastersystem", "gamegear", "sg1000", "segacd").forEach { platformId ->
+            val dedicated = EmulatorRegistry.candidatesFor(platformId).filterNot { it.isFrontEnd }
+
+            assertThat(dedicated).isNotEmpty()
+        }
+    }
+
+    /**
+     * A front-end never outranks a dedicated emulator.
+     *
+     * This is the whole of the automatic pick: [EmulatorRegistry.candidatesFor]
+     * is ordered, and the launcher takes the first *installed* candidate.
+     */
+    @Test
+    fun `dedicated emulators are offered before the many-core front-ends`() {
+        BuiltInPlatforms.ALL.forEach { platform ->
+            val candidates = EmulatorRegistry.candidatesFor(platform.id)
+            val firstFrontEnd = candidates.indexOfFirst { it.isFrontEnd }
+            val lastDedicated = candidates.indexOfLast { !it.isFrontEnd }
+
+            if (firstFrontEnd >= 0 && lastDedicated >= 0) {
+                assertThat(lastDedicated).isLessThan(firstFrontEnd)
+            }
+        }
+    }
+
+    /** Two specs for one package would make the picker show it twice. */
+    @Test
+    fun `no package is listed twice`() {
+        val packages = EmulatorRegistry.KNOWN.map { it.packageName }
+
+        assertThat(packages).containsNoDuplicates()
+    }
 }
 
 /** Kept in step with the figure in README.md, by the test above. */
-private const val EMULATORS_IN_README = 71
+private const val EMULATORS_IN_README = 80

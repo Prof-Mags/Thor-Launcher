@@ -245,16 +245,17 @@ Every key is a touch target too.
 
 **Settings → Games & artwork → Platforms**
 
-**47 systems** built in. **71 emulators** recognised, each handed a ROM the way
+**47 systems** built in. **80 emulators** recognised, each handed a ROM the way
 that emulator expects. Add the consoles you own and pick an emulator for each.
 
 Standalone emulators are preferred over RetroArch and Lemuroid — a DS game goes
 to melonDS or DraStic if you have one, and to a multi-core front-end only when
 you don't. Among them: Azahar, Citra, Panda3DS, melonDS, DraStic, NooDS,
-DuckStation, AetherSX2, Dolphin, PPSSPP, Vita3K, Flycast, Redream, Yaba Sanshiro,
-Strato, Eden, Citron, Sudachi, MAME4droid, Mupen64Plus FZ, the John and `.emu`
-families, Pizza Boy, My Boy!, and Winlator for Windows games. Pick a different
-one per system, or per game, whenever you disagree.
+DuckStation, AetherSX2, aPS3e, RPCS3, Dolphin, PPSSPP, Vita3K, Flycast, Redream,
+Yaba Sanshiro, Strato, Eden, Citron, Sudachi, MAME4droid, Mupen64Plus FZ,
+MasterGear, fMSX, iNES, ColEm, Speccy, the John and `.emu` families, Pizza Boy,
+My Boy!, and Winlator for Windows games. Pick a different one per system, or per
+game, whenever you disagree.
 
 <br>
 

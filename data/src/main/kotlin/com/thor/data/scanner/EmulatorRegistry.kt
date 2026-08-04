@@ -106,6 +106,20 @@ object EmulatorRegistry {
             displayName = "Yaba Sanshiro 2",
             platformIds = setOf("saturn"),
         ),
+        /*
+         * MasterGear, which is the answer for three systems that had none.
+         *
+         * The Master System, the Game Gear and the SG-1000 could only be run
+         * through RetroArch or Lemuroid before this — every one of them a system
+         * where the front-end needs a core downloading and assigning first.
+         * Marat Fayzullin's emulator covers all three in one application and has
+         * been on the Play Store for years.
+         */
+        EmulatorSpec(
+            packageName = "com.fms.mg",
+            displayName = "MasterGear",
+            platformIds = setOf("mastersystem", "gamegear", "sg1000"),
+        ),
 
         // ---- Nintendo handhelds ---------------------------------------------
         EmulatorSpec(
@@ -378,10 +392,20 @@ object EmulatorRegistry {
             displayName = "GBA.emu",
             platformIds = setOf("gba"),
         ),
+        /*
+         * MD.emu is not only the Mega Drive.
+         *
+         * It runs the Master System and Mark III, and Sega CD, which is how a
+         * system with nothing else on this list gets a dedicated emulator.
+         * Game Gear and SG-1000 are deliberately not claimed here — MasterGear
+         * covers those and this one's support for them is not documented, and a
+         * claimed platform that turns out not to run is worse than an
+         * unclaimed one that does.
+         */
         EmulatorSpec(
             packageName = "com.explusalpha.MdEmu",
             displayName = "MD.emu",
-            platformIds = setOf("genesis"),
+            platformIds = setOf("genesis", "mastersystem", "segacd"),
         ),
         EmulatorSpec(
             packageName = "com.explusalpha.Saturn",
@@ -539,6 +563,68 @@ object EmulatorRegistry {
             packageName = "org.vita3k.emulator",
             displayName = "Vita3K",
             platformIds = setOf("psvita"),
+        ),
+
+        /*
+         * ---- PlayStation 3 --------------------------------------------------
+         *
+         * A platform that had no emulator at all until now, dedicated or
+         * otherwise: no RetroArch core runs PS3, so every PS3 game in the
+         * library was unlaunchable rather than merely awkward.
+         *
+         * Two of them, because two exist and which one somebody installed is not
+         * something the launcher can infer. aPS3e ships free and paid builds
+         * under separate ids, so both are listed for the same reason the John
+         * and Pizza Boy editions are.
+         */
+        EmulatorSpec(
+            packageName = "aenu.aps3e",
+            displayName = "aPS3e",
+            platformIds = setOf("ps3"),
+        ),
+        EmulatorSpec(
+            packageName = "aenu.aps3e.premium",
+            displayName = "aPS3e Premium",
+            platformIds = setOf("ps3"),
+        ),
+        EmulatorSpec(
+            packageName = "net.rpcs3",
+            displayName = "RPCS3",
+            platformIds = setOf("ps3"),
+        ),
+
+        /*
+         * The rest of Marat Fayzullin's family, whose ColEm and Speccy are
+         * already above.
+         *
+         * Each ships a free build and a paid "deluxe" one under its own id, and
+         * only the deluxe ids were listed — so someone running the free build
+         * had an emulator installed that the launcher could not see.
+         */
+        EmulatorSpec(
+            packageName = "com.fms.colem",
+            displayName = "ColEm",
+            platformIds = setOf("colecovision"),
+        ),
+        EmulatorSpec(
+            packageName = "com.fms.speccy",
+            displayName = "Speccy",
+            platformIds = setOf("zxspectrum"),
+        ),
+        EmulatorSpec(
+            packageName = "com.fms.fmsx",
+            displayName = "fMSX",
+            platformIds = setOf("msx"),
+        ),
+        EmulatorSpec(
+            packageName = "com.fms.fmsx.deluxe",
+            displayName = "fMSX Deluxe",
+            platformIds = setOf("msx"),
+        ),
+        EmulatorSpec(
+            packageName = "com.fms.ines.free",
+            displayName = "iNES",
+            platformIds = setOf("nes"),
         ),
     )
 
