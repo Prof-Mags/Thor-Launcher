@@ -46,17 +46,20 @@ class MoviesCouchBrowseTest {
 
     // ---- Regions ------------------------------------------------------------
 
+    /**
+     * The description gets the larger half.
+     *
+     * The shelf is the only region with a height of its own and the billboard
+     * takes what is left, so a shelf that grew past half the panel would quietly
+     * squeeze out the thing it is there to be read alongside.
+     */
     @Test
-    fun `the billboard and one shelf both fit on a television`() {
+    fun `one shelf leaves the description the greater part of the screen`() {
         val available = 560.dp
 
-        val billboard = couchBillboardHeight(available)
         val shelf = couchShelfHeight(available)
 
-        // The point of the proportions: the focused shelf has to be on the screen
-        // at the same time as the title it is describing, or moving along it
-        // describes something the viewer cannot see.
-        assertThat((billboard + shelf).value).isLessThan(available.value)
+        assertThat(shelf.value).isLessThan(available.value / 2f)
     }
 
     /**
@@ -66,18 +69,13 @@ class MoviesCouchBrowseTest {
      * the handheld's own short panel while a cable is found.
      */
     @Test
-    fun `a short panel keeps a usable billboard and shelf`() {
-        val billboard = couchBillboardHeight(180.dp)
-        val shelf = couchShelfHeight(180.dp)
-
-        assertThat(billboard.value).isAtLeast(210f)
-        assertThat(shelf.value).isAtLeast(150f)
+    fun `a short panel keeps a usable shelf`() {
+        assertThat(couchShelfHeight(180.dp).value).isAtLeast(150f)
     }
 
     @Test
-    fun `a very tall panel stops the billboard swallowing the shelves`() {
-        assertThat(couchBillboardHeight(2_000.dp).value).isAtMost(420f)
-        assertThat(couchShelfHeight(2_000.dp).value).isAtMost(290f)
+    fun `a very tall panel stops the shelf swallowing the description`() {
+        assertThat(couchShelfHeight(2_000.dp).value).isAtMost(330f)
     }
 
     /**
@@ -98,13 +96,49 @@ class MoviesCouchBrowseTest {
         assertThat((shelf - poster).value).isAtLeast(60f)
     }
 
+    /**
+     * Every card stands up, continue watching included.
+     *
+     * That shelf is landscape everywhere else in the launcher. Here it is one
+     * category among several on a screen that shows one at a time, so a row of
+     * wide stills would be the shelf that broke the rhythm - and its cards would
+     * come out half the height of every other shelf's.
+     */
     @Test
-    fun `posters stand up and stills lie down`() {
-        val poster = couchCardWidth(150.dp, landscape = false)
-        val still = couchCardWidth(150.dp, landscape = true)
+    fun `cards are portrait whichever shelf they are on`() {
+        val width = couchCardWidth(150.dp)
 
-        assertThat(poster.value).isLessThan(150f)
-        assertThat(still.value).isGreaterThan(150f)
+        assertThat(width.value).isWithin(0.5f).of(100f)
+    }
+
+    /**
+     * The story is measured, not assumed.
+     *
+     * A television at the usual interface size leaves the billboard a couple of
+     * hundred dp above the shelf, and a fixed line count sized for that pushes
+     * the title itself off the top of a smaller one.
+     */
+    @Test
+    fun `the story is cut to the room above the shelf`() {
+        val television = 476.dp
+        val handheld = 370.dp
+
+        val onTelevision = couchOverviewLines(television - couchShelfHeight(television))
+        val onHandheld = couchOverviewLines(handheld - couchShelfHeight(handheld))
+
+        assertThat(onTelevision).isAtLeast(2)
+        assertThat(onHandheld).isLessThan(onTelevision)
+    }
+
+    /** A billboard with room for the name and the play button shows those two. */
+    @Test
+    fun `a panel with no room for prose asks for none`() {
+        assertThat(couchOverviewLines(120.dp)).isEqualTo(0)
+    }
+
+    @Test
+    fun `a very tall panel stops short of a wall of text`() {
+        assertThat(couchOverviewLines(1_200.dp)).isAtMost(6)
     }
 
     // ---- Words --------------------------------------------------------------

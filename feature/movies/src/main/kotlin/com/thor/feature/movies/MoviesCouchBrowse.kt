@@ -18,24 +18,29 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -55,23 +60,28 @@ import com.thor.core.model.MediaRow
 import com.thor.core.model.MediaType
 import com.thor.core.model.WatchProgress
 import com.thor.core.ui.component.ArtworkImage
+import com.thor.core.ui.input.LocalThorTextInput
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 
 /**
  * The catalogue as a television screen.
  *
- * The whole screen is the highlighted title: its backdrop fills the panel, its
- * name and story sit over the left of it, and the shelves lie across the bottom.
+ * One category at a time, the way the games library is arranged: the shelf on
+ * screen is the shelf being walked, and up and down change which one that is
+ * rather than scrolling past it. Everything above it belongs to whichever title
+ * the cursor is on — its backdrop fills the panel, and its name, facts and story
+ * sit over the left of it.
+ *
  * The handheld arrangement this replaced was a catalogue pane beside a detail
  * pane, which is right for a screen held at arm's length and wrong for one across
- * a room — it made the artwork thumbnail-sized and the prose unreadable from a
+ * a room: it made the artwork thumbnail-sized and the prose unreadable from a
  * sofa, and it spent a third of a television on a column of text.
  *
- * Moving down the shelves scrolls the billboard away rather than resizing it. A
- * panel that shrinks while its contents change has to reflow mid-animation and
- * clips whatever no longer fits; a list that scrolls is one movement, and it is
- * the movement every other set-top catalogue makes, so it needs no explaining.
+ * A stack of shelves was the intermediate step, and the trouble with it is that
+ * the description has to leave for the shelves to be reached. Holding the one
+ * shelf still and swapping its contents keeps the title's own page on screen for
+ * the whole time it is selected, which is the only reason to be reading it.
  */
 @Composable
 internal fun MoviesCouchBrowse(
@@ -92,24 +102,11 @@ internal fun MoviesCouchBrowse(
     // The fetched record when it has arrived, the shelf's own summary until then,
     // so the billboard never blanks between moving and the details landing.
     val highlighted = detail.item ?: state.highlighted
-    val listState = rememberLazyListState()
-
-    LaunchedEffect(state.cursor.row, rows.size) {
-        if (rows.isNotEmpty()) {
-            /*
-             * The row above the focused one goes to the top, not the focused row
-             * itself, so there is always something overhead to have come from —
-             * and on the first shelf that something is the billboard. One rule
-             * covers both, and the billboard needs no special case to stay on
-             * screen while the top shelf is being walked.
-             */
-            listState.animateScrollToItem(state.cursor.row.coerceIn(0, rows.lastIndex))
-        }
-    }
+    val rowIndex = state.cursor.row.coerceIn(0, (rows.size - 1).coerceAtLeast(0))
+    val row = rows.getOrNull(rowIndex)
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(colors.background)) {
         val available = (maxHeight - BAR_HEIGHT.dp).coerceAtLeast(MIN_CONTENT_HEIGHT.dp)
-        val billboardHeight = couchBillboardHeight(available)
         val shelfHeight = couchShelfHeight(available)
         val posterHeight = couchPosterHeight(shelfHeight)
 
@@ -126,13 +123,13 @@ internal fun MoviesCouchBrowse(
             )
 
             val message = browseMessage(state)
-            if (message != null) {
+            if (message != null || row == null) {
                 Box(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = message,
+                        text = message ?: "Nothing to watch here yet.",
                         style = MaterialTheme.typography.titleLarge,
                         color = colors.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -142,39 +139,43 @@ internal fun MoviesCouchBrowse(
                 return@Column
             }
 
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentPadding = PaddingValues(bottom = SHELF_GAP.dp),
-                verticalArrangement = Arrangement.spacedBy(SHELF_GAP.dp),
-            ) {
-                item(key = "billboard") {
-                    CouchBillboard(
-                        item = highlighted,
-                        resume = detail.resumeProgress,
-                        shelfTitle = rows.getOrNull(state.cursor.row)?.title,
-                        onPlay = onPlay,
-                        onOpen = { onItemSelected(state.cursor.row, state.cursor.column) },
-                        modifier = Modifier.fillMaxWidth().height(billboardHeight),
-                    )
-                }
+            // The billboard takes whatever the shelf leaves rather than a height
+            // of its own: it is the description of one title, and there is no
+            // length it should be on a screen that has room for it.
+            CouchBillboard(
+                item = highlighted,
+                resume = detail.resumeProgress,
+                overviewLines = couchOverviewLines(available - shelfHeight),
+                onPlay = onPlay,
+                onOpen = { onItemSelected(rowIndex, state.cursor.column) },
+                modifier = Modifier.fillMaxWidth().weight(1f).clipToBounds(),
+            )
 
-                itemsIndexed(rows, key = { _, row -> row.id }) { index, row ->
-                    CouchShelf(
-                        row = row,
-                        focusedColumn = state.cursor.column.takeIf { index == state.cursor.row },
-                        posterHeight = posterHeight,
-                        onItemFocused = { column -> onItemFocused(index, column) },
-                        onItemSelected = { column -> onItemSelected(index, column) },
-                        modifier = Modifier.fillMaxWidth().height(shelfHeight),
-                    )
-                }
+            /*
+             * Keyed on the shelf, so each category gets its own scroll position.
+             *
+             * Without this the row's list state is reused across categories, and
+             * changing shelf keeps the offset the last one was left at — a new
+             * category that opens halfway along itself, with its first titles
+             * already scrolled off the left.
+             */
+            key(row.id) {
+                CouchShelf(
+                    row = row,
+                    rowIndex = rowIndex,
+                    rowCount = rows.size,
+                    focusedColumn = state.cursor.column,
+                    posterHeight = posterHeight,
+                    onItemFocused = { column -> onItemFocused(rowIndex, column) },
+                    onItemSelected = { column -> onItemSelected(rowIndex, column) },
+                    modifier = Modifier.fillMaxWidth().height(shelfHeight),
+                )
             }
         }
     }
 }
 
-/** Which of the browse states has nothing to draw shelves for. */
+/** Which of the browse states has nothing to draw a shelf for. */
 private fun browseMessage(state: MoviesUiState): String? = when {
     state.setupMessage != null -> state.setupMessage
     state.visibleRows.isNotEmpty() -> null
@@ -232,7 +233,15 @@ internal fun CouchBackdrop(item: MediaItem?) {
     }
 }
 
-/** Films or shows on the left, the search box on the right. */
+/**
+ * Everything the catalogue can be told, in one group at the left.
+ *
+ * Films, shows and search are three ways of choosing what the shelves hold, so
+ * they sit together rather than at opposite ends of the bar. The right-hand end
+ * is deliberately empty: the couch shell's own clock and profile cluster is
+ * directly above it, and a second right-aligned group under the first reads as
+ * one crowded corner on a screen with a whole empty half.
+ */
 @Composable
 private fun CouchCatalogueBar(
     type: MediaType,
@@ -258,13 +267,103 @@ private fun CouchCatalogueBar(
             maxLines = 1,
         )
         MediaTypeTabs(selected = type, onSelected = onTypeSelected)
-        Spacer(modifier = Modifier.weight(1f))
-        MediaSearchField(
+        CouchSearchChip(
             query = query,
             onQueryChanged = onQueryChanged,
             requestFocus = searchRequested,
             onFocused = onSearchFocused,
-            modifier = Modifier.width(SEARCH_WIDTH.dp),
+        )
+    }
+}
+
+/**
+ * The way in to the keyboard, and the record of what was asked.
+ *
+ * Not a text field. The bottom panel's search box is one because it is composed
+ * beside the keyboard that fills it in, where showing a caret in the box being
+ * typed into is the whole point; here the keyboard is a full-screen overlay and
+ * the box underneath it would be a wide empty rectangle for as long as nobody
+ * had searched for anything. A chip states its shortcut when idle and becomes
+ * the query when there is one, so the bar says what the shelves are answering.
+ *
+ * Focus is claimed directly rather than through a [ThorInputField]. The field is
+ * a display of a value the keyboard is already editing through the sink below,
+ * and this screen has somewhere better to show that value than a box of its own.
+ */
+@Composable
+private fun CouchSearchChip(
+    query: String,
+    onQueryChanged: (String) -> Unit,
+    requestFocus: Boolean,
+    onFocused: () -> Unit,
+) {
+    val colors = ThorTheme.colors
+    val textInput = LocalThorTextInput.current
+    // Kept current so the sink registered on focus always writes to the latest
+    // state holder, however many times this screen has recomposed since.
+    val currentOnQueryChanged by rememberUpdatedState(onQueryChanged)
+    val hover = rememberPointerHover()
+    val typing = textInput.focusedId == COUCH_SEARCH_FIELD_ID
+    val lit = typing || hover.isHovered
+    val searching = query.isNotBlank()
+    val shape = ThorTheme.shapes.pill
+
+    val claim: () -> Unit = {
+        textInput.focus(
+            id = COUCH_SEARCH_FIELD_ID,
+            label = "Search",
+            initial = query,
+        ) { edited -> currentOnQueryChanged(edited) }
+    }
+
+    LaunchedEffect(requestFocus) {
+        if (requestFocus) {
+            claim()
+            onFocused()
+        }
+    }
+
+    // Leaving the catalogue must not leave the keyboard pointed at it. A field
+    // does this for itself on disposal; a chip that stands in for one has to.
+    DisposableEffect(Unit) {
+        onDispose { textInput.release(COUCH_SEARCH_FIELD_ID) }
+    }
+
+    Row(
+        modifier = Modifier
+            .widthIn(min = SEARCH_MIN_WIDTH.dp, max = SEARCH_MAX_WIDTH.dp)
+            .pointerHover(hover)
+            .thorCursor(focused = lit, shape = shape)
+            .clip(shape)
+            .background(if (lit) colors.surfaceHighest else colors.surfaceElevated)
+            .clickable(onClick = claim)
+            .padding(horizontal = SEARCH_PADDING_H.dp, vertical = SEARCH_PADDING_V.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Search,
+            contentDescription = null,
+            tint = if (searching || lit) colors.cursor else colors.onSurfaceVariant,
+            modifier = Modifier.size(ACTION_ICON.dp),
+        )
+        Text(
+            text = if (searching) query else "Search",
+            style = MaterialTheme.typography.labelLarge,
+            color = if (searching) colors.onSurface else colors.onSurfaceVariant,
+            fontWeight = if (searching) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Text(
+            // B is what leaves a search, and it is the only way out that does not
+            // need the keyboard raised again to empty the box by hand.
+            text = if (searching) "B  CLEAR" else "Y",
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurfaceVariant.copy(alpha = HINT_ALPHA),
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
         )
     }
 }
@@ -281,7 +380,7 @@ private fun CouchCatalogueBar(
 private fun CouchBillboard(
     item: MediaItem?,
     resume: WatchProgress?,
-    shelfTitle: String?,
+    overviewLines: Int,
     onPlay: () -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
@@ -308,17 +407,6 @@ private fun CouchBillboard(
             modifier = Modifier.fillMaxWidth(BILLBOARD_WIDTH_FRACTION),
             verticalArrangement = Arrangement.spacedBy(BILLBOARD_GAP.dp),
         ) {
-            shelfTitle?.let { title ->
-                Text(
-                    text = title.uppercase(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.cursor,
-                    fontWeight = FontWeight.Black,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
             if (item.logoUrl != null) {
                 ArtworkImage(
                     model = item.logoUrl,
@@ -348,12 +436,14 @@ private fun CouchBillboard(
                 overflow = TextOverflow.Ellipsis,
             )
 
-            if (item.overview.isNotBlank()) {
+            Ratings(item.ratings)
+
+            if (item.overview.isNotBlank() && overviewLines > 0) {
                 Text(
                     text = item.overview,
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.onSurfaceVariant,
-                    maxLines = OVERVIEW_LINES,
+                    maxLines = overviewLines,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -445,18 +535,20 @@ internal fun CouchMediaButton(
     }
 }
 
-/** One shelf: its name, and the titles on it. */
+/** The one shelf on screen: its name, where it sits, and the titles on it. */
 @Composable
 private fun CouchShelf(
     row: MediaRow,
-    focusedColumn: Int?,
+    rowIndex: Int,
+    rowCount: Int,
+    focusedColumn: Int,
     posterHeight: Dp,
     onItemFocused: (column: Int) -> Unit,
     onItemSelected: (column: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    val cardWidth = couchCardWidth(posterHeight, row.landscape)
+    val cardWidth = couchCardWidth(posterHeight)
 
     /*
      * Nudged, not snapped.
@@ -469,9 +561,8 @@ private fun CouchShelf(
      * viewport, so the first card is never left half under the screen edge.
      */
     LaunchedEffect(focusedColumn, row.items.size) {
-        val target = focusedColumn?.takeIf { row.items.isNotEmpty() }
-            ?.coerceIn(0, row.items.lastIndex)
-            ?: return@LaunchedEffect
+        if (row.items.isEmpty()) return@LaunchedEffect
+        val target = focusedColumn.coerceIn(0, row.items.lastIndex)
         val layout = listState.layoutInfo
         val visible = layout.visibleItemsInfo.firstOrNull { it.index == target }
         if (visible == null) {
@@ -491,18 +582,25 @@ private fun CouchShelf(
     }
 
     Column(modifier = modifier) {
-        Text(
-            text = row.title,
-            style = MaterialTheme.typography.titleMedium,
-            color = ThorTheme.colors.onBackground,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(SHELF_HEADER_HEIGHT.dp)
                 .padding(horizontal = SCREEN_INSET.dp),
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SECTION_GAP.dp),
+        ) {
+            Text(
+                text = row.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = ThorTheme.colors.onBackground,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            CategoryPosition(index = rowIndex, count = rowCount)
+        }
         Spacer(modifier = Modifier.height(SHELF_HEADER_GAP.dp))
 
         // Full width with the inset carried as content padding, so the first card
@@ -525,7 +623,6 @@ private fun CouchShelf(
                 CouchTitleCard(
                     item = item,
                     progress = row.progressAt(index),
-                    landscape = row.landscape,
                     focused = index == focusedColumn,
                     width = cardWidth,
                     posterHeight = posterHeight,
@@ -538,19 +635,73 @@ private fun CouchShelf(
 }
 
 /**
- * One title on a shelf.
+ * Which category this is, of how many.
  *
- * The pointer moves the cursor here rather than merely lighting the card, for
- * the same reason it does on the home shelf: the billboard above describes
- * whatever is selected, and a hover that only highlighted would leave the
- * largest thing on the television describing a different film from the one being
- * pointed at.
+ * One shelf on screen answers "what is on this one" perfectly and "what else is
+ * there" not at all, so the count is drawn beside its name. Marks while they can
+ * be told apart, a figure once they cannot: twenty identical dashes say no more
+ * than "several" and take a third of the row saying it.
+ */
+@Composable
+private fun CategoryPosition(index: Int, count: Int) {
+    if (count <= 1) return
+    val colors = ThorTheme.colors
+
+    if (count > PIP_LIMIT) {
+        Text(
+            text = "${index + 1} / $count",
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.onSurfaceVariant,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+        return
+    }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(PIP_GAP.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(count) { position ->
+            val current = position == index
+            Box(
+                modifier = Modifier
+                    .size(
+                        width = if (current) PIP_CURRENT_WIDTH.dp else PIP_WIDTH.dp,
+                        height = PIP_HEIGHT.dp,
+                    )
+                    .clip(ThorTheme.shapes.pill)
+                    .background(
+                        if (current) {
+                            colors.cursor
+                        } else {
+                            colors.onSurfaceVariant.copy(alpha = PIP_ALPHA)
+                        },
+                    ),
+            )
+        }
+    }
+}
+
+/**
+ * One title on a shelf, always as its poster.
+ *
+ * Continue watching is a landscape shelf everywhere else, because a still from
+ * the episode is the better reminder of where you got to on a screen with room
+ * for one row. Here it is the only row on screen and it sits beside the same
+ * titles in every other category, so a shelf of wide stills would be the one
+ * that broke the rhythm — and its cards would be half the height of the rest for
+ * no gain, since the film's own poster is what the eye is already scanning for.
+ *
+ * The pointer moves the cursor rather than merely lighting the card, for the same
+ * reason it does on the home shelf: the billboard above describes whatever is
+ * selected, and a hover that only highlighted would leave the largest thing on
+ * the television describing a different film from the one being pointed at.
  */
 @Composable
 private fun CouchTitleCard(
     item: MediaItem,
     progress: WatchProgress?,
-    landscape: Boolean,
     focused: Boolean,
     width: Dp,
     posterHeight: Dp,
@@ -593,7 +744,7 @@ private fun CouchTitleCard(
                 .background(colors.surface),
         ) {
             ArtworkImage(
-                model = if (landscape) (item.backdropUrl ?: item.posterUrl) else item.posterUrl,
+                model = item.posterUrl ?: item.backdropUrl,
                 contentDescription = item.title,
                 fallbackText = item.title,
                 contentScale = ContentScale.Crop,
@@ -637,11 +788,15 @@ private fun CouchTitleCard(
  * is not the shape of a television.
  */
 
-/** How tall the billboard is on a browse area [available] high. */
-internal fun couchBillboardHeight(available: Dp): Dp =
-    (available * BILLBOARD_FRACTION).coerceIn(MIN_BILLBOARD.dp, MAX_BILLBOARD.dp)
-
-/** How tall one shelf is, header and cards together. */
+/**
+ * How tall the one shelf is, header and cards together.
+ *
+ * The only region on this screen with a height of its own; the description above
+ * takes whatever is left. It is written as a share rather than a number because
+ * the shelf has to leave room for a synopsis on a panel of any size, and as a
+ * clamped share because a fifth of a very tall panel is a shelf of enormous
+ * posters and a fifth of a short one is a shelf with no cards on it.
+ */
 internal fun couchShelfHeight(available: Dp): Dp =
     (available * SHELF_FRACTION).coerceIn(MIN_SHELF.dp, MAX_SHELF.dp)
 
@@ -656,12 +811,27 @@ internal fun couchPosterHeight(shelfHeight: Dp): Dp {
  * The card's width, taken from its height rather than set on its own.
  *
  * Cards inside a `LazyRow` are measured with no width limit, so a card that does
- * not state one takes the width of the longest word in its caption. Deriving it
- * from the artwork keeps every card the shape of the picture on it, and keeps
- * the continue-watching shelf's stills from being cropped into portraits.
+ * not state one takes the width of the longest word in its caption - which is
+ * how a shelf ends up with one enormous gap in it and no obvious cause.
  */
-internal fun couchCardWidth(posterHeight: Dp, landscape: Boolean): Dp =
-    posterHeight * if (landscape) STILL_ASPECT else POSTER_ASPECT
+internal fun couchCardWidth(posterHeight: Dp): Dp = posterHeight * POSTER_ASPECT
+
+/**
+ * How much of the story fits above the shelf, in lines.
+ *
+ * The synopsis is the one part of the billboard with no length of its own, so it
+ * is the part that gets measured. Everything else there - the wordmark, the
+ * facts, the scores, the buttons - is furniture of a known height, and a fixed
+ * line count would push all of it up off the top of the screen on a short panel
+ * rather than simply printing less prose.
+ *
+ * Zero is a real answer. A panel with room for the name of the film and the
+ * button that plays it, and nothing else, should show those two things.
+ */
+internal fun couchOverviewLines(billboardHeight: Dp): Int {
+    val forProse = billboardHeight.value - BILLBOARD_FURNITURE
+    return (forProse / OVERVIEW_LINE_HEIGHT).toInt().coerceIn(0, MAX_OVERVIEW_LINES)
+}
 
 /** The one-line summary under the billboard's title. */
 internal fun couchFactLine(item: MediaItem): String = listOfNotNull(
@@ -698,26 +868,32 @@ internal fun couchResumeLabel(progress: WatchProgress): String {
 
 internal const val FACT_SEPARATOR = "  /  "
 
-private const val BILLBOARD_FRACTION = 0.54f
-private const val MIN_BILLBOARD = 210
-private const val MAX_BILLBOARD = 420
-private const val SHELF_FRACTION = 0.42f
+private const val SHELF_FRACTION = 0.40f
 private const val MIN_SHELF = 150
-private const val MAX_SHELF = 290
+private const val MAX_SHELF = 300
 private const val MIN_POSTER = 96
-private const val MAX_POSTER = 220
+private const val MAX_POSTER = 250
 private const val MIN_CONTENT_HEIGHT = 260
 
 private const val POSTER_ASPECT = 2f / 3f
-private const val STILL_ASPECT = 16f / 9f
 
 private const val BAR_HEIGHT = 56
 private const val SCREEN_INSET = 26
 private const val SECTION_GAP = 16
-private const val SEARCH_WIDTH = 300
-private const val SHELF_GAP = 12
-private const val SHELF_HEADER_HEIGHT = 22
+private const val COUCH_SEARCH_FIELD_ID = "movies-couch-search"
+private const val SEARCH_MIN_WIDTH = 132
+private const val SEARCH_MAX_WIDTH = 300
+private const val SEARCH_PADDING_H = 14
+private const val SEARCH_PADDING_V = 9
+private const val SHELF_HEADER_HEIGHT = 24
 private const val SHELF_HEADER_GAP = 8
+/** Above this many categories the marks stop being countable and become a figure. */
+private const val PIP_LIMIT = 10
+private const val PIP_WIDTH = 8
+private const val PIP_CURRENT_WIDTH = 22
+private const val PIP_HEIGHT = 4
+private const val PIP_GAP = 5
+private const val PIP_ALPHA = 0.38f
 private const val CARD_GAP = 12
 private const val CARD_LABEL_HEIGHT = 18
 private const val CARD_LABEL_GAP = 6
@@ -728,12 +904,21 @@ private const val RESTING_ALPHA = 0.86f
 private const val FOCUS_MILLIS = 160
 private const val PROGRESS_HEIGHT = 5
 
-private const val BILLBOARD_INSET = 18
+private const val BILLBOARD_INSET = 14
 private const val BILLBOARD_WIDTH_FRACTION = 0.54f
-private const val BILLBOARD_GAP = 10
+private const val BILLBOARD_GAP = 8
 private const val LOGO_WIDTH_FRACTION = 0.62f
-private const val LOGO_HEIGHT = 72
-private const val OVERVIEW_LINES = 3
+private const val LOGO_HEIGHT = 56
+/**
+ * The billboard minus its story: insets, wordmark, facts, scores and buttons.
+ *
+ * A measurement of the layout above rather than a preference. It is deliberately
+ * a little generous - erring high prints one line fewer than would have fitted,
+ * erring low pushes the title off the top of the screen.
+ */
+private const val BILLBOARD_FURNITURE = 220f
+private const val OVERVIEW_LINE_HEIGHT = 21f
+private const val MAX_OVERVIEW_LINES = 6
 private const val ACTION_GAP = 10
 private const val ACTION_PADDING_H = 18
 private const val ACTION_PADDING_V = 11
