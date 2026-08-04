@@ -8,7 +8,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -139,63 +141,120 @@ internal fun CouchHome(
             onOpenDownloads = actions.onOpenDownloads,
         )
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = CONTENT_INSET.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(SECTION_GAP.dp),
+        /*
+         * The dashboard is measured against the screen rather than assumed.
+         *
+         * The shelf and the bottom bar were fixed heights and the panels above
+         * them took whatever was left, which is only sound while "whatever is
+         * left" is generous. It is a television, so the height on offer is
+         * whatever the panel reports divided by a scale the user can turn up by a
+         * third — and at the top of that range the two fixed blocks were taking
+         * most of the screen and squeezing the spotlight down to its padding.
+         *
+         * Proportions with dp limits fit both ends: the blocks keep their share
+         * of a large screen, give ground on a small one, and never grow into
+         * something that reads as a shelf with a panel balanced on top.
+         */
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val shelfHeight = couchShelfHeight(maxHeight)
+            val dashboardHeight = couchDashboardHeight(maxHeight)
+            val libraryWidth = couchLibraryPanelWidth(maxWidth)
+
+            Column(
+                // Vertical only: the shelf below runs to the panel's own edge,
+                // and everything that should not is inset by itself.
+                modifier = Modifier.fillMaxSize().padding(vertical = CONTENT_INSET.dp),
             ) {
-                CouchSpotlight(
-                    entry = focusedEntry,
-                    platform = focusedEntry?.platform(state.platformsById),
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = CONTENT_INSET.dp),
+                    horizontalArrangement = Arrangement.spacedBy(SECTION_GAP.dp),
+                ) {
+                    CouchSpotlight(
+                        entry = focusedEntry,
+                        platform = focusedEntry?.platform(state.platformsById),
+                        accent = accent,
+                        focusedAction = focus.action.takeIf { focus.zone == CouchZone.SPOTLIGHT },
+                        onPlay = { focusedEntry?.let(onEntrySelected) },
+                        onMoreInfo = { focusedEntry?.let(onEntryLongPressed) },
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                    CouchLibraryPanel(
+                        counts = counts,
+                        rails = rails,
+                        accent = accent,
+                        focusedRow = focus.action.takeIf { focus.zone == CouchZone.LIBRARY },
+                        onRailSelected = onRailSelected,
+                        onOpenInstalled = { actions.onShortcut(ShortcutAction.APPS) },
+                        modifier = Modifier.width(libraryWidth).fillMaxHeight(),
+                    )
+                }
+
+                CouchGamesShelf(
+                    rail = shelfRail,
+                    focusedItem = focus.item,
+                    // Two rings lit at once is not a highlight, it is a question.
+                    shelfActive = focus.zone == CouchZone.SHELF,
+                    platforms = state.platformsById,
                     accent = accent,
-                    focusedAction = focus.action.takeIf { focus.zone == CouchZone.SPOTLIGHT },
-                    onPlay = { focusedEntry?.let(onEntrySelected) },
-                    onMoreInfo = { focusedEntry?.let(onEntryLongPressed) },
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    cardSize = couchShelfCardSize(shelfHeight),
+                    onEntryFocused = { item -> onEntryFocused(focus.rail, item) },
+                    onEntrySelected = onEntrySelected,
+                    onEntryLongPressed = onEntryLongPressed,
+                    modifier = Modifier.fillMaxWidth().height(shelfHeight),
                 )
-                CouchLibraryPanel(
-                    counts = counts,
-                    rails = rails,
+
+                CouchDashboardBar(
+                    actions = actions,
                     accent = accent,
-                    focusedRow = focus.action.takeIf { focus.zone == CouchZone.LIBRARY },
-                    onRailSelected = onRailSelected,
-                    onOpenInstalled = { actions.onShortcut(ShortcutAction.APPS) },
-                    modifier = Modifier.width(LIBRARY_PANEL_WIDTH.dp).fillMaxHeight(),
+                    focusedAction = focus.action.takeIf { focus.zone == CouchZone.DASHBOARD },
+                    onRandomGame = {
+                        // Any game, not any entry: "random game" landing on the
+                        // calculator is a joke that stops being funny immediately.
+                        entries.filterIsInstance<GameEntry>()
+                            .randomOrNull()
+                            ?.let(onEntrySelected)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(dashboardHeight)
+                        .padding(horizontal = CONTENT_INSET.dp),
                 )
             }
-
-            CouchGamesShelf(
-                rail = shelfRail,
-                focusedItem = focus.item,
-                // Two rings lit at once is not a highlight, it is a question.
-                shelfActive = focus.zone == CouchZone.SHELF,
-                platforms = state.platformsById,
-                accent = accent,
-                onEntryFocused = { item -> onEntryFocused(focus.rail, item) },
-                onEntrySelected = onEntrySelected,
-                onEntryLongPressed = onEntryLongPressed,
-                modifier = Modifier.fillMaxWidth().height(SHELF_BLOCK_HEIGHT.dp),
-            )
-
-            CouchDashboardBar(
-                actions = actions,
-                accent = accent,
-                focusedAction = focus.action.takeIf { focus.zone == CouchZone.DASHBOARD },
-                onRandomGame = {
-                    // Any game, not any entry: "random game" landing on the
-                    // calculator is a joke that stops being funny immediately.
-                    entries.filterIsInstance<GameEntry>()
-                        .randomOrNull()
-                        ?.let(onEntrySelected)
-                },
-                modifier = Modifier.fillMaxWidth().height(DASHBOARD_HEIGHT.dp),
-            )
         }
     }
+}
+
+/**
+ * How much of the screen the shelf takes.
+ *
+ * A share rather than a height, clamped at both ends: the cards below are the
+ * one region whose size is worth defending on a small screen and not worth
+ * multiplying on a large one.
+ */
+internal fun couchShelfHeight(available: Dp): Dp =
+    (available * SHELF_FRACTION).coerceIn(MIN_SHELF_HEIGHT.dp, MAX_SHELF_HEIGHT.dp)
+
+/** The bottom bar's share, on the same terms. */
+internal fun couchDashboardHeight(available: Dp): Dp =
+    (available * DASHBOARD_FRACTION).coerceIn(MIN_DASHBOARD_HEIGHT.dp, MAX_DASHBOARD_HEIGHT.dp)
+
+/** The counts panel's share of the width, so it narrows rather than crowds. */
+internal fun couchLibraryPanelWidth(available: Dp): Dp =
+    (available * LIBRARY_PANEL_FRACTION).coerceIn(MIN_LIBRARY_PANEL.dp, MAX_LIBRARY_PANEL.dp)
+
+/**
+ * The largest square card the shelf slot can actually hold.
+ *
+ * Everything the block spends above the cards comes off here — the clearance
+ * over the title, the title itself, the gap under it, and the room a focused
+ * card needs to grow and cast a shadow without meeting the edge of the row.
+ */
+internal fun couchShelfCardSize(shelfHeight: Dp): Dp {
+    val spent = SHELF_HEADER_GAP + SHELF_HEADER_HEIGHT + SHELF_HEADER_SPACING + CARD_BREATHING
+    return (shelfHeight - spent.dp).coerceIn(MIN_CARD_SIZE.dp, MAX_CARD_SIZE.dp)
 }
 
 // ---- Left rail --------------------------------------------------------------
@@ -261,14 +320,24 @@ private fun CouchSideRail(
         destinations.indexOfFirst { it.railIndex >= 0 && it.railIndex == selectedRail }
     }
 
-    Column(
-        modifier = Modifier
-            .width(SIDE_RAIL_WIDTH.dp)
-            .fillMaxHeight()
-            .padding(vertical = CONTENT_INSET.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(SIDE_RAIL_GAP.dp),
+    /*
+     * Six icons that have to fit whatever height there is.
+     *
+     * The rail is a fixed stack in a column with no scroll, so at 40dp an icon it
+     * needs a little under a third of a metre of screen — which a television has
+     * and a television at the top of the couch scale may not. Measured here
+     * rather than passed in: this is the only place that knows how many
+     * destinations there are, and the number is what the arithmetic turns on.
+     */
+    BoxWithConstraints(
+        modifier = Modifier.width(SIDE_RAIL_WIDTH.dp).fillMaxHeight(),
     ) {
+        val itemSize = couchRailItemSize(maxHeight, destinations.size)
+        Column(
+            modifier = Modifier.fillMaxSize().padding(vertical = CONTENT_INSET.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(SIDE_RAIL_GAP.dp),
+        ) {
         destinations.forEachIndexed { position, destination ->
             val isDownloads = destination.railIndex == DOWNLOADS_DESTINATION
             val reachable = isDownloads || destination.railIndex >= 0
@@ -282,7 +351,7 @@ private fun CouchSideRail(
             val shape = ThorTheme.shapes.small
             Box(
                 modifier = Modifier
-                    .size(SIDE_RAIL_ITEM.dp)
+                    .size(itemSize)
                     .clip(shape)
                     .background(
                         if (lit) accent.copy(alpha = 0.18f) else Color.Transparent,
@@ -312,11 +381,22 @@ private fun CouchSideRail(
                         reachable -> colors.onSurfaceVariant
                         else -> colors.onSurfaceVariant.copy(alpha = PLACEHOLDER_ALPHA)
                     },
-                    modifier = Modifier.size(20.dp),
+                    // Half the tile, so a glyph never fills the plate it sits on
+                    // once the tile has had to give ground.
+                    modifier = Modifier.size(itemSize * SIDE_RAIL_GLYPH_FRACTION),
                 )
             }
         }
+        }
     }
+}
+
+/** The largest rail tile that leaves every destination on the screen. */
+internal fun couchRailItemSize(available: Dp, destinations: Int): Dp {
+    if (destinations <= 0) return SIDE_RAIL_ITEM.dp
+    val gaps = SIDE_RAIL_GAP.dp * (destinations - 1)
+    val usable = available - CONTENT_INSET.dp * 2 - gaps
+    return (usable / destinations).coerceIn(MIN_SIDE_RAIL_ITEM.dp, SIDE_RAIL_ITEM.dp)
 }
 
 private data class CouchRailShortcut(
@@ -707,6 +787,8 @@ private fun CouchGamesShelf(
     shelfActive: Boolean,
     platforms: Map<String, Platform>,
     accent: Color,
+    /** Measured from the slot by [couchShelfCardSize], not chosen here. */
+    cardSize: Dp,
     onEntryFocused: (Int) -> Unit,
     onEntrySelected: (GridEntry) -> Unit,
     onEntryLongPressed: (GridEntry) -> Unit,
@@ -740,11 +822,16 @@ private fun CouchGamesShelf(
             listState.animateScrollToItem(focusedItem)
             return@LaunchedEffect
         }
+        // Against the inset edges rather than the row's own, so a card comes to
+        // rest where the panels above it start and keeps the room its highlight
+        // needs on the outside of that.
+        val leading = layout.viewportStartOffset + layout.beforeContentPadding
+        val trailing = layout.viewportEndOffset - layout.afterContentPadding
         val start = visible.offset
         val end = visible.offset + visible.size
         val overhang = when {
-            start < layout.viewportStartOffset -> start - layout.viewportStartOffset
-            end > layout.viewportEndOffset -> end - layout.viewportEndOffset
+            start < leading -> start - leading
+            end > trailing -> end - trailing
             else -> 0
         }
         if (overhang != 0) listState.animateScrollBy(overhang.toFloat())
@@ -752,7 +839,7 @@ private fun CouchGamesShelf(
 
     Column(modifier = modifier.padding(top = SHELF_HEADER_GAP.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = CONTENT_INSET.dp),
             verticalAlignment = Alignment.CenterVertically,
             // The title here is the platform's name, and it is allowed to run the
             // width of the shelf — without a gap a long one ellipsised straight
@@ -783,14 +870,29 @@ private fun CouchGamesShelf(
         if (rail == null || rail.entries.isEmpty()) {
             CouchEmptyPanel(
                 message = "No games on this shelf yet.",
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = CONTENT_INSET.dp),
             )
             return@Column
         }
 
+        /*
+         * The row runs to the panel's edge and carries the inset itself.
+         *
+         * It used to be inset by the column around it, which put the first card
+         * hard against the left edge of the row's own viewport — and a scrollable
+         * clips to that. A focused card grows a little and casts a shadow, so the
+         * first one in every list was cut down its left-hand side and lost its
+         * shadow entirely, while every other card had room to lift. Holding the
+         * inset as content padding leaves the card in the same place and puts the
+         * clip a whole inset further out, where nothing is drawn.
+         */
         LazyRow(
             state = listState,
             modifier = Modifier.fillMaxWidth().weight(1f),
+            contentPadding = PaddingValues(horizontal = CONTENT_INSET.dp),
             horizontalArrangement = Arrangement.spacedBy(CARD_GAP.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -798,7 +900,7 @@ private fun CouchGamesShelf(
                 CouchCard(
                     entry = entry,
                     platform = entry.platform(platforms),
-                    size = CARD_SIZE,
+                    size = cardSize,
                     focused = index == focusedItem,
                     resting = !shelfActive,
                     onFocus = { onEntryFocused(index) },
@@ -1142,15 +1244,50 @@ private const val CONTENT_INSET = 20
 private const val SECTION_GAP = 20
 private const val SIDE_RAIL_WIDTH = 60
 private const val SIDE_RAIL_ITEM = 40
+private const val MIN_SIDE_RAIL_ITEM = 28
 private const val SIDE_RAIL_GAP = 10
-private const val LIBRARY_PANEL_WIDTH = 300
+private const val SIDE_RAIL_GLYPH_FRACTION = 0.5f
 private const val LIBRARY_ROW_HEIGHT = 46
 private const val HERO_PADDING = 16
 private const val HERO_ART_ASPECT = 0.72f
-private const val SHELF_BLOCK_HEIGHT = 200
-private const val DASHBOARD_HEIGHT = 92
-private val CARD_SIZE: Dp = 128.dp
 private const val CARD_GAP = 12
+
+/*
+ * What each region is worth, as a share of the screen it is drawn on.
+ *
+ * Every one of these was a fixed dp, which held for one panel at one scale. The
+ * couch UI scale multiplies the density by up to a third, so the same screen can
+ * report anything from a generous height to barely more than the fixed blocks
+ * themselves — and the panels above them, being the only weighted region, were
+ * the ones that paid for it.
+ *
+ * The limits are as much the point as the fractions. A shelf that is a third of
+ * a very tall screen is a shelf of enormous cards, and one that is a third of a
+ * short screen is a strip; both ends are held.
+ */
+private const val SHELF_FRACTION = 0.34f
+private const val MIN_SHELF_HEIGHT = 148
+private const val MAX_SHELF_HEIGHT = 228
+private const val DASHBOARD_FRACTION = 0.16f
+private const val MIN_DASHBOARD_HEIGHT = 78
+private const val MAX_DASHBOARD_HEIGHT = 104
+private const val LIBRARY_PANEL_FRACTION = 0.26f
+private const val MIN_LIBRARY_PANEL = 220
+private const val MAX_LIBRARY_PANEL = 320
+private const val MIN_CARD_SIZE = 96
+private const val MAX_CARD_SIZE = 152
+
+/** What the shelf's title row and the gap under it take out of the block. */
+private const val SHELF_HEADER_HEIGHT = 18
+private const val SHELF_HEADER_SPACING = 8
+
+/**
+ * Room a focused card needs to grow into.
+ *
+ * A card lifts and casts a shadow when it is the one a press would hit. Measured
+ * flush against the row it would be clipped at exactly the moment it does.
+ */
+private const val CARD_BREATHING = 12
 
 /**
  * Between a platform's name and the thing it is naming.
@@ -1168,10 +1305,10 @@ private const val PLATFORM_LABEL_GAP = 8
  * spotlight and library panels — so with nothing between them the name of the
  * system was printed hard against the bottom edge of the panel above it.
  *
- * Taken from inside [SHELF_BLOCK_HEIGHT] rather than added to it. The block
- * already carries slack around its cards, whereas the panels above it are
- * weighted: adding to the stack would spend the spotlight's height on a gap, and
- * the spotlight is the one region here that is not a fixed size.
+ * Taken from inside the shelf's own block rather than added to the stack — see
+ * [couchShelfCardSize], which spends it before the cards get what is left. The
+ * panels above are the weighted region, so growing the stack would have put this
+ * gap on the spotlight's bill.
  */
 private const val SHELF_HEADER_GAP = 16
 

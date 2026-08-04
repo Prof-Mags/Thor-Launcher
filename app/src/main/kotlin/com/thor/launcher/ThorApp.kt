@@ -370,6 +370,7 @@ fun ThorApp(
     val couchPlatformIndex by viewModel.couchPlatformIndex.collectAsState()
     val couchQuickDetailsEntryId by viewModel.couchQuickDetailsEntryId.collectAsState()
     val couchQuickDetailsActionIndex by viewModel.couchQuickDetailsActionIndex.collectAsState()
+    val couchQuickDetailsScroll by viewModel.couchQuickDetailsScroll.collectAsState()
     val couchSettingsFocused by viewModel.couchSettingsFocused.collectAsState()
     val context = LocalContext.current
 
@@ -2021,6 +2022,7 @@ fun ThorApp(
                 couchPlatformIndex = couchPlatformIndex,
                 couchQuickDetailsEntryId = couchQuickDetailsEntryId,
                 couchQuickDetailsActionIndex = couchQuickDetailsActionIndex,
+                couchQuickDetailsScroll = couchQuickDetailsScroll,
                 couchSettingsFocused = couchSettingsFocused,
                 couchSettingsSelected = mode == DualScreenMode.COUCH &&
                     overlay == Overlay.SETTINGS,
@@ -2042,6 +2044,7 @@ fun ThorApp(
                     viewModel.openContextMenu(entry)
                 },
                 onCouchDetailsDismissed = viewModel::closeCouchQuickDetails,
+                onCouchDetailsActionFocused = viewModel::focusCouchQuickDetailsAction,
                 onCouchSettingsSelected = viewModel::openCouchSettings,
                 couchFullscreenSection = selectedTab == LauncherTab.MOVIES &&
                     moviesSection.mode == MoviesMode.PLAYING,

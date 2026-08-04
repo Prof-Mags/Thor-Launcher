@@ -37,6 +37,7 @@ import com.thor.feature.home.component.EntryEdits
 import com.thor.feature.home.component.FolderPickerState
 import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.contextActionsFor
+import com.thor.feature.home.couch.CouchDetailScroll
 import com.thor.feature.home.couch.CouchFocus
 import com.thor.feature.home.couch.CouchNavigation
 import com.thor.feature.home.couch.CouchZone
@@ -211,6 +212,16 @@ class LauncherViewModel @Inject constructor(
     private val _couchQuickDetailsActionIndex = MutableStateFlow(0)
     val couchQuickDetailsActionIndex: StateFlow<Int> =
         _couchQuickDetailsActionIndex.asStateFlow()
+
+    /**
+     * The stick's requests to move that panel's reading column.
+     *
+     * A direction and a count rather than a position: how far the description
+     * runs is known to the composable measuring it and to nothing here.
+     */
+    private val _couchQuickDetailsScroll = MutableStateFlow(CouchDetailScroll())
+    val couchQuickDetailsScroll: StateFlow<CouchDetailScroll> =
+        _couchQuickDetailsScroll.asStateFlow()
 
     /** Last highlighted item in every Couch rail, including each platform rail. */
     private val couchItemByRailId = mutableMapOf<String, Int>()
@@ -1684,12 +1695,14 @@ class LauncherViewModel @Inject constructor(
 
     private fun openCouchQuickDetails(entry: GridEntry) {
         _couchQuickDetailsActionIndex.value = 0
+        _couchQuickDetailsScroll.value = CouchDetailScroll()
         _couchQuickDetailsEntryId.value = entry.id
     }
 
     fun closeCouchQuickDetails() {
         _couchQuickDetailsEntryId.value = null
         _couchQuickDetailsActionIndex.value = 0
+        _couchQuickDetailsScroll.value = CouchDetailScroll()
     }
 
     private fun onCouchQuickDetailsCommand(command: ControllerCommand) {
@@ -1700,15 +1713,32 @@ class LauncherViewModel @Inject constructor(
             return
         }
         when (command) {
-            ControllerCommand.NAVIGATE_LEFT,
-            ControllerCommand.NAVIGATE_UP,
-            -> _couchQuickDetailsActionIndex.value =
+            /*
+             * Left and right walk the buttons; up and down read the page.
+             *
+             * All four used to do the same thing — step the same list of four
+             * actions — which spent the one axis the panel actually needed. It is
+             * a full screen with a description under it now, and a stick that can
+             * only cycle four buttons cannot reach the words it is sitting on.
+             * The buttons are a row, so left and right are what the eye expects
+             * of them; the reading is a column, so up and down are what it
+             * expects of that.
+             */
+            ControllerCommand.NAVIGATE_LEFT -> _couchQuickDetailsActionIndex.value =
                 (_couchQuickDetailsActionIndex.value - 1).mod(COUCH_DETAIL_ACTION_COUNT)
 
-            ControllerCommand.NAVIGATE_RIGHT,
-            ControllerCommand.NAVIGATE_DOWN,
-            -> _couchQuickDetailsActionIndex.value =
+            ControllerCommand.NAVIGATE_RIGHT -> _couchQuickDetailsActionIndex.value =
                 (_couchQuickDetailsActionIndex.value + 1).mod(COUCH_DETAIL_ACTION_COUNT)
+
+            // The shoulders scroll as well, because that is what they do
+            // everywhere else a page is longer than the screen.
+            ControllerCommand.NAVIGATE_UP,
+            ControllerCommand.PAGE_PREVIOUS,
+            -> scrollCouchQuickDetails(-1)
+
+            ControllerCommand.NAVIGATE_DOWN,
+            ControllerCommand.PAGE_NEXT,
+            -> scrollCouchQuickDetails(1)
 
             ControllerCommand.CONFIRM -> when (_couchQuickDetailsActionIndex.value) {
                 COUCH_DETAIL_PLAY -> {
@@ -1752,6 +1782,30 @@ class LauncherViewModel @Inject constructor(
             ControllerCommand.GO_HOME -> goHome()
             ControllerCommand.BACK -> closeCouchQuickDetails()
             else -> Unit
+        }
+    }
+
+    /**
+     * Puts the Y panel's cursor on an action, for the pointer.
+     *
+     * Guarded on the panel being open: a hover reported as it fades out would
+     * otherwise leave a position behind for the next game's panel to start on.
+     */
+    fun focusCouchQuickDetailsAction(index: Int) {
+        if (_couchQuickDetailsEntryId.value == null) return
+        _couchQuickDetailsActionIndex.value = index.coerceIn(0, COUCH_DETAIL_ACTION_COUNT - 1)
+    }
+
+    /**
+     * Asks the Y panel's reading column to move one step.
+     *
+     * The tick is what carries the press. Two downs in a row are the same
+     * direction, so without something that changes the second one would arrive
+     * as a value the panel had already seen and acted on.
+     */
+    private fun scrollCouchQuickDetails(direction: Int) {
+        _couchQuickDetailsScroll.update { current ->
+            CouchDetailScroll(tick = current.tick + 1, direction = direction)
         }
     }
 

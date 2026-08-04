@@ -3,12 +3,10 @@ package com.thor.feature.home.couch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +21,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -43,7 +40,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -54,7 +50,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.model.AppEntry
@@ -68,33 +63,49 @@ import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 
 /**
- * Sofa-readable details raised only when requested with Y.
+ * A request from the controller to move the reading column.
  *
- * The Home screen stays open and spacious; the heavier metadata and screenshots
- * exist here instead of occupying a permanent side panel.
+ * Where the column has been scrolled to belongs to the composable that owns it;
+ * what a press produces is "one more step, this way". [tick] rises with every
+ * press so two presses in the same direction arrive as two events rather than as
+ * one value that never changed.
+ */
+data class CouchDetailScroll(val tick: Int = 0, val direction: Int = 0)
+
+/**
+ * The game's own page, raised with Y.
  *
  * ```
  * ┌────────────────────────────────────────────────────────┐
- * │ ░ backdrop, dimmed ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
- * │  SUPER NINTENDO                                        │
- * │  Logo, or the title                                    │
- * │  1994 · Platformer · ★ 96 · 4h 12m · 9 plays           │
- * │  [A PLAY] [X FAVOURITE] [Y MORE]          [B CLOSE]    │
- * ├────────────────────────────────────────────────────────┤
- * │ ┌──────┐  ABOUT                                        │
- * │ │cover │  …                                            │
- * │ │      │  DETAILS   dev · publisher · players          │
- * │ │ 62% ▓│  SCREENSHOTS  ▢ ▢ ▢                           │
- * │ └──────┘                                               │
+ * │ ░░░ the game's artwork, filling the screen ░░░░░░░░░░░ │
+ * │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+ * │  SUPER NINTENDO                                   ░░░░ │
+ * │  Logo, or the title                               ░░░░ │
+ * │  1994 · Platformer · 4h 12m · 9 plays · ★ 96      ░░░░ │
+ * │  ▓▓▓▓▓▓▓░░░ 62% complete                          ░░░░ │
+ * │  [A PLAY] [X FAVOURITE] [Y MORE]    [B CLOSE]     ░░░░ │
+ * │  ┌──────┐  ABOUT                                  ░░░░ │
+ * │  │cover │  …                                      ░░░░ │
+ * │  │      │  DETAILS  dev · publisher · players     ░░░░ │
+ * │  └──────┘  SCREENSHOTS  ▢ ▢ ▢                     ░░░░ │
  * └────────────────────────────────────────────────────────┘
  * ```
  *
- * The shape is the point. This was two columns of equal weight with the buttons
- * squeezed into the bottom of the right-hand one, so on a television the first
- * thing the eye found was a paragraph of scraped prose and the thing every visit
- * here is *for* — Play — was the furthest object from the centre. The backdrop
- * carries the identity, the buttons sit directly under the title where a press is
- * aimed, and the reading matter goes below the fold where reading matter belongs.
+ * It takes the whole screen, and the artwork takes the whole of it. Scraped
+ * backdrops are 16:9 and so is the television, so filling the panel is the one
+ * arrangement that shows the picture as it was drawn — the band this used to
+ * crop it into was a fixed 250dp inside a floating card, which on a wide screen
+ * meant a letterbox slot cutting the top and bottom off every image.
+ *
+ * Everything sized in shares of the screen for the same reason. The card was
+ * fixed dp inside fractions of the panel, so the couch UI scale moved the
+ * contents and the frame by different amounts and the two only agreed at one
+ * setting.
+ *
+ * Driven by all three inputs. The stick walks the actions left and right and
+ * scrolls the reading below them up and down; the pointer lights and clicks the
+ * same buttons, and its scroll is a drag into this window, so the column follows
+ * the wheel wherever the cursor is over it.
  */
 @Composable
 fun CouchQuickDetails(
@@ -107,18 +118,27 @@ fun CouchQuickDetails(
     onMore: () -> Unit,
     onDismiss: () -> Unit,
     /**
-     * The couch UI scale, which this sheet was drawn without.
+     * The pointer arriving over one of the actions.
+     *
+     * It moves the cursor rather than lighting a second one. Two rings on a
+     * television is not a highlight, it is a question about which one the next
+     * press hits — and the answer has to be the same whether that press comes
+     * from the pad or from the button under the cursor.
+     */
+    onActionFocused: (Int) -> Unit = {},
+    /**
+     * The couch UI scale, which this page was drawn without.
      *
      * Everything else in couch mode is composed through a scaled density, and
      * this is hosted by [com.thor.feature.home.BottomScreen] rather than by
      * [CouchScreen] — so it alone kept the panel's own density and came up in a
-     * different size from the screen that raised it. At the top of the range that
-     * is a third smaller than everything around it.
+     * different size from the screen that raised it.
      */
     uiScale: Float = 1f,
+    /** The controller's requests to move the reading column. */
+    scroll: CouchDetailScroll = CouchDetailScroll(),
     modifier: Modifier = Modifier,
 ) {
-    val colors = ThorTheme.colors
     val motion = ThorTheme.motion
     val baseDensity = LocalDensity.current
     val safeUiScale = uiScale.coerceIn(
@@ -134,201 +154,38 @@ fun CouchQuickDetails(
 
     AnimatedVisibility(
         visible = visible && entry != null,
-        enter = fadeIn(motion.tweenSpec(motion.panelMillis)) +
-            scaleIn(motion.tweenSpec(motion.panelMillis), initialScale = 0.96f),
-        exit = fadeOut(motion.tweenSpec(motion.panelMillis)) +
-            scaleOut(motion.tweenSpec(motion.panelMillis), targetScale = 0.98f),
+        // A page, so it fades. Growing it from 96% was right for a card lifted
+        // over a screen; done to the screen itself it reads as the television
+        // zooming rather than as something arriving on it.
+        enter = fadeIn(motion.tweenSpec(motion.panelMillis)),
+        exit = fadeOut(motion.tweenSpec(motion.panelMillis)),
         modifier = modifier.fillMaxSize(),
     ) {
         val shown = entry ?: return@AnimatedVisibility
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(colors.scrim.copy(alpha = SCRIM_ALPHA))
-                .clickable(
-                    // No ripple across the whole screen: the launcher draws its
-                    // own cursor and a Material splash behind this sheet reads as
-                    // the background having been pressed rather than dismissed.
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() },
-                    onClick = onDismiss,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            CompositionLocalProvider(LocalDensity provides scaledDensity) {
-                GlassSurface(
-                    modifier = Modifier
-                        .fillMaxWidth(DETAILS_WIDTH_FRACTION)
-                        .fillMaxHeight(DETAILS_HEIGHT_FRACTION)
-                        .widthIn(max = DETAILS_MAX_WIDTH.dp)
-                        .clickable(enabled = false) {},
-                    shape = ThorTheme.shapes.panel,
-                    alphaOverride = 0.96f,
-                ) {
-                    DetailsContent(
-                        entry = shown,
-                        platform = platform,
-                        focusedAction = focusedAction,
-                        onPlay = onPlay,
-                        onToggleFavorite = onToggleFavorite,
-                        onMore = onMore,
-                        onDismiss = onDismiss,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            // The header's artwork runs to the sheet's own edge,
-                            // so the corner has to be cut here as well — the
-                            // surface draws the shape, it does not clip to it.
-                            .clip(ThorTheme.shapes.panel),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DetailsContent(
-    entry: GridEntry,
-    platform: Platform?,
-    focusedAction: Int,
-    onPlay: () -> Unit,
-    onToggleFavorite: () -> Unit,
-    onMore: () -> Unit,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val game = entry as? GameEntry
-    val artwork = game?.metadata?.artwork
-    val accent = platform?.let { Color(it.accentArgb) } ?: ThorTheme.colors.cursor
-    val scroll = rememberScrollState()
-
-    LaunchedEffect(entry.id) { scroll.scrollTo(0) }
-
-    Column(modifier = modifier) {
-        DetailsHeader(
-            entry = entry,
-            platform = platform,
-            accent = accent,
-            focusedAction = focusedAction,
-            onPlay = onPlay,
-            onToggleFavorite = onToggleFavorite,
-            onMore = onMore,
-            onDismiss = onDismiss,
-            modifier = Modifier.fillMaxWidth().height(HEADER_HEIGHT.dp),
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(DETAILS_PADDING.dp),
-            horizontalArrangement = Arrangement.spacedBy(DETAILS_GAP.dp),
-        ) {
-            DetailsCoverColumn(
-                entry = entry,
-                accent = accent,
-                modifier = Modifier.width(COVER_WIDTH.dp).fillMaxHeight(),
+        CompositionLocalProvider(LocalDensity provides scaledDensity) {
+            DetailsPage(
+                entry = shown,
+                platform = platform,
+                focusedAction = focusedAction,
+                scroll = scroll,
+                onActionFocused = onActionFocused,
+                onPlay = onPlay,
+                onToggleFavorite = onToggleFavorite,
+                onMore = onMore,
+                onDismiss = onDismiss,
+                modifier = Modifier.fillMaxSize(),
             )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .verticalScroll(scroll),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                if (game != null) {
-                    val metadata = game.metadata
-
-                    metadata.description?.takeIf(String::isNotBlank)?.let { description ->
-                        DetailSectionTitle("ABOUT")
-                        Text(
-                            text = description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = ThorTheme.colors.onSurfaceVariant,
-                            // Not clipped to a handful of lines any more: the
-                            // column scrolls, and the shoulder buttons scroll it
-                            // with a pointer up. Cutting a description short in a
-                            // panel with room below it was throwing away the one
-                            // thing this screen exists to show.
-                        )
-                    }
-
-                    val facts = listOf(
-                        "DEVELOPER" to metadata.developer,
-                        "PUBLISHER" to metadata.publisher,
-                        "PLAYERS" to metadata.players,
-                        "RELEASED" to (metadata.releaseDate ?: metadata.releaseYear?.toString()),
-                    )
-                    if (facts.any { !it.second.isNullOrBlank() }) {
-                        DetailSectionTitle("DETAILS")
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            facts.forEach { (label, value) ->
-                                DetailFact(label, value ?: "—", modifier = Modifier.weight(1f))
-                            }
-                        }
-                    }
-
-                    artwork?.cappedScreenshots
-                        ?.takeIf(List<String>::isNotEmpty)
-                        ?.let { shots ->
-                            DetailSectionTitle("SCREENSHOTS")
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                shots.forEach { shot ->
-                                    ArtworkImage(
-                                        model = shot,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .aspectRatio(16f / 9f)
-                                            .clip(ThorTheme.shapes.small),
-                                    )
-                                }
-                                // Keeps three slots wide whatever arrived, so two
-                                // screenshots are two thirds of the row rather
-                                // than two halves at a size nothing else uses.
-                                repeat(SCREENSHOT_SLOTS - shots.size) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
-                            }
-                        }
-                } else {
-                    Text(
-                        text = when (entry) {
-                            is AppEntry -> "Android application"
-                            is FolderEntry -> "${entry.childIds.size} items in this collection"
-                            else -> "Library item"
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = ThorTheme.colors.onSurfaceVariant,
-                    )
-                }
-            }
         }
     }
 }
 
-/**
- * The banner: what this is, and what can be done to it.
- *
- * The backdrop is drawn faint and under a gradient rather than at full strength.
- * It is there to say which game is open from across the room — the colour and the
- * shape of it are legible at ten feet where none of the text is — and artwork
- * bright enough to compete with the title would make the title the thing that has
- * to be squinted at.
- */
 @Composable
-private fun DetailsHeader(
+private fun DetailsPage(
     entry: GridEntry,
     platform: Platform?,
-    accent: Color,
     focusedAction: Int,
+    scroll: CouchDetailScroll,
+    onActionFocused: (Int) -> Unit,
     onPlay: () -> Unit,
     onToggleFavorite: () -> Unit,
     onMore: () -> Unit,
@@ -338,52 +195,86 @@ private fun DetailsHeader(
     val colors = ThorTheme.colors
     val game = entry as? GameEntry
     val artwork = game?.metadata?.artwork
+    val accent = platform?.let { Color(it.accentArgb) } ?: colors.cursor
     val backdrop = artwork?.backgroundImage
         ?: artwork?.cappedScreenshots?.firstOrNull()
         ?: artwork?.cellImage
+    val reading = rememberScrollState()
+    val step = with(LocalDensity.current) { READING_STEP.dp.toPx() }
 
-    Box(modifier = modifier) {
+    LaunchedEffect(entry.id) { reading.scrollTo(0) }
+    /*
+     * One press, one step.
+     *
+     * Keyed on the whole request rather than on a position: the view model does
+     * not know how long this game's description is, so it says which way and
+     * leaves the clamping to the column, which does.
+     */
+    LaunchedEffect(scroll) {
+        if (scroll.tick > 0 && scroll.direction != 0) {
+            reading.animateScrollBy(scroll.direction * step)
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .background(colors.background)
+            // Nothing falls through to the dashboard below: this is a page over
+            // it, not a panel floating on it, and a press that reached a card
+            // through the artwork would launch a game.
+            .clickable(enabled = false) {},
+    ) {
         if (backdrop != null) {
             ArtworkImage(
                 model = backdrop,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().alpha(BACKDROP_ALPHA),
+                modifier = Modifier.fillMaxSize(),
             )
         } else {
-            // No wide art scraped: the system's own colour instead of a grey
-            // rectangle, which still tells the room which shelf this came from.
+            // Nothing wide was scraped: the system's own colour rather than a
+            // grey screen, which still says which shelf this came from.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.horizontalGradient(
-                            listOf(accent.copy(alpha = 0.34f), Color.Transparent),
+                        Brush.linearGradient(
+                            listOf(accent.copy(alpha = 0.40f), colors.background),
                         ),
                     ),
             )
         }
-        // Into the panel below rather than stopping at a hard line, so the header
-        // reads as the top of one sheet instead of a picture stuck above it.
+
+        /*
+         * Two scrims, and both are doing a job.
+         *
+         * Down the page, because the reading half has to be a surface while the
+         * top stays a picture. Across it, because the text is against the left
+         * edge and a backdrop is not a background — whatever is bright in the
+         * image would otherwise decide whether the paragraph could be read.
+         */
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            colors.surface.copy(alpha = 0.55f),
-                            colors.surface.copy(alpha = 0.94f),
-                        ),
-                    ),
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to colors.background.copy(alpha = 0.30f),
+                    SCRIM_KNEE to colors.background.copy(alpha = 0.86f),
+                    1f to colors.background.copy(alpha = 0.98f),
                 ),
+            ),
+        )
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    0f to colors.background.copy(alpha = 0.88f),
+                    SIDE_SCRIM_END to Color.Transparent,
+                ),
+            ),
         )
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = DETAILS_PADDING.dp, vertical = HEADER_INSET.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
+        Column(modifier = Modifier.fillMaxSize().padding(PAGE_INSET.dp)) {
+            // The picture keeps the top of the screen to itself.
+            Spacer(modifier = Modifier.weight(ART_WEIGHT))
+
             Text(
                 text = (platform?.name ?: entry.typeLabel()).uppercase(),
                 style = MaterialTheme.typography.labelMedium,
@@ -391,12 +282,8 @@ private fun DetailsHeader(
                 fontWeight = FontWeight.Black,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                // Clear of the title below it. The column's own 6dp is the gap
-                // between one fact and the next; the system's name is the label
-                // over the whole banner and reads as part of the title without
-                // more room than that under it.
-                modifier = Modifier.padding(bottom = PLATFORM_LABEL_GAP.dp),
             )
+            Spacer(modifier = Modifier.height(PLATFORM_LABEL_GAP.dp))
 
             if (artwork?.logo != null) {
                 ArtworkImage(
@@ -416,16 +303,16 @@ private fun DetailsHeader(
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(TITLE_WIDTH_FRACTION),
                 )
             }
 
             /*
-             * One line of facts rather than a column of them.
+             * One line of facts, the score at the end of it.
              *
-             * Year, genre, score, time on the clock and launches used to be split
-             * between a badge row on the right and two stacked facts under the
-             * cover on the left, which is the same five figures read in two
-             * places. Nothing here needs a label to be understood.
+             * The score used to be pushed to the far edge by a weighted spacer,
+             * which on a card was the other side of the same sentence and on a
+             * whole television is the other side of the room.
              */
             val facts = buildList {
                 game?.metadata?.releaseYear?.let { add(it.toString()) }
@@ -438,43 +325,52 @@ private fun DetailsHeader(
                     ?.let { add(if (it == 1) "1 play" else "$it plays") }
                 entry.lastPlayedAt()?.let { add(it.asCouchRelativeTime()) }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (facts.isNotEmpty()) {
-                    Text(
-                        text = facts.joinToString("  ·  "),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = colors.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                game?.metadata?.rating?.let { rating ->
-                    Spacer(modifier = Modifier.weight(1f))
-                    Icon(
-                        imageVector = Icons.Rounded.Star,
-                        contentDescription = null,
-                        tint = colors.cursor,
-                        modifier = Modifier.size(17.dp),
-                    )
-                    Text(
-                        text = "$rating / 100",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = colors.onSurface,
-                        fontWeight = FontWeight.Bold,
-                    )
+            if (facts.isNotEmpty() || game?.metadata?.rating != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(9.dp),
+                ) {
+                    if (facts.isNotEmpty()) {
+                        Text(
+                            text = facts.joinToString("  ·  "),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    game?.metadata?.rating?.let { rating ->
+                        Icon(
+                            imageVector = Icons.Rounded.Star,
+                            contentDescription = null,
+                            tint = colors.cursor,
+                            modifier = Modifier.size(17.dp),
+                        )
+                        Text(
+                            text = "$rating / 100",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.onSurface,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            game?.completionProgress()?.let { progress ->
+                Spacer(modifier = Modifier.height(10.dp))
+                DetailsCompletion(
+                    progress = progress,
+                    accent = accent,
+                    modifier = Modifier.fillMaxWidth(COMPLETION_WIDTH_FRACTION),
+                )
+            }
 
+            Spacer(modifier = Modifier.height(ACTIONS_GAP.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ACTION_GAP.dp),
             ) {
                 DetailAction(
                     key = "A",
@@ -487,6 +383,7 @@ private fun DetailsHeader(
                     accent = accent,
                     primary = true,
                     focused = focusedAction == ACTION_PLAY,
+                    onHover = { onActionFocused(ACTION_PLAY) },
                     onClick = onPlay,
                 )
                 DetailAction(
@@ -499,6 +396,7 @@ private fun DetailsHeader(
                     },
                     accent = accent,
                     focused = focusedAction == ACTION_FAVOURITE,
+                    onHover = { onActionFocused(ACTION_FAVOURITE) },
                     onClick = onToggleFavorite,
                 )
                 DetailAction(
@@ -507,96 +405,165 @@ private fun DetailsHeader(
                     icon = Icons.Rounded.MoreHoriz,
                     accent = accent,
                     focused = focusedAction == ACTION_MORE,
+                    onHover = { onActionFocused(ACTION_MORE) },
                     onClick = onMore,
                 )
-                Spacer(modifier = Modifier.weight(1f))
+                // Set apart rather than banished to the far edge: it is the one
+                // button here that does not act on the game, and on a screen this
+                // wide a pointer should not have to cross it to leave.
+                Spacer(modifier = Modifier.width(CLOSE_GAP.dp))
                 DetailAction(
                     key = "B",
                     label = "CLOSE",
                     icon = Icons.Rounded.Close,
                     accent = accent,
                     focused = focusedAction == ACTION_CLOSE,
+                    onHover = { onActionFocused(ACTION_CLOSE) },
                     onClick = onDismiss,
                 )
+            }
+
+            Spacer(modifier = Modifier.height(BODY_GAP.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(BODY_WEIGHT),
+                horizontalArrangement = Arrangement.spacedBy(BODY_COLUMN_GAP.dp),
+            ) {
+                val cover = artwork?.boxArt ?: artwork?.cellImage
+                if (cover != null) {
+                    ArtworkImage(
+                        model = cover,
+                        contentDescription = entry.title,
+                        fallbackText = entry.title,
+                        fallbackTint = accent,
+                        contentScale = ContentScale.Crop,
+                        // Sized from the height it was given rather than from a
+                        // width chosen in advance. Box art is 2:3 and this slot
+                        // is whatever the screen had left, so deriving one from
+                        // the other is what keeps it inside the page at every
+                        // scale instead of running off the bottom of it.
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .aspectRatio(COVER_ASPECT)
+                            .clip(ThorTheme.shapes.small),
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(reading),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (game != null) {
+                        val metadata = game.metadata
+
+                        metadata.description?.takeIf(String::isNotBlank)?.let { description ->
+                            DetailSectionTitle("ABOUT")
+                            Text(
+                                text = description,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.onSurfaceVariant,
+                            )
+                        }
+
+                        val details = listOf(
+                            "DEVELOPER" to metadata.developer,
+                            "PUBLISHER" to metadata.publisher,
+                            "PLAYERS" to metadata.players,
+                            "RELEASED" to (metadata.releaseDate ?: metadata.releaseYear?.toString()),
+                        )
+                        if (details.any { !it.second.isNullOrBlank() }) {
+                            DetailSectionTitle("DETAILS")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            ) {
+                                details.forEach { (label, value) ->
+                                    DetailFact(label, value ?: "—", modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+
+                        artwork?.cappedScreenshots
+                            ?.takeIf(List<String>::isNotEmpty)
+                            ?.let { shots ->
+                                DetailSectionTitle("SCREENSHOTS")
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    shots.forEach { shot ->
+                                        ArtworkImage(
+                                            model = shot,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .aspectRatio(16f / 9f)
+                                                .clip(ThorTheme.shapes.small),
+                                        )
+                                    }
+                                    // Three slots whatever arrived, so two
+                                    // screenshots are two thirds of the row
+                                    // rather than two halves at a size nothing
+                                    // else on the page uses.
+                                    repeat(SCREENSHOT_SLOTS - shots.size) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                    } else {
+                        Text(
+                            text = when (entry) {
+                                is AppEntry -> "Android application"
+                                is FolderEntry -> "${entry.childIds.size} items in this collection"
+                                else -> "Library item"
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = colors.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                // The reading stops short of the edge and the picture carries on
+                // behind it, which is the whole reason the page is the artwork.
+                Spacer(modifier = Modifier.weight(GUTTER_WEIGHT))
             }
         }
     }
 }
 
-/**
- * Cover art, and how far through this is.
- *
- * The completion bar is the one figure the shelf card already draws and this
- * panel did not, which made the detailed view the less informative of the two.
- */
+/** How far through the game is, when a scraper supplied something to divide by. */
 @Composable
-private fun DetailsCoverColumn(
-    entry: GridEntry,
-    accent: Color,
-    modifier: Modifier = Modifier,
-) {
+private fun DetailsCompletion(progress: Float, accent: Color, modifier: Modifier = Modifier) {
     val colors = ThorTheme.colors
-    val game = entry as? GameEntry
-    val artwork = game?.metadata?.artwork
-    val cover = artwork?.boxArt ?: artwork?.cellImage ?: artwork?.backgroundImage
-
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (cover != null) {
-            ArtworkImage(
-                model = cover,
-                contentDescription = entry.title,
-                fallbackText = entry.title,
-                fallbackTint = accent,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f / 3f)
-                    .clip(ThorTheme.shapes.small),
-            )
-        } else {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(5.dp)
+                .clip(ThorTheme.shapes.pill)
+                .background(colors.outline.copy(alpha = 0.3f)),
+        ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(2f / 3f)
-                    .clip(ThorTheme.shapes.small)
-                    .background(colors.surfaceHighest),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = entry.title.take(1).uppercase(),
-                    style = MaterialTheme.typography.displayLarge,
-                    color = colors.onSurfaceVariant,
-                    fontWeight = FontWeight.Black,
-                )
-            }
+                    .fillMaxWidth(progress)
+                    .fillMaxHeight()
+                    .clip(ThorTheme.shapes.pill)
+                    .background(accent),
+            )
         }
-
-        val progress = game?.completionProgress()
-        if (progress != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "${(progress * 100f).toInt()}% complete",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.onSurfaceVariant,
-                    maxLines = 1,
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(ThorTheme.shapes.pill)
-                        .background(colors.outline.copy(alpha = 0.25f)),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(progress)
-                            .fillMaxHeight()
-                            .clip(ThorTheme.shapes.pill)
-                            .background(accent),
-                    )
-                }
-            }
-        }
+        Text(
+            text = "${(progress * 100f).toInt()}% complete",
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+        )
     }
 }
 
@@ -644,7 +611,7 @@ private fun DetailFact(label: String, value: String, modifier: Modifier = Modifi
  * One button, wearing the button it is bound to.
  *
  * The primary action takes the platform's colour rather than the theme's cursor:
- * this sheet is about one game, and it is the only surface in couch mode where
+ * this page is about one game, and it is the only surface in couch mode where
  * the accent can be that specific without moving as the shelf does.
  */
 @Composable
@@ -655,12 +622,16 @@ private fun DetailAction(
     accent: Color,
     primary: Boolean = false,
     focused: Boolean = false,
+    onHover: () -> Unit = {},
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
     val shape = ThorTheme.shapes.small
     val hover = rememberPointerHover()
-    val lit = focused || hover.isHovered
+    val hovered = hover.isHovered
+    // Reported as a move of the cursor, not drawn as a second one.
+    LaunchedEffect(hovered) { if (hovered) onHover() }
+    val lit = focused || hovered
     val background = if (primary) accent else colors.surfaceHighest
     val content = if (primary) contrastingContentColor(accent) else colors.onSurface
     Row(
@@ -672,8 +643,8 @@ private fun DetailAction(
              * A plain ring rather than `thorCursor`, which animates and glows.
              *
              * Four buttons a stick-flick apart want the plainest possible answer
-             * to "which one", and a pulsing outline on a sheet that is already
-             * lifted over a scrim reads as decoration rather than as position.
+             * to "which one", and a pulsing outline over artwork reads as
+             * decoration rather than as position.
              */
             .border(
                 width = if (lit) 2.dp else 1.dp,
@@ -723,33 +694,52 @@ private const val ACTION_MORE = 2
 private const val ACTION_CLOSE = 3
 
 /**
- * Room to breathe around the sheet.
+ * Everything the page is measured in.
  *
- * Wider and shorter than the panel it replaces: the reading is now in one column
- * rather than two, so the line length is set by the column and not by the sheet,
- * and the height that used to hold a stack of badges is spent on the banner.
+ * Shares of the screen where the screen decides, dp where the eye does. A button
+ * is 46dp tall because that is a comfortable target at arm's length from a sofa
+ * and it should not change with the shape of the panel; how much of the page is
+ * picture and how much is reading is exactly the thing that should.
  */
-private const val DETAILS_WIDTH_FRACTION = 0.88f
-private const val DETAILS_HEIGHT_FRACTION = 0.82f
-private const val DETAILS_MAX_WIDTH = 1120
-private const val DETAILS_PADDING = 24
-private const val DETAILS_GAP = 24
-private const val COVER_WIDTH = 190
-private const val HEADER_HEIGHT = 250
-private const val HEADER_INSET = 20
+private const val PAGE_INSET = 32
 
-/** Added under the platform's name, on top of the header column's own spacing. */
-private const val PLATFORM_LABEL_GAP = 4
+/*
+ * How the height left over is split between picture and reading.
+ *
+ * The identity in the middle takes what it needs and these two share the rest,
+ * which is the right way round: a title is as tall as a title, whereas how much
+ * bare artwork is worth showing depends entirely on how much screen there is.
+ * Weighted towards the reading because the backdrop is behind the whole page
+ * anyway — the share above is breathing room, not the only place it is seen.
+ */
+private const val ART_WEIGHT = 0.26f
+private const val BODY_WEIGHT = 0.74f
+
+/** The reading column stops here; the rest of the row stays artwork. */
+private const val GUTTER_WEIGHT = 0.55f
+
+private const val BODY_COLUMN_GAP = 22
+private const val BODY_GAP = 20
+private const val ACTIONS_GAP = 18
+private const val ACTION_GAP = 9
 private const val ACTION_HEIGHT = 46
-private const val LOGO_WIDTH_FRACTION = 0.62f
-private const val LOGO_MIN_HEIGHT = 46
-private const val LOGO_MAX_HEIGHT = 88
+private const val CLOSE_GAP = 26
+private const val PLATFORM_LABEL_GAP = 6
+private const val LOGO_WIDTH_FRACTION = 0.44f
+private const val LOGO_MIN_HEIGHT = 50
+private const val LOGO_MAX_HEIGHT = 92
+private const val TITLE_WIDTH_FRACTION = 0.62f
+private const val COMPLETION_WIDTH_FRACTION = 0.3f
+private const val COVER_ASPECT = 2f / 3f
 
-/** How far the backdrop is knocked back so the title stays the loudest thing. */
-private const val BACKDROP_ALPHA = 0.5f
+/** How far down the page the scrim has finished turning picture into surface. */
+private const val SCRIM_KNEE = 0.52f
 
-/** Darker than the dashboard's shade: this sheet is the whole screen's business. */
-private const val SCRIM_ALPHA = 0.86f
+/** And how far across it before the picture is left alone. */
+private const val SIDE_SCRIM_END = 0.72f
+
+/** One press of the stick, in the reading column. */
+private const val READING_STEP = 150
 
 /** Screenshots always occupy three slots; see the note at the call site. */
 private const val SCREENSHOT_SLOTS = 3

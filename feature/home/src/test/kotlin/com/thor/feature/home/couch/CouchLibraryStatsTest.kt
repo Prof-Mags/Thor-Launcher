@@ -98,6 +98,61 @@ class CouchLibraryStatsTest {
         assertThat(couchCardSize(0.dp)).isEqualTo(104.dp)
     }
 
+    @Test
+    fun `the dashboard regions take their share of a roomy screen`() {
+        // 600 tall: a third to the shelf, a sixth to the bottom bar, and the
+        // panels above keep what is left rather than being squeezed by two
+        // blocks that were sized for a different screen.
+        assertThat(couchShelfHeight(600.dp)).isEqualTo(204.dp)
+        assertThat(couchDashboardHeight(600.dp)).isEqualTo(96.dp)
+    }
+
+    @Test
+    fun `the dashboard regions stop growing on a very tall screen`() {
+        assertThat(couchShelfHeight(1200.dp)).isEqualTo(228.dp)
+        assertThat(couchDashboardHeight(1200.dp)).isEqualTo(104.dp)
+    }
+
+    @Test
+    fun `the dashboard regions stop shrinking on a very short one`() {
+        assertThat(couchShelfHeight(200.dp)).isEqualTo(148.dp)
+        assertThat(couchDashboardHeight(200.dp)).isEqualTo(78.dp)
+    }
+
+    @Test
+    fun `shelf cards take what the block has left after its title`() {
+        // 204 less the 16dp clearance, the 18dp title, the 8dp under it and the
+        // 12dp a focused card grows into leaves 150.
+        assertThat(couchShelfCardSize(204.dp)).isEqualTo(150.dp)
+        // And neither end runs away: the cap holds a tall block back, the floor
+        // holds a short one up.
+        assertThat(couchShelfCardSize(400.dp)).isEqualTo(152.dp)
+        assertThat(couchShelfCardSize(100.dp)).isEqualTo(96.dp)
+    }
+
+    @Test
+    fun `the counts panel narrows with the screen rather than crowding it`() {
+        assertThat(couchLibraryPanelWidth(1000.dp)).isEqualTo(260.dp)
+        assertThat(couchLibraryPanelWidth(1600.dp)).isEqualTo(320.dp)
+        assertThat(couchLibraryPanelWidth(600.dp)).isEqualTo(220.dp)
+    }
+
+    @Test
+    fun `every rail destination stays on the screen`() {
+        // Six tiles and five gaps inside a 400dp column, less the 20dp inset at
+        // each end: 310 to share, which is more than the preferred 40.
+        assertThat(couchRailItemSize(400.dp, 6)).isEqualTo(40.dp)
+        // 260 leaves 170 for six, so they give ground rather than overflowing.
+        assertThat(couchRailItemSize(260.dp, 6)).isEqualTo(170.dp / 6)
+        // And they stop giving it before they stop being targets.
+        assertThat(couchRailItemSize(120.dp, 6)).isEqualTo(28.dp)
+    }
+
+    @Test
+    fun `an empty rail asks for nothing absurd`() {
+        assertThat(couchRailItemSize(400.dp, 0)).isEqualTo(40.dp)
+    }
+
     private fun platform(id: String, short: String = id.uppercase()) = Platform(
         id = id,
         name = "Nintendo 64",

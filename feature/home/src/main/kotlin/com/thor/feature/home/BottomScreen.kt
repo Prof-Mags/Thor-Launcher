@@ -53,6 +53,7 @@ import com.thor.feature.home.component.SortDialog
 import com.thor.feature.home.component.BottomNavBar
 import com.thor.feature.home.component.EmptySection
 import com.thor.feature.home.couch.CouchDashboardActions
+import com.thor.feature.home.couch.CouchDetailScroll
 import com.thor.feature.home.couch.CouchScreen
 import com.thor.feature.home.couch.CouchFocus
 import com.thor.feature.home.couch.CouchPlatformMenu
@@ -118,6 +119,7 @@ fun BottomScreen(
     couchPlatformIndex: Int = 0,
     couchQuickDetailsEntryId: String? = null,
     couchQuickDetailsActionIndex: Int = 0,
+    couchQuickDetailsScroll: CouchDetailScroll = CouchDetailScroll(),
     couchSettingsFocused: Boolean = false,
     couchSettingsSelected: Boolean = false,
     couchClockStyle: ClockStyle = ClockStyle.DIGITAL_24,
@@ -133,6 +135,7 @@ fun BottomScreen(
     onCouchDetailsFavorite: (GridEntry) -> Unit = {},
     onCouchDetailsMore: (GridEntry) -> Unit = {},
     onCouchDetailsDismissed: () -> Unit = {},
+    onCouchDetailsActionFocused: (Int) -> Unit = {},
     onCouchSettingsSelected: () -> Unit = {},
     couchFullscreenSection: Boolean = false,
     /** Settings content hosted beneath Couch Mode's single shared top bar. */
@@ -454,9 +457,11 @@ fun BottomScreen(
             onToggleFavorite = { couchDetailsEntry?.let(onCouchDetailsFavorite) },
             onMore = { couchDetailsEntry?.let(onCouchDetailsMore) },
             onDismiss = onCouchDetailsDismissed,
+            onActionFocused = onCouchDetailsActionFocused,
             // Hosted here rather than by [CouchScreen], so the scale it composes
             // everything else through has to be handed over explicitly.
             uiScale = couchUiScale,
+            scroll = couchQuickDetailsScroll,
         )
 
         SortDialog(
