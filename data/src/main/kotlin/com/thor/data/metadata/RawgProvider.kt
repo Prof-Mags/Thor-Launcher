@@ -229,8 +229,22 @@ class RawgProvider @Inject constructor(
                 },
             ),
             artwork = ArtworkSet(
-                hero = backgroundImage,
-                screenshots = shortScreenshots.orEmpty().mapNotNull { it.image },
+                hero = backgroundImage?.let(::fullSizeRawgImage),
+                /*
+                 * The second key art joins the captures, and the backdrop does
+                 * not repeat itself.
+                 *
+                 * RAWG lists its background image first among the short
+                 * screenshots, so taking them wholesale put the picture already
+                 * behind the panel into the strip in front of it as well.
+                 */
+                screenshots = (
+                    listOfNotNull(backgroundExtra) +
+                        shortScreenshots.orEmpty().mapNotNull { it.image }
+                    )
+                    .map(::fullSizeRawgImage)
+                    .distinct()
+                    .filterNot { it == backgroundImage?.let(::fullSizeRawgImage) },
             ),
         )
     }
@@ -270,6 +284,8 @@ class RawgProvider @Inject constructor(
         val developers: List<RawgNamed>? = null,
         val publishers: List<RawgNamed>? = null,
         @SerialName("short_screenshots") val shortScreenshots: List<RawgScreenshot>? = null,
+        /** A second piece of key art, on the detail record only. */
+        @SerialName("background_image_additional") val backgroundExtra: String? = null,
     )
 
     @Serializable
@@ -322,3 +338,23 @@ internal fun mergeRawgDetailMetadata(
     completionMinutes = details.completionMinutes ?: search.completionMinutes,
     providerSources = search.providerSources + details.providerSources,
 )
+
+/**
+ * Strips RAWG's resizing segments, leaving the original image.
+ *
+ * RAWG serves the same picture under several paths: `/media/games/…` is the
+ * upload as it was, while `/media/crop/600/400/games/…` and
+ * `/media/resize/420/-/games/…` are derived. The crop is the problem — six
+ * hundred by four hundred is three-to-two, so an image asked for as widescreen
+ * arrives with its top and bottom already cut off, and no amount of framing
+ * downstream can put them back. Which variant the API hands over depends on the
+ * endpoint, so the URL is normalised rather than trusted.
+ *
+ * Anything that does not match is returned untouched: this is a known pattern in
+ * one provider's CDN, not a general rewrite of URLs it does not recognise.
+ */
+internal fun fullSizeRawgImage(url: String): String =
+    RAWG_DERIVED_PATH.replace(url, "/media/")
+
+/** `/media/crop/600/400/` or `/media/resize/420/-/`, either of which is a derivative. */
+private val RAWG_DERIVED_PATH = Regex("/media/(?:crop|resize)/[^/]+/[^/]+/")

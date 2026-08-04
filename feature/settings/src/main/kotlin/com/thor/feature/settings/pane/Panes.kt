@@ -1073,7 +1073,11 @@ private fun MetadataPage(
     RowDivider()
     TextFieldRow(
         title = "RAWG key",
-        subtitle = "Descriptions and credits. From rawg.io/apidocs",
+        // Screenshots named first, deliberately. With no ScreenScraper developer
+        // key in the build this is the only source of a widescreen image the
+        // game panel can show, and a row describing it as prose reads as
+        // optional to somebody looking at an empty panel.
+        subtitle = "Screenshots, descriptions and credits. From rawg.io/apidocs",
         value = metadata.apiKeys[PROVIDER_RAWG].orEmpty(),
         placeholder = "API key",
         isSecret = true,
