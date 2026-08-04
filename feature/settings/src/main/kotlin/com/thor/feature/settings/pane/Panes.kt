@@ -80,6 +80,8 @@ fun SettingsPageContent(
     providerStatus: Map<String, ProviderStatus>,
     checkingProviders: Boolean,
     artworkOnlyProviders: Boolean,
+    /** Whether anything configured can supply a landscape image. */
+    noScreenshotProvider: Boolean = false,
     isDefaultLauncher: Boolean,
     keyCaptureEnabled: Boolean,
     capturedKeys: List<RawKeyPress>,
@@ -123,7 +125,7 @@ fun SettingsPageContent(
             )
             SettingsPage.METADATA -> MetadataPage(
                 settings, focusedRow, viewModel, scrapeState, providerStatus,
-                checkingProviders, artworkOnlyProviders,
+                checkingProviders, artworkOnlyProviders, noScreenshotProvider,
             )
             SettingsPage.SORTING -> SortingPage(settings, focusedRow, viewModel)
 
@@ -943,6 +945,7 @@ private fun MetadataPage(
     providerStatus: Map<String, ProviderStatus>,
     checking: Boolean,
     artworkOnly: Boolean,
+    noScreenshots: Boolean,
 ) {
     val metadata = settings.metadata
 
@@ -1013,6 +1016,19 @@ private fun MetadataPage(
             "No description source",
             "Enable Wikidata for key-free Wikipedia descriptions, or add a RAWG key " +
                 "for RAWG descriptions and credits.",
+        )
+    }
+
+    // The same shape of fault one layer along. SteamGridDB fills every cover, so
+    // the scrape plainly worked — but it holds nothing landscape, so the panel
+    // has no image to show and nothing anywhere says why.
+    if (noScreenshots) {
+        RowDivider()
+        InfoRow(
+            "No screenshot source",
+            "SteamGridDB has covers, banners and logos but no widescreen images. " +
+                "ScreenScraper supplies them for retro systems and RAWG for modern " +
+                "ones 2014 without one of those the game panel has nothing to show.",
         )
     }
 

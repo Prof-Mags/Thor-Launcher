@@ -96,6 +96,10 @@ class MetadataAggregator @Inject constructor(
     suspend fun hasDescriptionProvider(): Boolean =
         usableProviders(settings.metadata.first()).any { it.id in DESCRIPTION_PROVIDERS }
 
+    /** True when a configured source can supply landscape images of a game. */
+    suspend fun hasScreenshotProvider(): Boolean =
+        usableProviders(settings.metadata.first()).any { it.id in SCREENSHOT_PROVIDERS }
+
     /**
      * Probes every provider, concurrently, and reports what each one said.
      *
@@ -286,6 +290,16 @@ class MetadataAggregator @Inject constructor(
 
         /** Sources whose payloads contain prose rather than facts or artwork only. */
         val DESCRIPTION_PROVIDERS = setOf("screenscraper", "rawg", "wikidata")
+
+        /**
+         * Sources that carry landscape images of a game.
+         *
+         * Not the same question as "has artwork". SteamGridDB has plenty and
+         * none of it is this shape — a grid is portrait or square and a hero is
+         * an ultra-wide banner — so a launcher configured with SteamGridDB alone
+         * fills every cover and leaves the panel with nothing to show.
+         */
+        val SCREENSHOT_PROVIDERS = setOf("screenscraper", "rawg")
 
         /**
          * Below this, a title match is more likely to be a different game than

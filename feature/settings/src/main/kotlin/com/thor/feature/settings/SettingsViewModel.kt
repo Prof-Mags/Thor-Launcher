@@ -1125,6 +1125,16 @@ class SettingsViewModel @Inject constructor(
     val artworkOnlyProviders: StateFlow<Boolean> = _artworkOnlyProviders.asStateFlow()
 
     /**
+     * Whether anything configured can supply a landscape image of a game.
+     *
+     * Its own signal because it is invisible otherwise: SteamGridDB fills every
+     * cover on the grid, so the scrape plainly worked, while the information
+     * panel has nothing to show and no way to say why.
+     */
+    private val _noScreenshotProvider = MutableStateFlow(false)
+    val noScreenshotProvider: StateFlow<Boolean> = _noScreenshotProvider.asStateFlow()
+
+    /**
      * Whether THOR is the system home app.
      *
      * Re-read rather than observed: the answer only changes as a result of the
@@ -1183,6 +1193,8 @@ class SettingsViewModel @Inject constructor(
             _providerStatus.value = aggregator.checkConnections()
             _artworkOnlyProviders.value =
                 aggregator.hasUsableProvider() && !aggregator.hasDescriptionProvider()
+            _noScreenshotProvider.value =
+                aggregator.hasUsableProvider() && !aggregator.hasScreenshotProvider()
             _checkingProviders.value = false
         }
     }
