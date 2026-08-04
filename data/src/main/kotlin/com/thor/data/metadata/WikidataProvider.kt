@@ -365,7 +365,17 @@ class WikidataProvider @Inject constructor(
         private const val API_URL = "https://www.wikidata.org/w/api.php"
         private const val SPARQL_URL = "https://query.wikidata.org/sparql"
         private const val WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
-        private const val DESCRIPTION_SENTENCES = 4
+        /**
+         * Sentences asked of the MediaWiki extract.
+         *
+         * Four was cutting synopses short at the source — the panel could show
+         * more than arrived, so no amount of layout work would have fixed it.
+         * Still bounded rather than taking `exintro`'s whole lead section, which
+         * runs to several paragraphs on a well-documented game and would only
+         * move the truncation back into the panel. Eight sentences is a summary
+         * that reads as finished.
+         */
+        private const val DESCRIPTION_SENTENCES = 8
 
         /**
          * Identifies THOR to Wikidata, per their API etiquette.

@@ -164,19 +164,30 @@ private fun GameProfileCard(
                 GameDescription(
                     text = description,
                     color = colors.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    modifier = Modifier.fillMaxWidth().weight(GAME_DESCRIPTION_WEIGHT),
                 )
             } else {
-                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.weight(GAME_DESCRIPTION_WEIGHT))
             }
 
             if (selectedMedia != null) {
                 GameSectionTitle("MEDIA")
+                /*
+                 * Shares the leftover with the description rather than taking a
+                 * fixed 16:9 of the card's full width.
+                 *
+                 * That is what left the synopsis with almost nothing: the card is
+                 * wide, so a sixteen-by-nine block of it is over two hundred dp
+                 * tall, and the description got whatever survived the masthead and
+                 * the statistics. The screenshot is scaled to fit rather than
+                 * cropped, so a shorter slot letterboxes it instead of cutting it.
+                 */
                 GameMedia(
                     model = selectedMedia,
                     selected = selectedScreenshot,
                     count = screenshots.size,
                     accent = accent,
+                    modifier = Modifier.fillMaxWidth().weight(GAME_MEDIA_WEIGHT),
                 )
             }
         }
@@ -539,12 +550,11 @@ private fun GameMedia(
     selected: Int,
     count: Int,
     accent: Color,
+    modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 9f)
+        modifier = modifier
             .clip(ThorTheme.shapes.small)
             .background(colors.surfaceHighest.copy(alpha = .28f))
             .border(
@@ -755,8 +765,18 @@ internal fun fittedTextScale(available: Int, measureHeight: (Float) -> Int): Flo
  * looking like a deliberate choice; a synopsis long enough to need it is better
  * ellipsised than rendered at a size nobody reads.
  */
-private const val MIN_DESCRIPTION_SCALE = 0.72f
-private const val DESCRIPTION_SCALE_STEP = 0.04f
+private const val MIN_DESCRIPTION_SCALE = 0.88f
+private const val DESCRIPTION_SCALE_STEP = 0.03f
+
+/**
+ * How the leftover splits between the synopsis and the screenshot.
+ *
+ * Weighted toward the text: the screenshot is also drawn full-bleed behind the
+ * whole panel, so the strip is a picker showing which of them is back there,
+ * while the description appears nowhere else.
+ */
+private const val GAME_DESCRIPTION_WEIGHT = 1.45f
+private const val GAME_MEDIA_WEIGHT = 1f
 
 /** Scales both the size and its leading, so the text keeps its proportions. */
 private fun TextStyle.scaledBy(scale: Float): TextStyle = if (scale == 1f) {

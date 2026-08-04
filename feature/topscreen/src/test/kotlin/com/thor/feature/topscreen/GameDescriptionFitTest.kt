@@ -26,7 +26,7 @@ class GameDescriptionFitTest {
 
     @Test
     fun `text that overflows is stepped down until it fits`() {
-        // 500px into 460px needs 0.92; the first two steps still overflow.
+        // 500px into 460px needs 0.92 or less; the first steps still overflow.
         val scale = fittedTextScale(available = 460, measureHeight = proportional(500))
 
         assertThat(scale).isLessThan(1f)
@@ -38,14 +38,14 @@ class GameDescriptionFitTest {
         val scale = fittedTextScale(available = 460, measureHeight = proportional(500))
 
         // One step larger would overflow, or the search stopped too early.
-        assertThat(proportional(500)(scale + 0.04f)).isGreaterThan(460)
+        assertThat(proportional(500)(scale + 0.03f)).isGreaterThan(460)
     }
 
     @Test
     fun `a description no size can fit stops at the floor rather than looping`() {
         val scale = fittedTextScale(available = 10, measureHeight = proportional(5_000))
 
-        assertThat(scale).isEqualTo(0.72f)
+        assertThat(scale).isEqualTo(0.88f)
     }
 
     @Test
