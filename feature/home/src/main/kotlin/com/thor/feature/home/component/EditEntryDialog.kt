@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -123,6 +124,20 @@ fun EditEntryDialog(
             },
         )
     }
+    /*
+     * The rest of a game's pictures, each its own slot.
+     *
+     * The dialog edited the cover and the screenshots and nothing else, which
+     * left the square cell icon, the panel backdrop and the wordmark reachable
+     * only by a scrape, so a wrong one could be corrected in two places out of
+     * five. They are separate fields rather than one because they are separate
+     * shapes: a portrait cover cannot stand in for a square cell, and neither can
+     * stand in for a widescreen backdrop.
+     */
+    var squareIconUri by remember(entry.id) { mutableStateOf(game?.metadata?.artwork?.icon) }
+    var heroUri by remember(entry.id) { mutableStateOf(game?.metadata?.artwork?.hero) }
+    var logoUri by remember(entry.id) { mutableStateOf(game?.metadata?.artwork?.logo) }
+
     var developer by remember(entry.id) { mutableStateOf(game?.metadata?.developer.orEmpty()) }
     var publisher by remember(entry.id) { mutableStateOf(game?.metadata?.publisher.orEmpty()) }
     var genres by remember(entry.id) {
@@ -161,6 +176,33 @@ fun EditEntryDialog(
         if (uri == null) return@rememberLauncherForActivityResult
         persist(uri)
         iconUri = uri.toString()
+    }
+
+    // One launcher per slot, because a result callback has no way to ask which
+    // row started it. A shared one would need a pending-target variable, and a
+    // way to get it wrong.
+    val squareIconPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        persist(uri)
+        squareIconUri = uri.toString()
+    }
+
+    val heroPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        persist(uri)
+        heroUri = uri.toString()
+    }
+
+    val logoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        persist(uri)
+        logoUri = uri.toString()
     }
 
     val screenshotPicker = rememberLauncherForActivityResult(
@@ -205,33 +247,82 @@ fun EditEntryDialog(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(ICON_PREVIEW.dp)
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
-                                .clickable { iconPicker.launch(IMAGE_MIME_FILTER) },
+                    if (game == null) {
+                        // An app has one picture and it is square, so the row of
+                        // shaped slots below would be three empty boxes.
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            ArtworkImage(
-                                model = iconUri,
-                                contentDescription = "Icon",
-                                fallbackText = title,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                        Column {
-                            TextButton(onClick = { iconPicker.launch(IMAGE_MIME_FILTER) }) {
-                                Text("Choose artwork", color = colors.cursor)
+                            Box(
+                                modifier = Modifier
+                                    .size(ICON_PREVIEW.dp)
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
+                                    .clickable { iconPicker.launch(IMAGE_MIME_FILTER) },
+                            ) {
+                                ArtworkImage(
+                                    model = iconUri,
+                                    contentDescription = "Icon",
+                                    fallbackText = title,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
                             }
-                            if (iconUri != null) {
-                                TextButton(onClick = { iconUri = null }) {
-                                    Text("Reset", color = colors.onSurfaceVariant)
+                            Column {
+                                TextButton(onClick = { iconPicker.launch(IMAGE_MIME_FILTER) }) {
+                                    Text("Choose artwork", color = colors.cursor)
+                                }
+                                if (iconUri != null) {
+                                    TextButton(onClick = { iconUri = null }) {
+                                        Text("Reset", color = colors.onSurfaceVariant)
+                                    }
                                 }
                             }
+                        }
+                    } else {
+                        Text(
+                            text = "ARTWORK",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceVariant,
+                        )
+                        // Each slot at its own shape rather than a uniform grid:
+                        // the preview is the only thing telling the user which
+                        // picture belongs where, and four equal squares would
+                        // make a cover and a backdrop look interchangeable.
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(dimens.spacingTiny),
+                            verticalAlignment = Alignment.Bottom,
+                        ) {
+                            ArtworkSlot(
+                                label = "Cover",
+                                ratio = COVER_RATIO,
+                                uri = iconUri,
+                                fallbackText = title,
+                                onPick = { iconPicker.launch(IMAGE_MIME_FILTER) },
+                                onClear = { iconUri = null },
+                            )
+                            ArtworkSlot(
+                                label = "Icon",
+                                ratio = 1f,
+                                uri = squareIconUri,
+                                fallbackText = title,
+                                onPick = { squareIconPicker.launch(IMAGE_MIME_FILTER) },
+                                onClear = { squareIconUri = null },
+                            )
+                            ArtworkSlot(
+                                label = "Backdrop",
+                                ratio = WIDE_RATIO,
+                                uri = heroUri,
+                                onPick = { heroPicker.launch(IMAGE_MIME_FILTER) },
+                                onClear = { heroUri = null },
+                            )
+                            ArtworkSlot(
+                                label = "Logo",
+                                ratio = WIDE_RATIO,
+                                uri = logoUri,
+                                onPick = { logoPicker.launch(IMAGE_MIME_FILTER) },
+                                onClear = { logoUri = null },
+                            )
                         }
                     }
 
@@ -306,6 +397,9 @@ fun EditEntryDialog(
                                         releaseYear = year.toIntOrNull(),
                                         description = description.ifBlank { null },
                                         artwork = game.metadata.artwork.copy(
+                                            icon = squareIconUri,
+                                            hero = heroUri,
+                                            logo = logoUri,
                                             screenshots = screenshots.toList(),
                                         ),
                                     ),
@@ -393,6 +487,64 @@ private fun PickerRow(
 }
 
 /** Add/remove list for the game's screenshots, bounded by the artwork cap. */
+/**
+ * One picture slot: tap the preview to replace it, the corner to empty it.
+ *
+ * [ratio] is the slot's shape, not the file's. A picture put here is drawn the
+ * way the launcher will draw it, so choosing a portrait file for the backdrop
+ * shows the crop immediately instead of at the next scrape.
+ */
+@Composable
+private fun ArtworkSlot(
+    label: String,
+    ratio: Float,
+    uri: String?,
+    onPick: () -> Unit,
+    onClear: () -> Unit,
+    fallbackText: String = "",
+) {
+    val colors = ThorTheme.colors
+    val dimens = ThorTheme.dimens
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(dimens.spacingTiny),
+    ) {
+        Box(
+            modifier = Modifier
+                .height(SLOT_PREVIEW.dp)
+                .aspectRatio(ratio)
+                .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
+                .clickable(onClick = onPick),
+        ) {
+            ArtworkImage(
+                model = uri,
+                contentDescription = label,
+                fallbackText = fallbackText,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (uri != null) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "Clear $label",
+                    tint = colors.onSurface,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .background(colors.scrim, RoundedCornerShape(bottomStart = 6.dp))
+                        .clickable(onClick = onClear)
+                        .padding(2.dp)
+                        .size(14.dp),
+                )
+            }
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurfaceVariant,
+        )
+    }
+}
+
 @Composable
 private fun ScreenshotEditor(
     screenshots: List<String>,
@@ -497,3 +649,12 @@ private const val PLATFORM_DEFAULT_LABEL = "Platform default"
 private const val DIALOG_WIDTH = 420
 private const val CONTENT_MAX_HEIGHT = 340
 private const val ICON_PREVIEW = 72
+
+/**
+ * Slot previews are sized by height so their widths follow their shapes.
+ * At 68dp the four of them come to roughly 335dp, inside the dialog's usable
+ * width; raising it much further pushes the backdrop and logo off the edge.
+ */
+private const val SLOT_PREVIEW = 68
+private const val COVER_RATIO = 2f / 3f
+private const val WIDE_RATIO = 16f / 9f

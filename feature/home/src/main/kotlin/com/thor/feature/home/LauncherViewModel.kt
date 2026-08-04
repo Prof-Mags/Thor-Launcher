@@ -2179,7 +2179,7 @@ class LauncherViewModel @Inject constructor(
             inFolder = folderContaining(entry.id) != null,
             // Two kinds of "chosen by hand", asked the way each records it: a
             // platform folder marks its artwork with the user pack id, a game
-            // locks its artwork field. Both mean the same thing to the menu  14
+            // locks its artwork field. Both mean the same thing to the menu:
             // there is something here worth offering to undo.
             hasCustomArtwork = when (entry) {
                 is GameEntry ->
@@ -2421,7 +2421,7 @@ class LauncherViewModel @Inject constructor(
                     libraryRepository.clearGameArtwork(entry.id)
                     // Said out loud because the cell goes blank until something
                     // refills it, which on its own reads as having broken the game.
-                    emit(LauncherEffect.ShowMessage("Artwork reset  14 rescrape to refill it"))
+                    emit(LauncherEffect.ShowMessage("Artwork reset. Rescrape to refill it"))
                 }
             }
 

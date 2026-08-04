@@ -357,10 +357,16 @@ class LibraryRepository @Inject constructor(
                     id = entryId,
                     metadata = metadata.copy(
                         artwork = metadata.artwork.copy(boxArt = uri ?: metadata.artwork.boxArt),
+                        // Clearing the cover does not release the set. The editor
+                        // writes the other slots immediately before this and
+                        // locks artwork when any of them was chosen by hand, so
+                        // unlocking on a missing cover would undo that and hand a
+                        // deliberate backdrop back to the scraper. Releasing
+                        // artwork outright is [clearGameArtwork]'s job.
                         lockedFields = if (uri != null) {
                             metadata.lockedFields + GameMetadata.FIELD_ARTWORK
                         } else {
-                            metadata.lockedFields - GameMetadata.FIELD_ARTWORK
+                            metadata.lockedFields
                         },
                     ),
                 )
@@ -507,9 +513,19 @@ class LibraryRepository @Inject constructor(
             if (!metadata.publisher.isNullOrBlank()) add(GameMetadata.FIELD_PUBLISHER)
             if (metadata.releaseYear != null) add(GameMetadata.FIELD_RELEASE_DATE)
             if (metadata.rating != null) add(GameMetadata.FIELD_RATING)
+            // The editor can set every picture, not just the cover, so the
+            // artwork lock cannot be left to `setCustomIcon` alone — a
+            // hand-picked backdrop with no cover would otherwise be replaced by
+            // the next scrape. Locked on a *change* rather than on artwork being
+            // present, so opening the dialog and pressing Save without touching
+            // a picture does not pin whatever the scraper last found.
+            if (artworkDiffers(metadata.artwork, game.metadata.artwork)) {
+                add(GameMetadata.FIELD_ARTWORK)
+            }
         }
         gameDao.setMetadata(entryId, metadata.copy(lockedFields = locked))
     }
+
 
     /**
      * Reassigns a game to a different system.
@@ -743,3 +759,23 @@ class LibraryRepository @Inject constructor(
         const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
     }
 }
+
+/**
+ * Whether the entry editor changed any picture it owns.
+ *
+ * Decides whether a hand edit locks artwork against the next scrape. Locked on a
+ * change rather than on artwork merely being present, so opening the dialog and
+ * pressing Save without touching a picture does not pin whatever the scraper
+ * last found.
+ *
+ * Box art is excluded because it travels the other path: the editor reports it
+ * as the custom icon and `setCustomIcon` handles its lock straight afterwards.
+ * Screenshots are compared capped, which is the form the editor is seeded with
+ * and writes back; an older library holding more than the cap would otherwise
+ * read as edited on every save.
+ */
+internal fun artworkDiffers(edited: ArtworkSet, stored: ArtworkSet): Boolean =
+    edited.icon != stored.icon ||
+        edited.hero != stored.hero ||
+        edited.logo != stored.logo ||
+        edited.cappedScreenshots != stored.cappedScreenshots

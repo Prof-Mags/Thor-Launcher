@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -51,6 +52,9 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,19 +69,34 @@ import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
 import com.thor.core.model.PlatformFolders
 
-/** An action offered for the highlighted entry. */
-enum class ContextAction(val label: String, val icon: ImageVector) {
-    LAUNCH("Launch", Icons.Rounded.PlayArrow),
-    LAUNCH_MAIN_SCREEN("Launch on main screen", Icons.Rounded.Monitor),
-    LAUNCH_SECOND_SCREEN("Launch on second screen", Icons.Rounded.Tablet),
-    ADD_TO_GRID("Add to grid", Icons.AutoMirrored.Rounded.AddToHomeScreen),
-    REMOVE_FROM_GRID("Remove from grid", Icons.Rounded.VisibilityOff),
-    MOVE_TO_FOLDER("Move to folder…", Icons.AutoMirrored.Rounded.DriveFileMove),
-    REMOVE_FROM_FOLDER("Take out of folder", Icons.Rounded.FolderOff),
-    EDIT("Edit…", Icons.Rounded.Edit),
-    APP_INFO("App info", Icons.Rounded.Info),
-    TOGGLE_FAVORITE("Favourite", Icons.Rounded.StarOutline),
-    HIDE("Hide from grid", Icons.Rounded.VisibilityOff),
+/**
+ * An action offered for the highlighted entry.
+ *
+ * Each carries a one-line [description] for the same reason the side menu's
+ * rows do: several of these differ in ways the label alone does not carry, and
+ * "Remove from grid" beside "Remove from library" is the pair that has to be
+ * told apart correctly the first time.
+ */
+enum class ContextAction(
+    val label: String,
+    val description: String,
+    val icon: ImageVector,
+) {
+    LAUNCH("Launch", "Start this now", Icons.Rounded.PlayArrow),
+    LAUNCH_MAIN_SCREEN("Launch on main screen", "Open on the top display", Icons.Rounded.Monitor),
+    LAUNCH_SECOND_SCREEN(
+        "Launch on second screen",
+        "Open on the bottom display",
+        Icons.Rounded.Tablet,
+    ),
+    ADD_TO_GRID("Add to grid", "Give this a cell on the home screen", Icons.AutoMirrored.Rounded.AddToHomeScreen),
+    REMOVE_FROM_GRID("Remove from grid", "Free the cell; keeps the entry", Icons.Rounded.VisibilityOff),
+    MOVE_TO_FOLDER("Move to folder…", "File this under another folder", Icons.AutoMirrored.Rounded.DriveFileMove),
+    REMOVE_FROM_FOLDER("Take out of folder", "Return this to the home grid", Icons.Rounded.FolderOff),
+    EDIT("Edit…", "Title, artwork, details and emulator", Icons.Rounded.Edit),
+    APP_INFO("App info", "Open Android's settings page", Icons.Rounded.Info),
+    TOGGLE_FAVORITE("Favourite", "Keep this at the front of the rail", Icons.Rounded.StarOutline),
+    HIDE("Hide from grid", "Stays in the library and in search", Icons.Rounded.VisibilityOff),
 
     /**
      * Offered in place of [HIDE] on an entry that is already hidden.
@@ -87,9 +106,9 @@ enum class ContextAction(val label: String, val icon: ImageVector) {
      * caption depends on state is exactly the kind of thing that ends up saying
      * "Hide" over an entry that is already hidden.
      */
-    UNHIDE("Show on grid", Icons.Rounded.Visibility),
+    UNHIDE("Show on grid", "Put this back on the home screen", Icons.Rounded.Visibility),
 
-    UNINSTALL("Uninstall", Icons.Rounded.DeleteOutline),
+    UNINSTALL("Uninstall", "Removes the app from the device", Icons.Rounded.DeleteOutline),
 
     /**
      * Removes the entry from the library, as opposed to hiding it.
@@ -98,7 +117,28 @@ enum class ContextAction(val label: String, val icon: ImageVector) {
      * the point: this is the way to undo a state an entry has got stuck in, not a
      * way to delete anything from disk. THOR never touches the user's files.
      */
-    DELETE("Remove from library", Icons.Rounded.DeleteForever),
+    DELETE("Remove from library", "Your files are left untouched", Icons.Rounded.DeleteForever),
+
+    /**
+     * Hand-picked artwork for a game, as a shortcut.
+     *
+     * Only the two pictures that are worth changing on their own. The editor
+     * holds every slot — cover, icon, backdrop, logo and screenshots — and is
+     * where a full correction belongs; these are here because swapping a wrong
+     * cover is the single most common fix and should not need a dialog.
+     */
+    SET_GAME_COVER("Choose cover…", "Replace the tall box art", Icons.Rounded.Image),
+    SET_GAME_BACKDROP("Choose backdrop…", "Replace the wide banner", Icons.Rounded.Wallpaper),
+
+    /**
+     * Hands a game's pictures back to the scrapers.
+     *
+     * Needs its own row because neither the shortcuts nor the editor can express
+     * it: emptying five fields one at a time is not the same gesture as "go and
+     * find these again", and the editor's own edits now lock artwork against the
+     * next scrape, so there has to be a way to unlock it.
+     */
+    CLEAR_GAME_ARTWORK("Reset artwork", "Let the scrapers choose again", Icons.Rounded.Restore),
 
     /**
      * Hand-picked artwork for a platform folder.
@@ -111,23 +151,15 @@ enum class ContextAction(val label: String, val icon: ImageVector) {
      * wanted. Choosing one by hand marks it as the user's, and nothing — not a
      * rescrape, not a newly installed icon pack — overwrites it afterwards.
      */
-    /**
-     * Hand-picked artwork for a game.
-     *
-     * Offered for the same reason the platform ones are, and more often needed:
-     * a scraper matches by title and will sometimes match the wrong one, and the
-     * only recourse until now was to re-run it and hope. Choosing an image marks
-     * the game's artwork as the user's, and every merge already respects that.
-     */
-    SET_GAME_COVER("Choose cover…", Icons.Rounded.Image),
-    SET_GAME_BACKDROP("Choose backdrop…", Icons.Rounded.Wallpaper),
-    CLEAR_GAME_ARTWORK("Reset artwork", Icons.Rounded.Restore),
+    SET_PLATFORM_ICON("Choose icon…", "Pick an image for this system", Icons.Rounded.Image),
+    SET_PLATFORM_HERO("Choose backdrop…", "Pick the wide banner image", Icons.Rounded.Wallpaper),
+    CLEAR_PLATFORM_ARTWORK(
+        "Reset artwork",
+        "Back to the pack's own icon",
+        Icons.Rounded.Restore,
+    ),
 
-    SET_PLATFORM_ICON("Choose icon…", Icons.Rounded.Image),
-    SET_PLATFORM_HERO("Choose backdrop…", Icons.Rounded.Wallpaper),
-    CLEAR_PLATFORM_ARTWORK("Reset artwork", Icons.Rounded.Restore),
-
-    DELETE_FOLDER("Delete folder", Icons.Rounded.Delete),
+    DELETE_FOLDER("Delete folder", "Its contents return to the grid", Icons.Rounded.Delete),
 }
 
 /**
@@ -181,7 +213,7 @@ fun contextActionsFor(
      *
      * The scrapers match by title and sometimes match the wrong game, and until
      * now the only recourse was to run one again and hope for a better guess.
-     * Reset is offered only when there is something to undo  14 on a game whose
+     * Reset is offered only when there is something to undo: on a game whose
      * artwork nobody has chosen it would do nothing visible.
      */
     if (entry is GameEntry) {
@@ -340,6 +372,11 @@ private fun ContextRow(
     } else {
         action.icon
     }
+    val description = if (action == ContextAction.TOGGLE_FAVORITE && entry.isFavorite) {
+        "Stop keeping this at the front"
+    } else {
+        action.description
+    }
     val destructive = action == ContextAction.UNINSTALL || action == ContextAction.DELETE_FOLDER
 
     // Lit by the controller cursor or by the pointer, indistinguishably.
@@ -354,33 +391,78 @@ private fun ContextRow(
         }
     }
 
+    // A destructive row reads in the error colour throughout, focused or not.
+    // The cursor tint would otherwise make "Uninstall" the one row that stops
+    // looking dangerous at the moment it is about to be pressed.
+    val accent = if (destructive) colors.error else colors.cursor
+    val shape = ThorTheme.shapes.panel
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .bringIntoViewRequester(requester)
-            .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
-            .thorCursor(focused = lit, cornerRadius = dimens.cornerRadiusSmall)
+            .clip(shape)
+            .background(if (lit) colors.surfaceHighest else Color.Transparent)
+            .thorCursor(focused = lit, shape = shape)
             .pointerHover(hover)
             .clickable(onClick = onClick)
-            .padding(horizontal = dimens.spacingSmall, vertical = 10.dp),
+            .padding(horizontal = dimens.spacingSmall, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
+        horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = when {
-                destructive -> colors.error
-                lit -> colors.cursor
-                else -> colors.onSurfaceVariant
-            },
-            modifier = Modifier.size(20.dp),
+        // Drawn only when lit, and holding its width either way, so the row does
+        // not shift sideways as the cursor arrives.
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(EDGE_MARKER_HEIGHT.dp)
+                .clip(ThorTheme.shapes.pill)
+                .background(
+                    when {
+                        !lit -> SolidColor(Color.Transparent)
+                        destructive -> SolidColor(colors.error)
+                        else -> Brush.verticalGradient(colors.accentStops)
+                    },
+                ),
         )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (destructive) colors.error else colors.onSurface,
-        )
+        Box(
+            modifier = Modifier
+                .size(ICON_TILE.dp)
+                .clip(ThorTheme.shapes.small)
+                .background(if (lit) accent.copy(alpha = 0.16f) else colors.surfaceElevated),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = when {
+                    destructive -> colors.error
+                    lit -> colors.cursor
+                    else -> colors.onSurfaceVariant
+                },
+                modifier = Modifier.size(ICON_GLYPH.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = when {
+                    destructive -> colors.error
+                    lit -> colors.onSurface
+                    else -> colors.onSurfaceVariant
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant.copy(alpha = 0.72f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -397,4 +479,14 @@ private fun GridEntry.subtitle(): String = when (this) {
     else -> ""
 }
 
-private const val CARD_WIDTH = 320
+/**
+ * Wider than the single-line menu it replaces: the rows now carry a leading
+ * icon tile and a line of description under the label, and at the old width the
+ * longer captions wrapped to three lines.
+ */
+private const val CARD_WIDTH = 360
+
+/** Matches the side menu, whose rows these are deliberately a copy of. */
+private const val EDGE_MARKER_HEIGHT = 22
+private const val ICON_TILE = 40
+private const val ICON_GLYPH = 21
