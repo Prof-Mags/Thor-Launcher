@@ -55,18 +55,6 @@ fun ArtworkImage(
     contentScale: ContentScale = ContentScale.Crop,
     alignment: Alignment = Alignment.Center,
     crossfadeMillis: Int = ThorTheme.motion.detailMillis,
-    /**
-     * Whether a missing image is worth drawing something for.
-     *
-     * On, for anything that *is* the picture: a cell with nothing in it should
-     * still read as that entry, and a shimmer says the artwork is on its way.
-     *
-     * Off for anything drawn *over* a picture. A platform's game overlay covers
-     * artwork that is already there and already correct, so a shimmer or an
-     * initials plate in its place is not a graceful failure — it is the frame
-     * hiding the thing it was meant to frame.
-     */
-    showPlaceholder: Boolean = true,
 ) {
     val context = LocalContext.current
     /*
@@ -119,12 +107,9 @@ fun ArtworkImage(
         // meant it was never drawn, its size never resolved, and the request
         // never completed — so every image stayed in Loading forever and the
         // cell rendered as an empty plate.
-        when {
-            !showPlaceholder -> Unit
-            state is AsyncImagePainter.State.Loading ->
-                ShimmerPlaceholder(Modifier.fillMaxSize())
-
-            state is AsyncImagePainter.State.Success -> Unit
+        when (state) {
+            is AsyncImagePainter.State.Loading -> ShimmerPlaceholder(Modifier.fillMaxSize())
+            is AsyncImagePainter.State.Success -> Unit
             else -> ArtworkFallback(
                 text = fallbackText,
                 tint = fallbackTint,
@@ -149,34 +134,6 @@ fun ArtworkImage(
                 },
         )
     }
-}
-
-/**
- * A platform's frame, drawn over one of its games.
- *
- * Composited rather than baked in, which is the only version of this that can be
- * undone: the game's own artwork is untouched underneath, so removing the pack
- * that supplied the frame puts every cell back without anything being re-scraped.
- *
- * Draws nothing at all when the platform has no overlay — which is every platform
- * until a pack that ships one is installed, and any system such a pack happened
- * to miss.
- */
-@Composable
-fun PlatformOverlay(
-    overlayUri: String?,
-    modifier: Modifier = Modifier,
-) {
-    if (overlayUri.isNullOrBlank()) return
-    ArtworkImage(
-        model = overlayUri,
-        contentDescription = null,
-        // Fit, so a frame drawn square stays square over a cell that is square.
-        // Crop would trim its edges away, which on a frame is the whole of it.
-        contentScale = ContentScale.Fit,
-        showPlaceholder = false,
-        modifier = modifier,
-    )
 }
 
 /** The plate drawn when artwork is missing or failed to load. */

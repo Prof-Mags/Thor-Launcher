@@ -417,6 +417,13 @@ class LibraryRepository @Inject constructor(
     }
 
     /**
+     * Gives a platform's artwork back to whatever would otherwise supply it.
+     *
+     * Clears the user's choice *and* its ownership marker, so the next scrape or
+     * pack install fills it again. Without clearing the marker the platform would
+     * be left permanently bare — owned by a choice that no longer exists.
+     */
+    /**
      * Hand-picked artwork for one game, which the scrapers must then leave alone.
      *
      * Locking [GameMetadata.FIELD_ARTWORK] is what makes it stick, and it is the
@@ -473,20 +480,6 @@ class LibraryRepository @Inject constructor(
         )
     }
 
-    /**
-     * Gives a platform's artwork back to whatever would otherwise supply it.
-     *
-     * Clears the user's choice *and* its ownership marker, so the next scrape or
-     * pack install fills it again. Without clearing the marker the platform would
-     * be left permanently bare — owned by a choice that no longer exists.
-     *
-     * The game overlay goes with it. Ownership is recorded once, for the whole
-     * row, so an overlay left behind by this would belong to nobody: no pack
-     * removal would take it away and no later choice would replace it, leaving
-     * every game on that system framed with no way to say otherwise. An installed
-     * pack puts both back on its next pass, which is the same route that dresses
-     * a platform added later.
-     */
     suspend fun clearPlatformArtwork(platformId: String) = withContext(defaultDispatcher) {
         val platform = platformDao.getById(platformId) ?: return@withContext
         if (!PlatformArtwork(packId = platform.artworkPackId).isUserChosen) return@withContext
@@ -495,7 +488,6 @@ class LibraryRepository @Inject constructor(
             platform.copy(
                 artworkIconUri = null,
                 artworkHeroUri = null,
-                artworkOverlayUri = null,
                 artworkPackId = null,
             ),
         )

@@ -297,21 +297,7 @@ A source without a key is skipped, never fatal.
 
 Each game keeps a cover and up to three screenshots. The bumpers step between them.
 
-### Platform artwork
-
-Loki draws its own console renders for every system it models. An icon pack you
-import wins over them, and removing it gives them back.
-
-Packs are read in both shapes they come in: a folder per system holding
-`icon.png`, or one flat folder of `snes-console.png`, `snes-controller.png`,
-`snes-overlay.png`. A set that offers several styles installs as **one pack per
-style**, so switching between them is a removal rather than another import.
-
-An `overlay` frames every game on that system — composited over the artwork, never
-replacing it, so removing the pack puts every cell back untouched.
-
-Images are shrunk to what they are actually drawn at as they are copied in, which
-is what keeps a 285 MB icon set from becoming 285 MB of app storage.
+**Platform artwork** can be imported from an icon pack — Loki ships none.
 
 <br>
 

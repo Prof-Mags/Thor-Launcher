@@ -71,64 +71,6 @@ class IconPackSlugsTest {
         assertThat(IconPackSlugs.platformIdFor("ngp")).isEqualTo("ngpc")
     }
 
-    /**
-     * The names a set that sorts by manufacturer uses.
-     *
-     * These three were the whole of the gap between a 62-system icon set and
-     * THOR's platforms: every other slug in it already matched. Without them the
-     * PC Engine, the Lynx and the Jaguar imported as held artwork and their
-     * folders stayed bare, which looks like three systems the set forgot.
-     */
-    @Test
-    fun `machines written with their maker or their export name resolve`() {
-        assertThat(IconPackSlugs.platformIdFor("atarijaguar")).isEqualTo("jaguar")
-        assertThat(IconPackSlugs.platformIdFor("atarilynx")).isEqualTo("lynx")
-        assertThat(IconPackSlugs.platformIdFor("turbografx16")).isEqualTo("pcengine")
-    }
-
-    /**
-     * The near-misses stay unmatched, on purpose.
-     *
-     * Each is a real machine THOR does not model, and each sits one plausible
-     * alias away from one it does. Adding that alias would give a platform two
-     * candidate slugs, and [IconPack.artworkFor] takes the first alias that
-     * matches — so the PC Engine's folder would show a SuperGrafx, decided by
-     * nothing better than which slug sorts first.
-     */
-    @Test
-    fun `machines THOR does not model are held rather than guessed at`() {
-        listOf("supergrafx", "neogeocd", "msx2", "wonderswancolor", "pcfx", "ps4")
-            .forEach { slug ->
-                assertThat(IconPackSlugs.platformIdFor(slug)).isNull()
-            }
-    }
-
-    /**
-     * An exact id always beats an alias pointing at the same platform.
-     *
-     * Both pairs ship in the same set. If the alias won, the Famicom Disk System
-     * would dress the NES and the mono Pocket the colour one — the right platform
-     * either way, but the wrong picture, and picked at random.
-     */
-    @Test
-    fun `a slug naming a platform exactly outranks an alias onto it`() {
-        val pack = IconPack(
-            id = "test",
-            name = "Test",
-            author = "Nobody",
-            version = "1.0",
-            artworkBySlug = mapOf(
-                "fds" to PlatformArtwork(iconUri = "file:///fds.png"),
-                "nes" to PlatformArtwork(iconUri = "file:///nes.png"),
-                "ngp" to PlatformArtwork(iconUri = "file:///ngp.png"),
-                "ngpc" to PlatformArtwork(iconUri = "file:///ngpc.png"),
-            ),
-        )
-
-        assertThat(pack.artworkFor("nes")?.iconUri).isEqualTo("file:///nes.png")
-        assertThat(pack.artworkFor("ngpc")?.iconUri).isEqualTo("file:///ngpc.png")
-    }
-
     @Test
     fun `the whole reference pack resolves`() {
         val resolved = referencePackSlugs.count { IconPackSlugs.platformIdFor(it) != null }

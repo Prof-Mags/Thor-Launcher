@@ -323,11 +323,7 @@ class SettingsViewModel @Inject constructor(
         ) {
             _iconPackStatus.value = when (val result = block()) {
                 is IconPackImport.Success -> IconPackStatus.Installed(
-                    // The one now on screen. The others from the same source are
-                    // named in the list below, and [IconPackStatus.Installed]
-                    // says how many there were.
-                    name = result.visible.name,
-                    styles = result.packs.size,
+                    name = result.pack.name,
                     applied = result.applied.size,
                     held = result.held.size,
                 )

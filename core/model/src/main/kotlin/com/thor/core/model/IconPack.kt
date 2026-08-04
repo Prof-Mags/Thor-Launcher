@@ -5,17 +5,11 @@ import kotlinx.serialization.Serializable
 /**
  * A platform's artwork, as supplied by an icon pack.
  *
- * Each image answers a different question: the icon is what a platform looks
- * like as one cell on the grid, the hero is what it looks like filling a panel,
- * the logo is its name drawn rather than typeset, and the overlay is what its
- * *games* are framed with. None is derivable from the others — downscaling a
- * hero gives a muddy icon, and upscaling an icon gives a blurry hero.
- *
- * The overlay is the one that dresses something other than the platform, and it
- * lives here regardless: it is chosen per system and applies to every game filed
- * under that system, so the platform is the one row that has to hold it. Putting
- * it on the games instead would mean writing it onto several hundred rows and
- * keeping them in step through every rescan.
+ * Three images because packs ship three and each answers a different question:
+ * the icon is what a platform looks like as one cell on the grid, the hero is
+ * what it looks like filling a panel, and the logo is its name drawn rather than
+ * typeset. None is derivable from the others — downscaling a hero gives a muddy
+ * icon, and upscaling an icon gives a blurry hero.
  *
  * Every field is nullable and independently so: packs are made by hand and are
  * routinely incomplete. The pack this format was taken from ships several
@@ -29,13 +23,10 @@ data class PlatformArtwork(
     val heroUri: String? = null,
     /** Wordmark, for the open-folder banner. */
     val logoUri: String? = null,
-    /** Frame composited over every game on this platform. */
-    val overlayUri: String? = null,
     /** Which pack supplied these, so removing it can take them back out. */
     val packId: String? = null,
 ) {
-    val isEmpty: Boolean
-        get() = iconUri == null && heroUri == null && logoUri == null && overlayUri == null
+    val isEmpty: Boolean get() = iconUri == null && heroUri == null && logoUri == null
 
     /**
      * Chosen by hand, and therefore nobody else's to change.
@@ -136,21 +127,12 @@ object PlatformFolders {
  *    CD-audio hack of a console THOR already has. All collapse onto the parent.
  *  - **Not a console at all.** `steam` and `windows` are PC, which THOR does have.
  *
- * Anything unmatched is **kept, not dropped**. Packs routinely cover more systems
- * than THOR models — the Atari 5200 and ST, the SuperGrafx, the PC-FX, the X68000
- * and the PS4 all turn up in sets whose systems THOR has no entry for. Their
- * artwork is imported and held against the slug it arrived under, so adding the
- * platform later is all it takes for the art to appear. Discarding it would mean
- * the user had to still have the pack, and remember which one it was, months
- * after installing it.
- *
- * Note what is deliberately *absent*: the near-misses. The SuperGrafx is not
- * aliased onto the PC Engine, nor the Neo Geo CD onto the Neo Geo, nor MSX2 onto
- * MSX. Each would put a second slug on a platform that already has one, and
- * [IconPack.artworkFor] resolves an alias by taking the first that matches — so
- * the folder for one machine would end up wearing a picture of a different one,
- * decided by alphabetical accident. Held artwork is honest; a confident wrong
- * answer is not.
+ * Anything unmatched is **kept, not dropped**. THOR models 25 platforms and packs
+ * routinely ship more — this one has Game Gear, Neo Geo Pocket and Neo Geo Pocket
+ * Colour, none of which THOR has yet. Their artwork is imported and held against
+ * the slug it arrived under, so adding the platform later is all it takes for the
+ * art to appear. Discarding it would mean the user had to still have the pack,
+ * and remember which one it was, months after installing it.
  */
 object IconPackSlugs {
 
@@ -176,13 +158,6 @@ object IconPackSlugs {
         "gameboy" to "gb",
         "gameboycolor" to "gbc",
         "gameboyadvance" to "gba",
-        // Written with their maker, which is how sets that sort by manufacturer
-        // name them — and how the Lynx and the Jaguar are usually written at all.
-        "atarijaguar" to "jaguar",
-        "atarilynx" to "lynx",
-        // One machine, two names, split by where you bought it: PC Engine in
-        // Japan, TurboGrafx-16 everywhere else. THOR files it under the first.
-        "turbografx16" to "pcengine",
 
         // Emulators, not platforms.
         "mame" to "arcade",

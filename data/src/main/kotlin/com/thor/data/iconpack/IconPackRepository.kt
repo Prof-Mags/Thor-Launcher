@@ -81,19 +81,10 @@ class IconPackRepository @Inject constructor(
             // Reinstalling replaces the previous record rather than stacking a
             // second one with the same id, which would leave the first's files
             // already deleted by the importer and its rows pointing at nothing.
-            val installed = result.packs.mapTo(mutableSetOf()) { it.id }
             settings.updateIconPacks { packs ->
-                packs.filterNot { it.id in installed } + result.packs
+                packs.filterNot { it.id == result.pack.id } + result.pack
             }
-            /*
-             * In the order the importer gave them, because each overwrites the
-             * last: one source offering several icon styles yields a pack each,
-             * ordered least-preferred first, so the style it ranked highest is
-             * the one left dressing the platforms. The rest stay installed and
-             * are revealed by removing the one above them, which is what removing
-             * any pack already does.
-             */
-            result.packs.forEach { applyToPlatforms(it) }
+            applyToPlatforms(result.pack)
         }
         return result
     }
@@ -118,7 +109,6 @@ class IconPackRepository @Inject constructor(
                     artworkIconUri = artwork.iconUri,
                     artworkHeroUri = artwork.heroUri,
                     artworkLogoUri = artwork.logoUri,
-                    artworkOverlayUri = artwork.overlayUri,
                     artworkPackId = pack.id,
                 ),
             )
@@ -178,7 +168,6 @@ class IconPackRepository @Inject constructor(
                     artworkIconUri = artwork.iconUri,
                     artworkHeroUri = artwork.heroUri,
                     artworkLogoUri = artwork.logoUri,
-                    artworkOverlayUri = artwork.overlayUri,
                     artworkPackId = packId,
                 ),
             )
@@ -210,7 +199,6 @@ class IconPackRepository @Inject constructor(
                         artworkIconUri = artwork.iconUri,
                         artworkHeroUri = artwork.heroUri,
                         artworkLogoUri = artwork.logoUri,
-                        artworkOverlayUri = artwork.overlayUri,
                         artworkPackId = fallback?.first,
                     ),
                 )

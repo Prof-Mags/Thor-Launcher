@@ -50,32 +50,12 @@ class ThorMigrationsTest {
         }
     }
 
-    /**
-     * 4 → 5 adds the game overlay, and nothing else.
-     *
-     * Same check as version 3 and for the same reason: the column is added in
-     * place, so the only thing that can be wrong is its name, and a misspelt one
-     * migrates cleanly and then leaves Room looking for a column that is not
-     * there.
-     */
-    @Test
-    fun `version 5 adds exactly the overlay column`() {
-        val v4 = normalise(exportedPlatformsDdl(version = 4))
-        val v5 = normalise(exportedPlatformsDdl(version = 5))
-
-        val added = columnNames(v5) - columnNames(v4)
-        assertThat(added).containsExactly("artwork_overlay_uri")
-        assertThat(v5).contains("`artwork_overlay_uri` TEXT,")
-    }
-
     @Test
     fun `migrations declare the expected version ranges`() {
         assertThat(ThorMigrations.MIGRATION_1_2.startVersion).isEqualTo(1)
         assertThat(ThorMigrations.MIGRATION_1_2.endVersion).isEqualTo(2)
         assertThat(ThorMigrations.MIGRATION_2_3.startVersion).isEqualTo(2)
         assertThat(ThorMigrations.MIGRATION_2_3.endVersion).isEqualTo(3)
-        assertThat(ThorMigrations.MIGRATION_4_5.startVersion).isEqualTo(4)
-        assertThat(ThorMigrations.MIGRATION_4_5.endVersion).isEqualTo(5)
         assertThat(ThorMigrations.ALL).hasLength(ThorDatabase.VERSION - 1)
     }
 
