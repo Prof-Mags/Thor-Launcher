@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -235,16 +236,38 @@ fun SettingsScreen(
                         bottom = dimens.spacing,
                     ),
                 )
-                SettingsCategory.navigationEntries(enabledExtensions).forEach { entry ->
-                    Box(modifier = Modifier.weight(1f, fill = false)) {
-                        CategoryRow(
-                            category = entry,
-                            selected = entry == category,
-                            // The cursor ring only shows while the rail holds
-                            // input, so it is obvious which column presses move in.
-                            cursorHere = entry == category && focusOnRail && openPage == null,
-                            onClick = { viewModel.selectCategory(entry) },
-                        )
+                /*
+                 * Measured once, for all of the rows.
+                 *
+                 * Sharing the leftover space keeps every category visible, but it
+                 * only works while a row can still be drawn in its share. Past
+                 * that the share simply clips the row, which is what a tenth
+                 * category did: icon tiles cut off and titles half-height. So the
+                 * row has a compact form, and the rail picks it when there is not
+                 * room for the comfortable one — losing the summary line, which is
+                 * a description of a category whose name is right above it, rather
+                 * than losing the top of every name.
+                 */
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    val entries = SettingsCategory.navigationEntries(enabledExtensions)
+                    val perRow = if (entries.isEmpty()) maxHeight else maxHeight / entries.size
+                    val compact = perRow < COMFORTABLE_CATEGORY_ROW.dp
+
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        entries.forEach { entry ->
+                            Box(modifier = Modifier.weight(1f, fill = false)) {
+                                CategoryRow(
+                                    category = entry,
+                                    selected = entry == category,
+                                    compact = compact,
+                                    // The cursor ring only shows while the rail holds
+                                    // input, so it is obvious which column presses move in.
+                                    cursorHere = entry == category && focusOnRail &&
+                                        openPage == null,
+                                    onClick = { viewModel.selectCategory(entry) },
+                                )
+                            }
+                        }
                     }
                 }
                 }
@@ -603,6 +626,8 @@ private fun CategoryRow(
     selected: Boolean,
     cursorHere: Boolean,
     onClick: () -> Unit,
+    /** Drops the summary and tightens the tile, for a rail with no room to spare. */
+    compact: Boolean = false,
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
@@ -613,7 +638,7 @@ private fun CategoryRow(
             .fillMaxWidth()
             .padding(
                 horizontal = dimens.spacingSmall,
-                vertical = 3.dp,
+                vertical = if (compact) 1.dp else 3.dp,
             )
             .revealWhenFocused(cursorHere)
             .clip(shape)
@@ -624,7 +649,7 @@ private fun CategoryRow(
             .clickable(onClick = onClick)
             .padding(
                 horizontal = dimens.spacingSmall,
-                vertical = 9.dp,
+                vertical = if (compact) 5.dp else 9.dp,
             ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
@@ -633,14 +658,14 @@ private fun CategoryRow(
             Box(
                 modifier = Modifier
                     .width(3.dp)
-                    .height(30.dp)
+                    .height(if (compact) 22.dp else 30.dp)
                     .clip(ThorTheme.shapes.pill)
                     .background(Brush.verticalGradient(colors.accentStops)),
             )
         }
                     Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(if (compact) 26.dp else 36.dp)
                     .clip(ThorTheme.shapes.small)
                     .background(
                         if (selected) colors.cursor.copy(alpha = 0.16f) else colors.surfaceElevated,
@@ -651,7 +676,7 @@ private fun CategoryRow(
                     imageVector = category.icon,
                     contentDescription = null,
                     tint = if (selected) colors.cursor else colors.onSurfaceVariant,
-                    modifier = Modifier.size(19.dp),
+                    modifier = Modifier.size(if (compact) 15.dp else 19.dp),
                 )
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -662,16 +687,26 @@ private fun CategoryRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = category.summary,
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant.copy(alpha = 0.72f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (!compact) {
+                Text(
+                    text = category.summary,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant.copy(alpha = 0.72f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
+
+/**
+ * Height a category row needs for its icon tile and both lines of text.
+ *
+ * Below this the rail switches every row to the compact form rather than
+ * clipping them all.
+ */
+private const val COMFORTABLE_CATEGORY_ROW = 58
 
 private const val CARD_RAIL_WIDTH = 256
 private const val CONSOLE_RAIL_WIDTH = 218
