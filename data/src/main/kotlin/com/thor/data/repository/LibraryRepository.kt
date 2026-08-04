@@ -19,6 +19,7 @@ import com.thor.core.datastore.SettingsRepository
 import com.thor.core.model.AppEntry
 import com.thor.core.model.BuiltInPlatforms
 import com.thor.core.model.FolderEntry
+import com.thor.core.model.ArtworkSet
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GameMetadata
 import com.thor.core.model.GameVersion
@@ -416,6 +417,63 @@ class LibraryRepository @Inject constructor(
      * pack install fills it again. Without clearing the marker the platform would
      * be left permanently bare — owned by a choice that no longer exists.
      */
+    /**
+     * Hand-picked artwork for one game, which the scrapers must then leave alone.
+     *
+     * Locking [GameMetadata.FIELD_ARTWORK] is what makes it stick, and it is the
+     * same lock the metadata editor uses: every merge already checks it, so a
+     * rescrape, an import and a top-up pass all skip a game whose pictures were
+     * chosen by hand. Without that the next scrape would quietly undo the choice
+     * and there would be no way to tell why.
+     *
+     * A null for a slot leaves it as it was, so choosing a cover does not clear a
+     * backdrop.
+     */
+    suspend fun setGameArtwork(
+        gameId: String,
+        coverUri: String? = null,
+        heroUri: String? = null,
+    ) = withContext(defaultDispatcher) {
+        val game = gameDao.getById(gameId) ?: return@withContext
+        val metadata = game.toDomain().metadata
+        val artwork = metadata.artwork
+
+        gameDao.setMetadata(
+            gameId,
+            metadata.copy(
+                artwork = artwork.copy(
+                    // The cover fills both slots the cell can draw from, so the
+                    // chosen image is what appears whether or not a square icon
+                    // was ever scraped; see `GameMetadata.cellImage`.
+                    icon = coverUri ?: artwork.icon,
+                    boxArt = coverUri ?: artwork.boxArt,
+                    hero = heroUri ?: artwork.hero,
+                ),
+                lockedFields = metadata.lockedFields + GameMetadata.FIELD_ARTWORK,
+            ),
+        )
+    }
+
+    /**
+     * Gives a game back to the scrapers.
+     *
+     * Clears the images *and* the lock, because leaving the lock would freeze the
+     * game in its emptied state — the next scrape would skip it and the reset
+     * would look like a deletion rather than a request to try again.
+     */
+    suspend fun clearGameArtwork(gameId: String) = withContext(defaultDispatcher) {
+        val game = gameDao.getById(gameId) ?: return@withContext
+        val metadata = game.toDomain().metadata
+
+        gameDao.setMetadata(
+            gameId,
+            metadata.copy(
+                artwork = ArtworkSet.EMPTY,
+                lockedFields = metadata.lockedFields - GameMetadata.FIELD_ARTWORK,
+            ),
+        )
+    }
+
     suspend fun clearPlatformArtwork(platformId: String) = withContext(defaultDispatcher) {
         val platform = platformDao.getById(platformId) ?: return@withContext
         if (!PlatformArtwork(packId = platform.artworkPackId).isUserChosen) return@withContext

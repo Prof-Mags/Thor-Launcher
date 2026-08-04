@@ -610,7 +610,15 @@ fun ThorApp(
      * next reboot and then silently resolves to nothing, which looks like the
      * artwork having been forgotten.
      */
-    var pendingArtwork by remember { mutableStateOf<LauncherEffect.PickPlatformArtwork?>(null) }
+    /*
+     * One picker, two kinds of target.
+     *
+     * A platform folder and a game want the same thing from the user  14 an image
+     * off the device  14 and differ only in where the answer is written. Two
+     * launchers would mean two identical result callbacks and two ways for the
+     * persistable-permission step to be forgotten in one of them.
+     */
+    var pendingArtwork by remember { mutableStateOf<LauncherEffect?>(null) }
     val artworkPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
@@ -625,11 +633,21 @@ fun ThorApp(
             )
         }.onFailure { ThorLog.w("Launcher", "Artwork URI is not persistable: $uri", it) }
 
-        viewModel.setPlatformArtwork(
-            platformId = target.platformId,
-            iconUri = uri.toString().takeIf { !target.hero },
-            heroUri = uri.toString().takeIf { target.hero },
-        )
+        when (target) {
+            is LauncherEffect.PickPlatformArtwork -> viewModel.setPlatformArtwork(
+                platformId = target.platformId,
+                iconUri = uri.toString().takeIf { !target.hero },
+                heroUri = uri.toString().takeIf { target.hero },
+            )
+
+            is LauncherEffect.PickGameArtwork -> viewModel.setGameArtwork(
+                gameId = target.gameId,
+                coverUri = uri.toString().takeIf { !target.hero },
+                heroUri = uri.toString().takeIf { target.hero },
+            )
+
+            else -> Unit
+        }
     }
 
     // Snapshots of the same derivations, for the things this composition draws.
@@ -1557,7 +1575,7 @@ fun ThorApp(
                      * plainly when that service is not running rather than being
                      * silently dropped a second time.
                      */
-                    is LauncherEffect.PickPlatformArtwork -> {
+                    is LauncherEffect.PickPlatformArtwork, is LauncherEffect.PickGameArtwork -> {
                         pendingArtwork = effect
                         artworkPicker.launch(arrayOf("image/*"))
                     }

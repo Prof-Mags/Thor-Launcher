@@ -111,6 +111,18 @@ enum class ContextAction(val label: String, val icon: ImageVector) {
      * wanted. Choosing one by hand marks it as the user's, and nothing — not a
      * rescrape, not a newly installed icon pack — overwrites it afterwards.
      */
+    /**
+     * Hand-picked artwork for a game.
+     *
+     * Offered for the same reason the platform ones are, and more often needed:
+     * a scraper matches by title and will sometimes match the wrong one, and the
+     * only recourse until now was to re-run it and hope. Choosing an image marks
+     * the game's artwork as the user's, and every merge already respects that.
+     */
+    SET_GAME_COVER("Choose cover…", Icons.Rounded.Image),
+    SET_GAME_BACKDROP("Choose backdrop…", Icons.Rounded.Wallpaper),
+    CLEAR_GAME_ARTWORK("Reset artwork", Icons.Rounded.Restore),
+
     SET_PLATFORM_ICON("Choose icon…", Icons.Rounded.Image),
     SET_PLATFORM_HERO("Choose backdrop…", Icons.Rounded.Wallpaper),
     CLEAR_PLATFORM_ARTWORK("Reset artwork", Icons.Rounded.Restore),
@@ -163,6 +175,21 @@ fun contextActionsFor(
     }
 
     add(ContextAction.EDIT)
+
+    /*
+     * Artwork, for a game.
+     *
+     * The scrapers match by title and sometimes match the wrong game, and until
+     * now the only recourse was to run one again and hope for a better guess.
+     * Reset is offered only when there is something to undo  14 on a game whose
+     * artwork nobody has chosen it would do nothing visible.
+     */
+    if (entry is GameEntry) {
+        add(ContextAction.SET_GAME_COVER)
+        add(ContextAction.SET_GAME_BACKDROP)
+        if (hasCustomArtwork) add(ContextAction.CLEAR_GAME_ARTWORK)
+    }
+
     if (entry is AppEntry) add(ContextAction.APP_INFO)
     add(ContextAction.TOGGLE_FAVORITE)
     if (!fromDrawer && entry !is FolderEntry) {

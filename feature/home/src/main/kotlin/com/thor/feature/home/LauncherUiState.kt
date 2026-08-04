@@ -195,6 +195,12 @@ sealed interface LauncherEffect {
      * result, which belongs to the activity — so the choice is made in the shell
      * and handed back through [LauncherViewModel.setPlatformArtwork].
      */
+    data class PickGameArtwork(
+        val gameId: String,
+        /** True for the wide backdrop, false for the cover on the cell. */
+        val hero: Boolean,
+    ) : LauncherEffect
+
     data class PickPlatformArtwork(
         val platformId: String,
         /** True for the wide backdrop, false for the square icon. */

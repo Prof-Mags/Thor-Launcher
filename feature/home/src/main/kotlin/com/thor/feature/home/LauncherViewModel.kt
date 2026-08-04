@@ -8,6 +8,7 @@ import com.thor.core.datastore.SettingsRepository
 import com.thor.core.model.ControllerCommand
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
+import com.thor.core.model.GameMetadata
 import com.thor.core.model.GridEntry
 import com.thor.core.model.GridSpec
 import com.thor.core.model.KeyboardKey
@@ -2176,10 +2177,25 @@ class LauncherViewModel @Inject constructor(
             onGrid = state.placements.any { it.entryId == entry.id },
             foldersExist = state.entriesById.values.any { it is FolderEntry && !it.isSmart },
             inFolder = folderContaining(entry.id) != null,
-            hasCustomArtwork = PlatformFolders.platformIdOf(entry.id)
-                ?.let { state.platformsById[it]?.artwork?.isUserChosen }
-                ?: false,
+            // Two kinds of "chosen by hand", asked the way each records it: a
+            // platform folder marks its artwork with the user pack id, a game
+            // locks its artwork field. Both mean the same thing to the menu  14
+            // there is something here worth offering to undo.
+            hasCustomArtwork = when (entry) {
+                is GameEntry ->
+                    GameMetadata.FIELD_ARTWORK in entry.metadata.lockedFields
+                else -> PlatformFolders.platformIdOf(entry.id)
+                    ?.let { state.platformsById[it]?.artwork?.isUserChosen }
+                    ?: false
+            },
         )
+    }
+
+    /** Stores artwork the user picked for one game, and locks it against scrapes. */
+    fun setGameArtwork(gameId: String, coverUri: String?, heroUri: String?) {
+        viewModelScope.launchSafely(TAG) {
+            libraryRepository.setGameArtwork(gameId, coverUri, heroUri)
+        }
     }
 
     /** Stores artwork the user picked for a platform, and dresses its folder. */
@@ -2388,6 +2404,26 @@ class LauncherViewModel @Inject constructor(
             ContextAction.DELETE -> deleteEntry(entry)
 
             ContextAction.UNINSTALL -> uninstall(entry)
+
+            ContextAction.SET_GAME_COVER, ContextAction.SET_GAME_BACKDROP -> {
+                closeContextMenu()
+                emit(
+                    LauncherEffect.PickGameArtwork(
+                        gameId = entry.id,
+                        hero = action == ContextAction.SET_GAME_BACKDROP,
+                    ),
+                )
+            }
+
+            ContextAction.CLEAR_GAME_ARTWORK -> {
+                closeContextMenu()
+                viewModelScope.launchSafely(TAG) {
+                    libraryRepository.clearGameArtwork(entry.id)
+                    // Said out loud because the cell goes blank until something
+                    // refills it, which on its own reads as having broken the game.
+                    emit(LauncherEffect.ShowMessage("Artwork reset  14 rescrape to refill it"))
+                }
+            }
 
             ContextAction.SET_PLATFORM_ICON, ContextAction.SET_PLATFORM_HERO -> {
                 val platformId = PlatformFolders.platformIdOf(entry.id)
