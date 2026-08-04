@@ -390,6 +390,17 @@ class ThorPlayer @Inject constructor(
         exo?.setVideoTextureView(view)
     }
 
+    /**
+     * The player itself, for a view that manages its own surface.
+     *
+     * Couch mode hands this to a stock `PlayerView`, which draws the picture and
+     * runs the transport controls on its own — so there is nothing for [attach]
+     * to do there. Exposed rather than wrapped because a `PlayerView` wants a
+     * `Player`, and inventing a facade for it would mean re-implementing the
+     * controller this exists to avoid writing.
+     */
+    val media: Player? get() = exo
+
     // ----------------------------------------------------------------- commands
 
     fun playPause() {

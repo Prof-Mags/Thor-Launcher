@@ -38,15 +38,15 @@ enum class SettingsPage(
 
     // ---- Home screen -------------------------------------------------------
     GRID(
-        SettingsCategory.HOME_SCREEN, "Home grid",
+        SettingsCategory.APPEARANCE, "Home grid",
         "Size, spacing, icon shape and labels",
     ),
     DOCK(
-        SettingsCategory.HOME_SCREEN, "Dock",
+        SettingsCategory.APPEARANCE, "Dock",
         "Size, transparency and behaviour",
     ),
     CURSOR(
-        SettingsCategory.HOME_SCREEN, "Selection cursor",
+        SettingsCategory.APPEARANCE, "Selection cursor",
         "Selection highlight style and glow",
     ),
 
@@ -70,11 +70,11 @@ enum class SettingsPage(
 
     // ---- Artwork -----------------------------------------------------------
     METADATA(
-        SettingsCategory.ARTWORK, "Metadata & scraping",
+        SettingsCategory.LIBRARY, "Metadata & scraping",
         "Artwork providers and their credentials",
     ),
     ICON_PACKS(
-        SettingsCategory.ARTWORK, "Platform artwork",
+        SettingsCategory.LIBRARY, "Platform artwork",
         "Platform artwork imported from a pack",
     ),
 

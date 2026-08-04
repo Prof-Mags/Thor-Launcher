@@ -140,6 +140,16 @@ interface GameDao {
     @Query("DELETE FROM games WHERE platform_id = :platformId")
     suspend fun deleteByPlatform(platformId: String)
 
+    /**
+     * The ids of one system's games, before they are deleted.
+     *
+     * Needed because a game's grid placement is keyed by its id and outlives the
+     * row: removing a system without collecting these first strands a placement
+     * for every game it had.
+     */
+    @Query("SELECT id FROM games WHERE platform_id = :platformId")
+    suspend fun idsByPlatform(platformId: String): List<String>
+
     /** The systems actually represented in the library, whatever the settings say. */
     @Query("SELECT DISTINCT platform_id FROM games")
     suspend fun allPlatformIds(): List<String>
@@ -253,6 +263,26 @@ interface PlatformDao {
 
     @Query("UPDATE platforms SET emulator_packages = :packages WHERE id = :id")
     suspend fun setEmulators(id: String, packages: List<String>)
+
+    /**
+     * Forgets the pictures a system was wearing, keeping the system itself.
+     *
+     * Used when a platform is removed. The row is a built-in definition and has
+     * to survive so the system can be added back; the artwork is a record of a
+     * library that no longer exists, and leaving it means a system added back
+     * later silently reappears in the artwork of the one that was deleted.
+     */
+    @Query(
+        """
+        UPDATE platforms
+        SET artwork_icon_uri = NULL,
+            artwork_hero_uri = NULL,
+            artwork_logo_uri = NULL,
+            artwork_pack_id = NULL
+        WHERE id = :id
+        """,
+    )
+    suspend fun clearArtwork(id: String)
 
     @Query("SELECT * FROM platforms WHERE id = :id")
     suspend fun getById(id: String): PlatformEntity?

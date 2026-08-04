@@ -96,32 +96,10 @@ class IgdbProvider @Inject constructor(
          * because IGDB matches titles across every system it knows: without it
          * a Mega Drive ROM happily matches the PlayStation remake.
          */
-        val platformFilter = query.providerPlatformIds["igdb"]
-            ?.let { "where platforms = ($it) & " }
-            .orEmpty()
-        val body = buildString {
-            append("search \"${query.title.escapedForApicalypse()}\";")
-            append("fields name,summary,storyline,first_release_date,total_rating,")
-            append("cover.image_id,screenshots.image_id,artworks.image_id,")
-            append("genres.name,involved_companies.developer,involved_companies.publisher,")
-            append("involved_companies.company.name;")
-            /*
-             * Main games only, and the filter is not optional.
-             *
-             * IGDB's search ranks mods and add-ons above the game they are
-             * built on: "Super Mario Odyssey" came back fourth, behind a mod, a
-             * DLC and a joke translation. `game_type` 0 is the release itself;
-             * the rest here are remakes, remasters, expanded editions and ports,
-             * which are the game as well. Everything else � mods, episodes,
-             * seasons, packs � is something a ROM is not.
-             *
-             * The field is `game_type`. `category` held this until IGDB retired
-             * it, and it now returns nothing at all rather than failing, so a
-             * filter written against it silently matches no games.
-             */
-            append("where $platformFilter" + "game_type = ($MAIN_GAME_TYPES);")
-            append("limit $MAX_CANDIDATES;")
-        }
+        val body = igdbSearchBody(
+            title = query.title,
+            platformId = query.providerPlatformIds["igdb"],
+        )
 
         return try {
             val response = post("$BASE_URL/games", body, bearer) ?: return emptyList()
@@ -348,3 +326,58 @@ private data class IgdbCompany(
     val publisher: Boolean? = null,
     val company: IgdbNamed? = null,
 )
+
+/**
+ * The APIcalypse body for a game lookup.
+ *
+ * A pure function because the last version was assembled inline from two pieces
+ * that each carried the `where` keyword, producing `where where platforms = …`.
+ * IGDB answers that with a 400 whose body is a JSON object rather than the
+ * expected array, so the provider saw a failed request, returned nothing, and
+ * did it for every game in the library instantly and without complaint. A string
+ * this fiddly needs to be somewhere it can be read back.
+ *
+ * Fields are named explicitly because the API returns *nothing* by default — an
+ * unlisted field is absent rather than null — and the dotted paths pull related
+ * records in the same request, which keeps a lookup to one round trip.
+ */
+internal fun igdbSearchBody(
+    title: String,
+    platformId: String?,
+    limit: Int = IGDB_MAX_CANDIDATES,
+    gameTypes: String = IGDB_MAIN_GAME_TYPES,
+): String {
+    /*
+     * The platform clause filters rather than searches, because IGDB matches
+     * titles across every system it knows: without it a Mega Drive ROM happily
+     * matches the PlayStation remake.
+     *
+     * The game-type clause is not optional either. IGDB's search ranks mods and
+     * add-ons above the game they are built on — "Super Mario Odyssey" came back
+     * fourth, behind a mod, a DLC and a joke translation. Type 0 is the release;
+     * the rest here are remakes, remasters, expanded editions and ports, which
+     * are the game as well. The field is `game_type`: `category` held this until
+     * IGDB retired it, and it now returns nothing rather than erroring, so a
+     * filter written against it silently matches no games.
+     */
+    val conditions = buildList {
+        platformId?.takeIf(String::isNotBlank)?.let { add("platforms = ($it)") }
+        add("game_type = ($gameTypes)")
+    }
+
+    return buildString {
+        append("search \"${title.escapedForApicalypse()}\";")
+        append("fields name,summary,storyline,first_release_date,total_rating,")
+        append("cover.image_id,screenshots.image_id,artworks.image_id,")
+        append("genres.name,involved_companies.developer,involved_companies.publisher,")
+        append("involved_companies.company.name;")
+        append("where ${conditions.joinToString(" & ")};")
+        append("limit $limit;")
+    }
+}
+
+/** Release, remake, remaster, expanded edition, port — what a ROM can be. */
+internal const val IGDB_MAIN_GAME_TYPES = "0,8,9,10,11"
+
+/** Enough that the real game survives IGDB's own ranking of mods above it. */
+internal const val IGDB_MAX_CANDIDATES = 8

@@ -31,16 +31,16 @@ import com.thor.core.model.LauncherExtension
  * by any reading. A category is a promise about what is inside it, and "Library"
  * had stopped making one.
  *
- * These group by the question being asked, and none holds more than four pages:
- * who am I, how does it look, how is the home screen laid out, where do my games
- * live, where does artwork come from, what am I watching, how do I drive it, how
+ * These group by the question being asked: who am I, how does it look, where do
+ * my games and their artwork live, what am I watching, how do I drive it, how
  * does it run, what is it.
  *
- * Home screen and Artwork were folded away for a while, on the reasoning that a
- * category holding two or three pages does not earn a rail entry. That put six
- * pages each into Personalization and Library, which is the failure this whole
- * arrangement exists to avoid — the reasoning in their own notes below is why
- * they are back. A short category is cheap to walk past; a long one is not.
+ * Home screen and Artwork have been split out and folded back in twice. The
+ * argument for splitting is that six pages is a long list to walk; the argument
+ * against is that a rail entry holding three is a stop on the way to somewhere
+ * else, and the rail is walked far more often than any single category. Folded
+ * in, with the rows drawn larger for the space it frees — which is the part that
+ * makes the longer page lists bearable.
  */
 enum class SettingsCategory(
     val id: String,
@@ -72,38 +72,35 @@ enum class SettingsCategory(
 
     APPEARANCE(
         "appearance", "Personalization", Icons.Rounded.Palette,
-        "Theme, wallpaper and how the interface reads",
+        "Theme, wallpaper, grid, dock and cursor",
     ),
 
     /**
-     * The grid itself, as distinct from the colours over it.
+     * Folded into [APPEARANCE], and kept only for stored or deep-linked ids.
      *
-     * Split out because the two are edited for different reasons: a theme is
-     * chosen once and admired, while grid density, icon shape and the cursor are
-     * fiddled with until the home screen feels right. Having them in one
-     * six-page category meant scrolling past the wallpaper to reach the thing
-     * being adjusted.
+     * The grid, the dock and the cursor are how the home screen looks, which is
+     * the question Personalization already answers.
      */
     HOME_SCREEN(
         "home", "Home screen", Icons.Rounded.GridView,
         "Grid layout, icon shape, dock and cursor",
+        visible = false,
     ),
     LIBRARY(
-        "library", "Games", Icons.AutoMirrored.Rounded.LibraryBooks,
-        "Platforms, ROM folders, scanning and sorting",
+        "library", "Games & artwork", Icons.AutoMirrored.Rounded.LibraryBooks,
+        "Platforms, ROMs, scanning, scrapers and icon packs",
     ),
 
     /**
-     * Where pictures come from, for games and platforms alike.
+     * Folded into [LIBRARY], and kept only for stored or deep-linked ids.
      *
-     * Icon packs and the scraper answer the same question from two directions —
-     * one imports artwork wholesale, the other fetches it per game — and having
-     * them in different halves of a long Library category meant a blank box art
-     * had two unrelated places to go and look.
+     * Where a game's picture comes from is a question about the library it is
+     * in, and a blank box art sends you looking for the games first either way.
      */
     ARTWORK(
         "artwork", "Artwork", Icons.Rounded.Image,
         "Scrapers, credentials and icon packs",
+        visible = false,
     ),
 
     /**

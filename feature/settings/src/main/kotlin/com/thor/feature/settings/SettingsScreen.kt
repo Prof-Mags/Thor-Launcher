@@ -642,7 +642,7 @@ private fun CategoryRow(
             .fillMaxWidth()
             .padding(
                 horizontal = dimens.spacingSmall,
-                vertical = if (compact) 1.dp else 3.dp,
+                vertical = if (compact) 1.dp else 4.dp,
             )
             .revealWhenFocused(cursorHere)
             .clip(shape)
@@ -653,7 +653,7 @@ private fun CategoryRow(
             .clickable(onClick = onClick)
             .padding(
                 horizontal = dimens.spacingSmall,
-                vertical = if (compact) 5.dp else 9.dp,
+                vertical = if (compact) 5.dp else 13.dp,
             ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
@@ -662,14 +662,14 @@ private fun CategoryRow(
             Box(
                 modifier = Modifier
                     .width(3.dp)
-                    .height(if (compact) 22.dp else 30.dp)
+                    .height(if (compact) 22.dp else 38.dp)
                     .clip(ThorTheme.shapes.pill)
                     .background(Brush.verticalGradient(colors.accentStops)),
             )
         }
                     Box(
                 modifier = Modifier
-                    .size(if (compact) 26.dp else 36.dp)
+                    .size(if (compact) 26.dp else 44.dp)
                     .clip(ThorTheme.shapes.small)
                     .background(
                         if (selected) colors.cursor.copy(alpha = 0.16f) else colors.surfaceElevated,
@@ -680,7 +680,7 @@ private fun CategoryRow(
                     imageVector = category.icon,
                     contentDescription = null,
                     tint = if (selected) colors.cursor else colors.onSurfaceVariant,
-                    modifier = Modifier.size(if (compact) 15.dp else 19.dp),
+                    modifier = Modifier.size(if (compact) 15.dp else 23.dp),
                 )
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -708,9 +708,11 @@ private fun CategoryRow(
  * Height a category row needs for its icon tile and both lines of text.
  *
  * Below this the rail switches every row to the compact form rather than
- * clipping them all.
+ * clipping them all. Raised with the row itself: folding Home screen and Artwork
+ * back into their parents took the rail from ten entries to eight, and the point
+ * of doing that was to spend the space on the rows that remain.
  */
-private const val COMFORTABLE_CATEGORY_ROW = 58
+private const val COMFORTABLE_CATEGORY_ROW = 72
 
 private const val CARD_RAIL_WIDTH = 256
 private const val CONSOLE_RAIL_WIDTH = 218

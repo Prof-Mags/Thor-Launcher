@@ -414,10 +414,21 @@ class GridLayoutRepository @Inject constructor(
             val folderId = platformFolderId(platformId)
             val existing = folderDao.getById(folderId)
 
-            // Nothing new and no folder yet means an empty platform: no folder is
-            // created for it, because an empty folder on the grid is just clutter of
-            // a different shape.
-            if (fresh.isEmpty() && existing == null) continue
+            /*
+             * No games at all means an empty platform: no folder is created for
+             * it, because an empty folder on the grid is clutter of a different
+             * shape.
+             *
+             * The test is "has this system any games", not "has it any *unplaced*
+             * games". Those differ exactly when a system has games that are all
+             * already placed and yet has no folder — which should be impossible
+             * and was reachable: removing a system stranded its games' placements,
+             * so re-adding it found every rescanned game already placed, nothing
+             * fresh, and built no folder. The stranding is fixed at its source,
+             * and this makes a library that already suffered it heal on the next
+             * scan rather than needing the system removed and added again.
+             */
+            if (gameIds.isEmpty() && existing == null) continue
 
             val artwork = artworkFor(platformId)
 

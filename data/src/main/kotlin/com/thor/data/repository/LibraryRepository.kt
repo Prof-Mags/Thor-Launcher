@@ -281,11 +281,35 @@ class LibraryRepository @Inject constructor(
      * restores all of this.
      */
     private suspend fun purgePlatformContent(platformId: String) {
+        /*
+         * Placements first, and this is the part that was missing.
+         *
+         * A placement is keyed by entry id and outlives the row it points at, so
+         * deleting the games alone left one stranded for every game the system
+         * had. Re-adding the system rescanned the same ROMs to the same ids,
+         * which the filing step then read as *already placed* — nothing was
+         * fresh, so it created no folder, and the system came back with its games
+         * nowhere at all.
+         */
+        val gameIds = gameDao.idsByPlatform(platformId)
+        if (gameIds.isNotEmpty()) gridDao.deleteByEntryIds(gameIds)
         gameDao.deleteByPlatform(platformId)
 
         val folderId = PlatformFolders.idFor(platformId)
         gridDao.deleteByEntryId(folderId)
         folderDao.deleteById(folderId)
+
+        /*
+         * And the artwork the system was wearing.
+         *
+         * The platform row survives — it is a built-in definition rather than the
+         * user's data, and it has to be there to add the system back. What it
+         * accumulated does not: scraped icons, a hero, a wordmark and the note of
+         * which pack supplied them all describe a library that has just been
+         * deleted, and leaving them means a system added back later silently
+         * wears whatever it wore before.
+         */
+        platformDao.clearArtwork(platformId)
     }
 
     /**

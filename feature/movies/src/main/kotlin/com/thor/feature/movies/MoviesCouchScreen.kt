@@ -66,23 +66,10 @@ fun MoviesCouchScreen(
             ),
     ) {
         if (mode == MoviesMode.PLAYING && playback != null) {
-            PlayerSurface(
-                player = player,
-                playback = playback,
-                status = status,
-                showStateOverlay = false,
-                modifier = Modifier.fillMaxSize(),
-            )
-            CouchPlayerControlsOverlay(
-                playback = playback,
-                status = status,
-                focusedAction = focusedAction,
-                hasNextEpisode = hasNextEpisode,
-                skipSeconds = skipSeconds,
-                onAction = onPlayerAction,
-                onSeek = onSeek,
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
+            // The film alone, with the stock controls on tap. The bespoke
+            // console belongs to the handheld, where the picture and the
+            // transport are on different screens.
+            CouchMoviePlayer(player = player, modifier = Modifier.fillMaxSize())
             return@Box
         }
 

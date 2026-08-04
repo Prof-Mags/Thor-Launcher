@@ -37,10 +37,10 @@ class RecordingGeometry @Inject constructor(
     }
 
     /**
-     * The console mock-up's frame.
+     * The shape both kinds of recording are drawn at: the two panels stacked.
      *
-     * Falls back to the real screen if the shell has never reported — a recording of
-     * the wrong shape is worth more than a refusal the user cannot act on.
+     * Falls back to the real screen if the shell has never reported — a recording
+     * of the wrong shape is worth more than a refusal the user cannot act on.
      */
     fun frame(): CaptureGeometry = launcherFrame ?: screen()
 
