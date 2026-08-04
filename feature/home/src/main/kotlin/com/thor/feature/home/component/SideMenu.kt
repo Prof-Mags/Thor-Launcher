@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,11 +31,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
+import com.thor.core.designsystem.modifier.thorCursor
 
 import com.thor.core.designsystem.theme.ThorTheme
 
@@ -104,15 +110,39 @@ fun SideMenu(
                         // dismiss handler on the scrim behind it.
                         .clickable(enabled = false) {},
                 ) {
-                    Column(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.fillMaxSize().padding(vertical = dimens.spacing)) {
+                        /*
+                         * The same heading Settings uses, for the same reason.
+                         *
+                         * These are the two drawers the launcher has, they open
+                         * the same way and are read the same way, and a panel
+                         * that titles itself differently reads as another app.
+                         */
                         Text(
-                            text = "Loki",
-                            style = MaterialTheme.typography.titleSmall,
+                            text = "LOKI",
+                            style = MaterialTheme.typography.labelSmall,
                             color = colors.cursor,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = dimens.spacingLarge),
+                        )
+                        Text(
+                            text = "Start",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = colors.onBackground,
                             modifier = Modifier.padding(
-                                start = dimens.spacing,
-                                top = dimens.spacing,
-                                bottom = dimens.spacingSmall,
+                                start = dimens.spacingLarge,
+                                end = dimens.spacingLarge,
+                                bottom = 2.dp,
+                            ),
+                        )
+                        Text(
+                            text = "Everything else is in Settings",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.padding(
+                                start = dimens.spacingLarge,
+                                end = dimens.spacingLarge,
+                                bottom = dimens.spacing,
                             ),
                         )
 
@@ -126,7 +156,8 @@ fun SideMenu(
                                 onClick = { onAction(action) },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .weight(1f),
+                                    .weight(1f)
+                                    .heightIn(max = MAX_ROW_HEIGHT.dp),
                             )
                         }
                     }
@@ -137,12 +168,16 @@ fun SideMenu(
 }
 
 /**
- * One full-height menu row.
+ * One menu row, drawn as the settings rail draws a category.
  *
- * Focus is a filled slab with an accent edge marker rather than the grid's
- * cursor ring: the rows are flush against each other and against the panel
- * edges, so a ring would have no gap to breathe in and would collide with its
- * neighbours.
+ * Deliberately the same component in all but name: an icon on a tile, a title
+ * over a muted line of description, an accent bar down the leading edge and the
+ * launcher's own cursor ring. These two panels are the drawers the launcher has,
+ * and a row that looked like neither the grid nor Settings was the odd one out.
+ *
+ * The rows are inset rather than flush, which is what makes the ring possible:
+ * the previous version used a filled slab precisely because there was no gap for
+ * a ring to sit in.
  */
 @Composable
 private fun MenuRow(
@@ -153,41 +188,62 @@ private fun MenuRow(
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
+    val shape = ThorTheme.shapes.panel
 
     Row(
         modifier = modifier
-            .background(
-                if (focused) colors.cursor.copy(alpha = 0.14f) else Color.Transparent,
-            )
+            .padding(horizontal = dimens.spacingSmall, vertical = 3.dp)
+            .clip(shape)
+            .background(if (focused) colors.surfaceHighest else Color.Transparent)
+            .thorCursor(focused = focused, shape = shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = dimens.spacing),
+            .padding(horizontal = dimens.spacingSmall, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(dimens.spacing),
+        horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
     ) {
-        // Accent bar on the leading edge marks the focused row without
-        // enclosing it.
+        // Drawn only when focused, and holding its width either way, so the row
+        // does not shift sideways as the cursor arrives.
         Box(
             modifier = Modifier
                 .width(3.dp)
                 .fillMaxHeight(EDGE_MARKER_FRACTION)
-                .background(if (focused) colors.cursor else Color.Transparent),
+                .clip(ThorTheme.shapes.pill)
+                .background(
+                    if (focused) {
+                        Brush.verticalGradient(colors.accentStops)
+                    } else {
+                        SolidColor(Color.Transparent)
+                    },
+                ),
         )
-        Icon(
-            imageVector = action.icon,
-            contentDescription = null,
-            tint = if (focused) colors.cursor else colors.onSurfaceVariant,
-            modifier = Modifier.size(30.dp),
-        )
+        Box(
+            modifier = Modifier
+                .size(ICON_TILE.dp)
+                .clip(ThorTheme.shapes.small)
+                .background(
+                    if (focused) colors.cursor.copy(alpha = 0.16f) else colors.surfaceElevated,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = action.icon,
+                contentDescription = null,
+                tint = if (focused) colors.cursor else colors.onSurfaceVariant,
+                modifier = Modifier.size(ICON_GLYPH.dp),
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = action.label,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.labelLarge,
                 color = if (focused) colors.onSurface else colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = action.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant.copy(alpha = 0.72f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -195,5 +251,10 @@ private fun MenuRow(
     }
 }
 
-private const val PANEL_WIDTH = 268
-private const val EDGE_MARKER_FRACTION = 0.55f
+private const val PANEL_WIDTH = 288
+private const val EDGE_MARKER_FRACTION = 0.5f
+private const val ICON_TILE = 40
+private const val ICON_GLYPH = 21
+
+/** Beyond this a row is a bar; the drawer is tall and has only five of them. */
+private const val MAX_ROW_HEIGHT = 92
