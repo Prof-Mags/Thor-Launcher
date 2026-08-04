@@ -42,11 +42,18 @@ object PlatformIcons {
      * the user installed, or an image they picked by hand, keeps its place.
      * Anything a scraper happened to find does not: this set is chosen, and one
      * console render beats a stray platform image pulled off the internet.
+     *
+     * Ownership of the **icon** specifically, not of the platform. A pack can
+     * cover a system with a hero, a wordmark or a game overlay and no icon at
+     * all, and reading its mere presence as a claim on this slot leaves that
+     * system showing nothing: the shipped render is suppressed in favour of an
+     * icon the pack never supplied. Asking about the one image that would
+     * actually replace this one cannot fail that way.
      */
     @DrawableRes
     fun preferredOver(artwork: PlatformArtwork?, platformId: String?): Int? {
-        val ownedByUserOrPack = artwork?.packId != null
-        return if (ownedByUserOrPack) null else forPlatform(platformId)
+        val iconIsOwned = artwork?.packId != null && artwork.iconUri != null
+        return if (iconIsOwned) null else forPlatform(platformId)
     }
 
     /**

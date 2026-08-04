@@ -84,6 +84,14 @@ data class PlatformEntity(
     @ColumnInfo(name = "artwork_icon_uri") val artworkIconUri: String? = null,
     @ColumnInfo(name = "artwork_hero_uri") val artworkHeroUri: String? = null,
     @ColumnInfo(name = "artwork_logo_uri") val artworkLogoUri: String? = null,
+    /**
+     * Frame drawn over every game on this platform.
+     *
+     * Here rather than on the games for the same reason the rest are here: it is
+     * chosen once per system, and copying it onto every game row would leave
+     * several hundred copies for the next rescan to keep in step.
+     */
+    @ColumnInfo(name = "artwork_overlay_uri") val artworkOverlayUri: String? = null,
     @ColumnInfo(name = "artwork_pack_id") val artworkPackId: String? = null,
 )
 

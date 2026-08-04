@@ -91,6 +91,7 @@ import com.thor.core.model.PlatformFolders
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.icon.PlatformIcons
 import com.thor.core.ui.component.LauncherStatusBar
+import com.thor.core.ui.component.PlatformOverlay
 import com.thor.core.ui.profile.ProfileNotificationCluster
 import com.thor.core.ui.profile.ShellStatus
 import com.thor.core.ui.profile.ShellStatusActions
@@ -1560,13 +1561,21 @@ private fun CouchCard(
         contentAlignment = Alignment.Center,
     ) {
         when (entry) {
-            is GameEntry -> ArtworkImage(
-                    model = entry.metadata.artwork.cellImage,
-                    contentDescription = entry.title,
-                    fallbackText = entry.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().alpha(imageAlpha),
-                )
+            is GameEntry -> {
+                    ArtworkImage(
+                        model = entry.metadata.artwork.cellImage,
+                        contentDescription = entry.title,
+                        fallbackText = entry.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().alpha(imageAlpha),
+                    )
+                    // The same frame the grid draws, so a game is recognisably
+                    // the same game on both interfaces.
+                    PlatformOverlay(
+                        overlayUri = platform?.artwork?.overlayUri,
+                        modifier = Modifier.fillMaxSize().alpha(imageAlpha),
+                    )
+                }
             is AppEntry -> if (entry.customIconUri != null) {
                     ArtworkImage(
                         model = entry.customIconUri,

@@ -150,5 +150,24 @@ object ThorMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    /**
+     * 4 → 5: platforms gain a game overlay.
+     *
+     * The fourth artwork slot a pack can fill, and the only one that is not drawn
+     * on the platform itself — it frames the platform's *games*. One more
+     * nullable column added in place, exactly as 2 → 3 added the first three.
+     *
+     * Nothing backfills it. A pack installed before this build supplied no
+     * overlay, so null is not a gap to be filled in but the truth about what that
+     * pack contained; re-importing it is what picks up overlays it happens to
+     * ship.
+     */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `platforms` ADD COLUMN `artwork_overlay_uri` TEXT")
+        }
+    }
+
+    val ALL: Array<Migration> =
+        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

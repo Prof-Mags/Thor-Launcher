@@ -40,6 +40,26 @@ class PlatformIconsTest {
         assertThat(PlatformIcons.preferredOver(chosen, "nes")).isNull()
     }
 
+    /**
+     * A pack that covers a system without replacing its icon.
+     *
+     * Ownership is asked about the *icon*, not about the platform, and this is
+     * why. A pack can dress a system with only a game overlay — or only a hero,
+     * or only a wordmark — and reading its presence as a claim on the folder
+     * would suppress the shipped render in favour of an icon that does not
+     * exist. The system would show nothing at all, and installing a pack that
+     * added something would look like it had taken something away.
+     */
+    @Test
+    fun `a pack supplying no icon leaves the bundled one alone`() {
+        val overlayOnly = PlatformArtwork(
+            overlayUri = "file:///packs/nes/overlay.png",
+            packId = "some-pack",
+        )
+
+        assertThat(PlatformIcons.preferredOver(overlayOnly, "nes")).isNotNull()
+    }
+
     @Test
     fun `a platform with no artwork at all takes the bundled icon`() {
         assertThat(PlatformIcons.preferredOver(PlatformArtwork.NONE, "snes")).isNotNull()

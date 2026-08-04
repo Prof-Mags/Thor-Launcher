@@ -56,6 +56,7 @@ import com.thor.core.model.IconShape
 import com.thor.core.model.Platform
 import com.thor.core.model.ShortcutEntry
 import com.thor.core.ui.component.ArtworkImage
+import com.thor.core.ui.component.PlatformOverlay
 import com.thor.core.ui.icon.PlatformIcons
 
 /**
@@ -241,22 +242,32 @@ fun GridCell(
                         platform = platform,
                     )
 
-                    is GameEntry -> ArtworkImage(
-                        model = entry.metadata.artwork.cellImage,
-                        contentDescription = entry.title,
-                        fallbackText = entry.title,
-                        fallbackTint = platform?.accentArgb?.let(::Color) ?: theme.primary,
-                        // Fit, not crop. Cover art is rarely square — tall box
-                        // art had its top and bottom sliced off and wide key art
-                        // lost its ends. The plate behind fills the rest of the
-                        // cell, so the artwork stays whole and every cell is
-                        // still the same size.
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(ARTWORK_INSET.dp)
-                            .clip(shape),
-                    )
+                    is GameEntry -> {
+                        ArtworkImage(
+                            model = entry.metadata.artwork.cellImage,
+                            contentDescription = entry.title,
+                            fallbackText = entry.title,
+                            fallbackTint = platform?.accentArgb?.let(::Color) ?: theme.primary,
+                            // Fit, not crop. Cover art is rarely square — tall
+                            // box art had its top and bottom sliced off and wide
+                            // key art lost its ends. The plate behind fills the
+                            // rest of the cell, so the artwork stays whole and
+                            // every cell is still the same size.
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(ARTWORK_INSET.dp)
+                                .clip(shape),
+                        )
+                        // Full-bleed, unlike the artwork it covers: this is the
+                        // frame around the picture, so the inset that keeps a
+                        // light image off the cursor ring is exactly what it is
+                        // meant to be drawn in.
+                        PlatformOverlay(
+                            overlayUri = platform?.artwork?.overlayUri,
+                            modifier = Modifier.fillMaxSize().clip(shape),
+                        )
+                    }
 
                     // A user-chosen icon wins over the packaged one.
                     is AppEntry -> if (entry.customIconUri != null) {

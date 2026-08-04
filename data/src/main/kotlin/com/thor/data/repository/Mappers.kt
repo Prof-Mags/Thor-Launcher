@@ -109,6 +109,7 @@ fun PlatformEntity.toDomain(): Platform = Platform(
         iconUri = artworkIconUri,
         heroUri = artworkHeroUri,
         logoUri = artworkLogoUri,
+        overlayUri = artworkOverlayUri,
         packId = artworkPackId,
     ),
     // Packaged content, keyed by id rather than stored — so a row written before
@@ -133,6 +134,7 @@ fun Platform.toEntity(): PlatformEntity = PlatformEntity(
     artworkIconUri = artwork.iconUri,
     artworkHeroUri = artwork.heroUri,
     artworkLogoUri = artwork.logoUri,
+    artworkOverlayUri = artwork.overlayUri,
     artworkPackId = artwork.packId,
 )
 
