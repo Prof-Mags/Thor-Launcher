@@ -666,22 +666,21 @@ private fun CouchHero(
 
     Box(
         /*
-         * Weighted to the bottom of its slot, so the card sits clear of the tab
-         * bar rather than crowding it. The gap below is left to the library
-         * summary's own inset.
+         * Centred in the space it is given, rather than filling it.
+         *
+         * The card used to stretch from the tab bar down to the shelf, which
+         * left it hard against both and made the panel read as a wall between
+         * them rather than as a card sitting in the gap. Holding it short of
+         * full height is what allows the alignment to do anything at all —
+         * something told to fill its parent has nowhere to be centred.
          */
-        modifier = modifier.padding(
-            start = SCREEN_INSET.dp,
-            end = SCREEN_INSET.dp,
-            top = 16.dp,
-            bottom = 0.dp,
-        ),
+        modifier = modifier.padding(horizontal = SCREEN_INSET.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth(HERO_CARD_WIDTH)
-                .fillMaxHeight()
+                .fillMaxHeight(HERO_CARD_HEIGHT)
                 .clip(ThorTheme.shapes.panel)
                 .background(colors.surface.copy(alpha = 0.48f))
                 .border(1.dp, colors.outline.copy(alpha = 0.16f), ThorTheme.shapes.panel)
@@ -1747,6 +1746,9 @@ private const val CARD_RAIL_EXTRA_HEIGHT = 22
 private const val RAIL_HEADER_HEIGHT = 26
 private const val HERO_WEIGHT = 0.35f
 private const val HERO_CARD_WIDTH = 0.36f
+
+/** Short of its slot, so there is room either side of it to centre in. */
+private const val HERO_CARD_HEIGHT = 0.82f
 private const val HERO_ACTION_HEIGHT = 40
 private const val LIBRARY_SUMMARY_HEIGHT = 76
 private const val BACKDROP_SETTLE_MS = 105L
