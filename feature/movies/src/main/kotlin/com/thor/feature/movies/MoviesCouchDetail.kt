@@ -1,5 +1,6 @@
 package com.thor.feature.movies
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,6 +107,59 @@ internal fun MoviesCouchTitlePage(
                 )
             }
         }
+    }
+}
+
+/**
+ * The chosen title, filling the screen behind its own page.
+ *
+ * Full-bleed here and contained in a card on the catalogue, deliberately. The
+ * catalogue is a screen of many titles and its artwork has to sit inside the card
+ * it belongs to or it says nothing about which one is selected; this page is one
+ * title and nothing else, so the picture has no such job and can simply be the
+ * background.
+ *
+ * Cropped rather than fitted. A scraped backdrop is 16:9 and so is the
+ * television, so filling it is the one arrangement that shows the picture at the
+ * size it was made for; fitting would letterbox a photograph inside a screen of
+ * exactly its own shape.
+ */
+@Composable
+private fun CouchBackdrop(item: MediaItem?) {
+    val colors = ThorTheme.colors
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        val art = item?.backdropUrl ?: item?.posterUrl
+        if (art != null) {
+            ArtworkImage(
+                model = art,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        // Two scrims, each doing one job: the first keeps the left-hand prose
+        // legible over whatever is behind it, the second settles the foot of the
+        // picture so the page reads as one surface rather than two.
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    0f to colors.background.copy(alpha = 0.94f),
+                    SCRIM_KNEE to colors.background.copy(alpha = 0.62f),
+                    1f to colors.background.copy(alpha = 0.18f),
+                ),
+            ),
+        )
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to colors.background.copy(alpha = 0.42f),
+                    SCRIM_HORIZON to Color.Transparent,
+                    1f to colors.background.copy(alpha = 0.94f),
+                ),
+            ),
+        )
     }
 }
 
@@ -253,3 +309,5 @@ private const val LOGO_WIDTH_FRACTION = 0.66f
 private const val LOGO_HEIGHT = 74
 private const val ACTION_GAP = 12
 private const val CAST_SHOWN = 6
+private const val SCRIM_KNEE = 0.58f
+private const val SCRIM_HORIZON = 0.34f
