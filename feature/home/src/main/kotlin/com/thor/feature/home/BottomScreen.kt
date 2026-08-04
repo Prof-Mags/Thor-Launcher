@@ -389,7 +389,11 @@ fun BottomScreen(
 
         // Above the grid but below the menus, so a long press in the drawer can
         // still raise a context menu over it.
-        if (appDrawer.visible) {
+        //
+        // Never in couch mode, where the shelf's Apps rail is the app list — see
+        // `LauncherViewModel.openAppDrawer`, which sends every route there. This
+        // guard is for a drawer left open when the mode changes under it.
+        if (appDrawer.visible && !couchMode) {
             AppDrawerScreen(
                 apps = appDrawer.apps,
                 spec = state.spec,

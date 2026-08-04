@@ -194,11 +194,11 @@ fun buildCouchRails(
         .take(16)
 
     return buildList {
-        if (recent.isNotEmpty()) add(CouchRail("continue", "Continue playing", recent))
+        if (recent.isNotEmpty()) add(CouchRail(COUCH_RAIL_CONTINUE, "Continue playing", recent))
         playable.filter(GridEntry::isFavorite)
             .sortedBy(GridEntry::sortTitle)
             .takeIf(List<GridEntry>::isNotEmpty)
-            ?.let { add(CouchRail("favourites", "Favourites", it)) }
+            ?.let { add(CouchRail(COUCH_RAIL_FAVOURITES, "Favourites", it)) }
         /*
          * A rail for every system, not just the chosen one.
          *
@@ -216,14 +216,14 @@ fun buildCouchRails(
             games.filter { it.platformId == platform.id }
                 .sortedBy(GameEntry::sortTitle)
                 .takeIf(List<GameEntry>::isNotEmpty)
-                ?.let { add(CouchRail("platform:${platform.id}", platform.name, it)) }
+                ?.let { add(CouchRail("$COUCH_RAIL_PLATFORM_PREFIX${platform.id}", platform.name, it)) }
         }
         apps.sortedBy(AppEntry::sortTitle)
             .takeIf(List<AppEntry>::isNotEmpty)
-            ?.let { add(CouchRail("apps", "Apps", it)) }
+            ?.let { add(CouchRail(COUCH_RAIL_APPS, "Apps", it)) }
         folders.sortedBy(FolderEntry::sortTitle)
             .takeIf(List<FolderEntry>::isNotEmpty)
-            ?.let { add(CouchRail("collections", "Collections", it)) }
+            ?.let { add(CouchRail(COUCH_RAIL_COLLECTIONS, "Collections", it)) }
     }
 }
 
@@ -235,7 +235,8 @@ fun buildCouchRails(
  */
 fun couchRailIndexForPlatform(rails: List<CouchRail>, platformId: String?): Int? {
     if (platformId == null) return null
-    return rails.indexOfFirst { it.id == "platform:$platformId" }.takeIf { it >= 0 }
+    return rails.indexOfFirst { it.id == "$COUCH_RAIL_PLATFORM_PREFIX$platformId" }
+        .takeIf { it >= 0 }
 }
 
 fun LauncherUiState.couchEntry(focus: CouchFocus, selectedPlatformId: String? = null): GridEntry? {

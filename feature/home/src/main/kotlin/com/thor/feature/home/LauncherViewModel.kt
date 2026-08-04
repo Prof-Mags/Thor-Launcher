@@ -37,6 +37,7 @@ import com.thor.feature.home.component.EntryEdits
 import com.thor.feature.home.component.FolderPickerState
 import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.contextActionsFor
+import com.thor.feature.home.couch.COUCH_RAIL_APPS
 import com.thor.feature.home.couch.CouchDetailScroll
 import com.thor.feature.home.couch.CouchFocus
 import com.thor.feature.home.couch.CouchNavigation
@@ -1002,7 +1003,30 @@ class LauncherViewModel @Inject constructor(
     }
 
     fun openAppDrawer() {
+        /*
+         * Couch mode has no drawer.
+         *
+         * It is the dual-screen one: a paged grid of small icons, sized for a
+         * panel held in two hands, drawn over a television at whatever size the
+         * handheld's grid happens to be set to. The shelf already carries an Apps
+         * rail with the same list on it — every installed application, the system
+         * ones included — at a size chosen for the room, so from a sofa that is
+         * where apps are, and every route that used to open the drawer goes
+         * there instead.
+         */
+        if (couchMode.value) {
+            focusCouchRail(COUCH_RAIL_APPS)
+            return
+        }
         _appDrawer.update { it.copy(visible = true, page = 0, cursor = CursorPosition(0, 0)) }
+    }
+
+    /** Puts the couch cursor on a named shelf, if the library built one. */
+    private fun focusCouchRail(id: String): Boolean {
+        val rails = couchRails(uiState.value)
+        val index = rails.indexOfFirst { it.id == id }.takeIf { it >= 0 } ?: return false
+        setCouchFocus(rails, index, couchItemByRailId[rails[index].id] ?: 0)
+        return true
     }
 
     fun closeAppDrawer() {
@@ -1620,29 +1644,26 @@ class LauncherViewModel @Inject constructor(
             /*
              * The same jumps the panel's rows make when tapped, in the order
              * they are drawn: all games, favourites, recently played, installed,
-             * collections. Installed is the app drawer because that is where
-             * apps live everywhere else; the rest are shelves.
+             * platforms. Every one of them is a shelf — Installed used to open
+             * the app drawer, which couch mode no longer raises.
              */
-            CouchZone.LIBRARY -> when (focus.action) {
-                CouchNavigation.LIBRARY_ROW_INSTALLED -> openAppDrawer()
-                else -> {
-                    val index = couchLibraryRailIndex(rails, focus.action)
-                    /*
-                     * A row whose rail does not exist still leaves the panel.
-                     *
-                     * Favourites and Collections are only built once something is
-                     * in them, so those rows can point at nothing — and a press
-                     * that did nothing at all was indistinguishable from a
-                     * controller that had stopped responding. Returning to the
-                     * shelf at least answers the press. The row is drawn dimmed
-                     * as well, so the answer is visible before it is pressed.
-                     */
-                    setCouchFocus(
-                        rails = rails,
-                        rail = index ?: focus.rail,
-                        item = index?.let { couchItemByRailId[rails[it].id] ?: 0 } ?: focus.item,
-                    )
-                }
+            CouchZone.LIBRARY -> {
+                val index = couchLibraryRailIndex(rails, focus.action)
+                /*
+                 * A row whose rail does not exist still leaves the panel.
+                 *
+                 * Favourites and Recently played are only built once something is
+                 * in them, so those rows can point at nothing — and a press that
+                 * did nothing at all was indistinguishable from a controller that
+                 * had stopped responding. Returning to the shelf at least answers
+                 * the press. The row is drawn dimmed as well, so the answer is
+                 * visible before it is pressed.
+                 */
+                setCouchFocus(
+                    rails = rails,
+                    rail = index ?: focus.rail,
+                    item = index?.let { couchItemByRailId[rails[it].id] ?: 0 } ?: focus.item,
+                )
             }
 
             CouchZone.DASHBOARD -> when (focus.action) {

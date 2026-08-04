@@ -60,12 +60,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AppEntry
-import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
 import com.thor.core.model.Platform
 import com.thor.core.model.ShortcutAction
-import com.thor.core.model.PlatformFolders
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
@@ -187,7 +185,6 @@ internal fun CouchHome(
                         accent = accent,
                         focusedRow = focus.action.takeIf { focus.zone == CouchZone.LIBRARY },
                         onRailSelected = onRailSelected,
-                        onOpenInstalled = { actions.onShortcut(ShortcutAction.APPS) },
                         modifier = Modifier.width(libraryWidth).fillMaxHeight(),
                     )
                 }
@@ -298,13 +295,13 @@ private fun CouchSideRail(
             // Continue rail, which is also what Recent points at — two icons,
             // one destination, and both lit at once whenever it was selected.
             CouchRailShortcut(Icons.Rounded.Home, "Home", if (rails.isEmpty()) -1 else 0),
-            CouchRailShortcut(Icons.Rounded.SportsEsports, "Games", rails.indexOfFirst { it.id.startsWith("platform:") }),
-            CouchRailShortcut(Icons.Rounded.FavoriteBorder, "Favourites", rails.indexOfFirst { it.id == "favourites" }),
-            CouchRailShortcut(Icons.Rounded.History, "Recent", rails.indexOfFirst { it.id == "continue" }),
+            CouchRailShortcut(Icons.Rounded.SportsEsports, "Games", rails.indexOfFirst { it.id.startsWith(COUCH_RAIL_PLATFORM_PREFIX) }),
+            CouchRailShortcut(Icons.Rounded.FavoriteBorder, "Favourites", rails.indexOfFirst { it.id == COUCH_RAIL_FAVOURITES }),
+            CouchRailShortcut(Icons.Rounded.History, "Recent", rails.indexOfFirst { it.id == COUCH_RAIL_CONTINUE }),
             // Not a rail: the system's own downloads list, which is what the
             // word means on an Android device. See SystemPanel.DOWNLOADS.
             CouchRailShortcut(Icons.Rounded.Download, "Downloads", DOWNLOADS_DESTINATION),
-            CouchRailShortcut(Icons.Rounded.FolderOpen, "Collections", rails.indexOfFirst { it.id == "collections" }),
+            CouchRailShortcut(Icons.Rounded.FolderOpen, "Collections", rails.indexOfFirst { it.id == COUCH_RAIL_COLLECTIONS }),
         )
     }
     /*
@@ -614,7 +611,7 @@ internal data class CouchLibraryCounts(
     val favourites: Int,
     val recentlyPlayed: Int,
     val installed: Int,
-    val collections: Int,
+    val platforms: Int,
 )
 
 internal fun couchLibraryCounts(entries: List<GridEntry>): CouchLibraryCounts {
@@ -624,21 +621,27 @@ internal fun couchLibraryCounts(entries: List<GridEntry>): CouchLibraryCounts {
         favourites = entries.count(GridEntry::isFavorite),
         recentlyPlayed = entries.count { it.lastPlayedAt() != null },
         installed = entries.count { it is AppEntry },
-        // Folders the user made. The per-platform folders the scanner creates are
-        // the library organising itself and are not collections anybody chose.
-        collections = entries.count {
-            it is FolderEntry && PlatformFolders.platformIdOf(it.id) == null
-        },
+        /*
+         * Systems with something on them, which is also the number of rails.
+         *
+         * Not the number of platforms the launcher knows about — it knows about
+         * every console it can name, added or not — and not quite the number
+         * added in settings either, because a system added and never scanned has
+         * no shelf for this row to take you to. Counting the ones with games
+         * keeps the figure and the jump talking about the same thing.
+         */
+        platforms = games.map(GameEntry::platformId).distinct().size,
     )
 }
 
 /**
  * The counts, each one a way into the shelf that holds them.
  *
- * Every row but Installed is a rail the deck already builds, so choosing one
- * moves the cursor rather than opening a screen of its own - the shelf below is
- * already the list these rows are counting. Installed is the app drawer, which
- * is where apps live everywhere else in the launcher.
+ * Every row is a rail the deck already builds, so choosing one moves the cursor
+ * rather than opening a screen of its own — the shelf below is already the list
+ * these rows are counting. Installed used to be the exception and opened the app
+ * drawer; couch mode does not raise that drawer, and the shelf has carried an
+ * Apps rail all along.
  */
 @Composable
 private fun CouchLibraryPanel(
@@ -647,7 +650,6 @@ private fun CouchLibraryPanel(
     accent: Color,
     focusedRow: Int?,
     onRailSelected: (Int) -> Unit,
-    onOpenInstalled: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -692,12 +694,12 @@ private fun CouchLibraryPanel(
             CouchLibraryRow(
                 Icons.Rounded.Download, "Installed", counts.installed,
                 focused = focusedRow == CouchNavigation.LIBRARY_ROW_INSTALLED,
-                onClick = onOpenInstalled,
+                onClick = jumpTo(CouchNavigation.LIBRARY_ROW_INSTALLED),
             )
             CouchLibraryRow(
-                Icons.Rounded.FolderOpen, "Collections", counts.collections,
-                focused = focusedRow == CouchNavigation.LIBRARY_ROW_COLLECTIONS,
-                onClick = jumpTo(CouchNavigation.LIBRARY_ROW_COLLECTIONS), last = true,
+                Icons.Rounded.SportsEsports, "Platforms", counts.platforms,
+                focused = focusedRow == CouchNavigation.LIBRARY_ROW_PLATFORMS,
+                onClick = jumpTo(CouchNavigation.LIBRARY_ROW_PLATFORMS), last = true,
             )
         }
     }

@@ -58,7 +58,17 @@ object CouchNavigation {
     const val LIBRARY_ROW_FAVOURITES = 1
     const val LIBRARY_ROW_RECENT = 2
     const val LIBRARY_ROW_INSTALLED = 3
-    const val LIBRARY_ROW_COLLECTIONS = 4
+
+    /*
+     * Systems, where collections used to be.
+     *
+     * Collections counted the folders the user had made by hand, which on most
+     * setups is none — a row that reads zero and goes nowhere, in the panel that
+     * exists to say what is in the library. The shelf is built one rail per
+     * system, so the number of systems is both a real figure and the one this
+     * panel can actually take you to.
+     */
+    const val LIBRARY_ROW_PLATFORMS = 4
 
     /** Search, Filters, Random, Controllers, Downloads, Power. */
     const val DASHBOARD_ACTIONS = 6
@@ -170,24 +180,39 @@ object CouchNavigation {
 /**
  * The shelf a library row points at, or null when it has none.
  *
- * Favourites, Recently played and Collections are only built once something is
- * in them, so those rows routinely point at a rail that does not exist — this
- * returns null rather than a sentinel index so both callers have to say what
- * they do about it. The panel dims the row; a press on it returns to the shelf.
+ * Favourites and Recently played are only built once something is in them, so
+ * those rows routinely point at a rail that does not exist — this returns null
+ * rather than a sentinel index so both callers have to say what they do about
+ * it. The panel dims the row; a press on it returns to the shelf.
  *
- * [CouchNavigation.LIBRARY_ROW_INSTALLED] is deliberately absent: apps are the
- * app drawer, not a shelf, which is where they are everywhere else in the
- * launcher.
+ * Every row lands on a shelf, Installed included. It used to open the app
+ * drawer, which is where apps live on the handheld; couch mode does not raise
+ * that drawer at all — see `LauncherViewModel.openAppDrawer` — and the shelf has
+ * carried an Apps rail all along.
  */
 internal fun couchLibraryRailIndex(rails: List<CouchRail>, row: Int): Int? {
     val id = when (row) {
-        CouchNavigation.LIBRARY_ROW_FAVOURITES -> "favourites"
-        CouchNavigation.LIBRARY_ROW_RECENT -> "continue"
-        CouchNavigation.LIBRARY_ROW_COLLECTIONS -> "collections"
-        CouchNavigation.LIBRARY_ROW_INSTALLED -> return null
-        // All games has no rail of its own; the whole library is the per-system
-        // rails, so it lands on the first of them.
-        else -> return rails.indexOfFirst { it.id.startsWith("platform:") }.takeIf { it >= 0 }
+        CouchNavigation.LIBRARY_ROW_FAVOURITES -> COUCH_RAIL_FAVOURITES
+        CouchNavigation.LIBRARY_ROW_RECENT -> COUCH_RAIL_CONTINUE
+        CouchNavigation.LIBRARY_ROW_INSTALLED -> COUCH_RAIL_APPS
+        // Both All games and Platforms land on the first per-system rail: the
+        // whole game library *is* those rails, one after another, so walking
+        // down from the first is walking every system in turn.
+        else -> return rails.indexOfFirst { it.id.startsWith(COUCH_RAIL_PLATFORM_PREFIX) }
+            .takeIf { it >= 0 }
     }
     return rails.indexOfFirst { it.id == id }.takeIf { it >= 0 }
 }
+
+/*
+ * Rail identifiers, which several files match on by hand.
+ *
+ * Named here because the side rail, the library panel, the view model and the
+ * deck all look rails up by these strings, and a shelf renamed in one of them is
+ * a jump that silently stops working in the others.
+ */
+internal const val COUCH_RAIL_CONTINUE = "continue"
+internal const val COUCH_RAIL_FAVOURITES = "favourites"
+internal const val COUCH_RAIL_APPS = "apps"
+internal const val COUCH_RAIL_COLLECTIONS = "collections"
+internal const val COUCH_RAIL_PLATFORM_PREFIX = "platform:"

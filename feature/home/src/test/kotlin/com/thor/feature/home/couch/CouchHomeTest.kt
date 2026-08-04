@@ -22,11 +22,12 @@ class CouchHomeTest {
         id: String,
         favourite: Boolean = false,
         playedAt: Long? = null,
+        platform: String = "snes",
     ) = GameEntry(
         id = id,
         title = id,
         sortTitle = id,
-        platformId = "snes",
+        platformId = platform,
         contentUri = "content://$id",
         fileName = "$id.sfc",
         fileSizeBytes = 1024L,
@@ -60,24 +61,28 @@ class CouchHomeTest {
     }
 
     /**
-     * A platform folder is the scanner filing games, not a collection.
+     * Platforms counts systems, not games and not folders.
      *
-     * Counting them would report a "Collections" figure that grows every time a
-     * system is added, which is the library organising itself rather than
-     * anything the user made.
+     * The shelf is built one rail per system, and this row is the way into them,
+     * so the figure has to be the number of rails behind it — several games on
+     * one system is one shelf to go and look at.
      */
     @Test
-    fun `only folders the user made count as collections`() {
+    fun `platforms counts the systems with something on them`() {
         val entries: List<GridEntry> = listOf(
-            FolderEntry(id = "folder:mine", title = "Shooters", sortTitle = "shooters"),
+            game("a", platform = "snes"),
+            game("b", platform = "snes"),
+            game("c", platform = "md"),
             FolderEntry(
-                id = PlatformFolders.idFor("snes"),
-                title = "SNES",
-                sortTitle = "snes",
+                id = PlatformFolders.idFor("n64"),
+                title = "N64",
+                sortTitle = "n64",
             ),
         )
 
-        assertThat(couchLibraryCounts(entries).collections).isEqualTo(1)
+        // Two systems, though there are three games and a third system's folder:
+        // a folder with nothing in it is not a shelf this row can reach.
+        assertThat(couchLibraryCounts(entries).platforms).isEqualTo(2)
     }
 
     @Test
@@ -85,7 +90,7 @@ class CouchHomeTest {
         val counts = couchLibraryCounts(emptyList())
 
         assertThat(counts.allGames).isEqualTo(0)
-        assertThat(counts.collections).isEqualTo(0)
+        assertThat(counts.platforms).isEqualTo(0)
     }
 
     // ---- Storage ------------------------------------------------------------

@@ -175,29 +175,39 @@ class CouchNavigationTest {
 
     @Test
     fun `each library row lands on the shelf it is counting`() {
-        val deck = rails("continue", "favourites", "platform:snes", "collections")
+        val deck = rails("continue", "favourites", "platform:snes", "apps")
 
         assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_RECENT)).isEqualTo(0)
         assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_FAVOURITES)).isEqualTo(1)
-        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_COLLECTIONS)).isEqualTo(3)
+        // Installed is a shelf like the rest of them now. It used to open the app
+        // drawer, which couch mode does not raise.
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_INSTALLED)).isEqualTo(3)
     }
 
-    /** All games has no rail of its own; the library *is* the platform rails. */
+    /**
+     * Neither has a rail of its own; the game library *is* the platform rails.
+     *
+     * All games walks them from the first, and Platforms means the same journey
+     * described the other way round.
+     */
     @Test
-    fun `all games lands on the first system`() {
+    fun `all games and platforms both land on the first system`() {
         val deck = rails("continue", "favourites", "platform:snes", "platform:md")
 
         assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_ALL_GAMES))
+            .isEqualTo(2)
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_PLATFORMS))
             .isEqualTo(2)
     }
 
     /**
      * A row whose shelf has not been built yet reports nothing.
      *
-     * Favourites and Collections only exist once something is in them, so this
-     * is the ordinary state of a fresh install rather than an edge case. Both
-     * callers have to handle it — the panel dims the row, a press leaves the
-     * panel — and neither can if this invents an index.
+     * Favourites and Recently played only exist once something is in them, and a
+     * device with no applications indexed has no Apps rail either, so this is the
+     * ordinary state of a fresh install rather than an edge case. Both callers
+     * have to handle it — the panel dims the row, a press leaves the panel — and
+     * neither can if this invents an index.
      */
     @Test
     fun `a row with no shelf behind it reports none`() {
@@ -205,17 +215,23 @@ class CouchNavigationTest {
 
         assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_FAVOURITES)).isNull()
         assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_RECENT)).isNull()
-        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_COLLECTIONS)).isNull()
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_INSTALLED)).isNull()
         assertThat(couchLibraryRailIndex(emptyList(), CouchNavigation.LIBRARY_ROW_ALL_GAMES))
             .isNull()
     }
 
-    /** Apps are the app drawer, not a shelf — even when an Apps rail exists. */
+    /**
+     * Installed goes to the Apps rail, wherever it happens to sit.
+     *
+     * It used to return nothing, because apps were the app drawer. Couch mode
+     * does not raise that drawer, so the row that counts applications has to
+     * reach the shelf that lists them.
+     */
     @Test
-    fun `installed is not a shelf`() {
+    fun `installed lands on the apps shelf`() {
         val deck = rails("continue", "apps", "platform:snes")
 
-        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_INSTALLED)).isNull()
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_INSTALLED)).isEqualTo(1)
     }
 
     /** Every row the panel draws is accounted for, so none can press nothing. */
@@ -226,7 +242,7 @@ class CouchNavigationTest {
             CouchNavigation.LIBRARY_ROW_FAVOURITES,
             CouchNavigation.LIBRARY_ROW_RECENT,
             CouchNavigation.LIBRARY_ROW_INSTALLED,
-            CouchNavigation.LIBRARY_ROW_COLLECTIONS,
+            CouchNavigation.LIBRARY_ROW_PLATFORMS,
         )
 
         assertThat(rows).containsExactlyElementsIn(0 until CouchNavigation.LIBRARY_ROWS)
