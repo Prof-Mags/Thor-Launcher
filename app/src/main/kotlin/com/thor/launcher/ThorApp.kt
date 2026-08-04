@@ -592,10 +592,28 @@ fun ThorApp(
         )
     }
 
-    // Stamped when an overlay appears, so a later touch outranks it.
-    val anOverlayIsOpen = overlay != Overlay.NONE || state.editingEntry != null
-    LaunchedEffect(anOverlayIsOpen) {
-        if (anOverlayIsOpen) {
+    /*
+     * Stamped when an overlay appears, so a later touch outranks it.
+     *
+     * Keyed on *which* overlay, not merely on whether one is open. As a boolean
+     * this only fired on the change from nothing-open to something-open, so an
+     * overlay opened while another was already up never claimed the controller:
+     * settings reached from the entry editor, search reached from settings, the
+     * editor raised over either. Each of those draws on a surface of its own and
+     * each was left with input pointing wherever it had been, which the user has
+     * to correct by touching the panel the new thing is on.
+     *
+     * The editor is folded in as a value of the same key rather than tracked
+     * separately, because it is an overlay in every sense that matters here — it
+     * appears, it wants the controller, and it is on a known surface.
+     */
+    val openOverlay: Any? = when {
+        state.editingEntry != null -> EDITOR_OVERLAY_KEY
+        overlay != Overlay.NONE -> overlay
+        else -> null
+    }
+    LaunchedEffect(openOverlay) {
+        if (openOverlay != null) {
             inputTick++
             overlayClaimedAtTick = inputTick
         }
@@ -2744,6 +2762,15 @@ private fun RecordingBadge(modifier: Modifier = Modifier) {
  *   from there. Only AUTO — a mode chosen outright is an instruction, and an
  *   attached screen is not a reason to overrule it.
  */
+/**
+ * The entry editor's place in the overlay-claim key.
+ *
+ * It is not a value of [Overlay] — it is raised from the launcher state rather
+ * than by the shell — but it claims the controller for the same reason every
+ * other overlay does, so it needs to be distinguishable from them and from none.
+ */
+private const val EDITOR_OVERLAY_KEY = "editor"
+
 private fun resolveMode(
     requested: DualScreenMode,
     hasSecondary: Boolean,

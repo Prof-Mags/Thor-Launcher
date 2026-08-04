@@ -71,7 +71,25 @@ fun ArtworkImage(
      * request is rebuilt once against them, and every decode afterwards is at
      * the size actually drawn.
     */
-    var targetSize by remember(model) { mutableStateOf(Size.ORIGINAL) }
+    /*
+     * Null until the first layout pass, and that is the point.
+     *
+     * This started at [Size.ORIGINAL], which does not mean "not measured yet" to
+     * Coil — it means "decode the file at its full size". So every image was
+     * fetched *twice*: once at whatever the source happened to be, which for
+     * scraped box art is regularly 2000px or more, and then again at the cell
+     * size once the bounds arrived. The first decode is pure waste, and it is
+     * waste on the critical path — it holds the decoder, the disk and several
+     * megabytes of heap while the image the user is actually waiting for queues
+     * behind it. On a page of thirty cells that is thirty full-resolution decodes
+     * nobody ever sees, which is exactly the second-long delay and the blank
+     * plates that go with it.
+     *
+     * Waiting costs one frame and no request at all, because the `Image` below is
+     * always drawn — see the placeholder note — so its bounds arrive whether or
+     * not there is anything to show yet.
+     */
+    var targetSize by remember(model) { mutableStateOf<Size?>(null) }
     // A Fit/Inside draw must also ask Coil for a fitted decode. Always decoding
     // with FILL could crop the bitmap before Compose received it, so changing
     // only ContentScale still left screenshot and logo edges missing.
@@ -83,19 +101,21 @@ fun ArtworkImage(
         Scale.FILL
     }
     val request = remember(model, crossfadeMillis, targetSize, requestScale) {
-        ImageRequest.Builder(context)
-            .data(model)
-            .crossfade(crossfadeMillis)
-            .scale(requestScale)
-            .size(targetSize)
-            // Hardware bitmaps are bound to the rendering context that uploaded
-            // them. The grid is drawn inside a Presentation on the secondary
-            // display, and a hardware bitmap decoded against the primary
-            // display's context draws as nothing there — which is why artwork
-            // appeared blank only after a scrape had given the cells real
-            // images to load.
-            .allowHardware(false)
-            .build()
+        targetSize?.let { size ->
+            ImageRequest.Builder(context)
+                .data(model)
+                .crossfade(crossfadeMillis)
+                .scale(requestScale)
+                .size(size)
+                // Hardware bitmaps are bound to the rendering context that
+                // uploaded them. The grid is drawn inside a Presentation on the
+                // secondary display, and a hardware bitmap decoded against the
+                // primary display's context draws as nothing there — which is
+                // why artwork appeared blank only after a scrape had given the
+                // cells real images to load.
+                .allowHardware(false)
+                .build()
+        }
     }
     val painter = rememberAsyncImagePainter(model = request)
     val state = painter.state
@@ -107,9 +127,18 @@ fun ArtworkImage(
         // meant it was never drawn, its size never resolved, and the request
         // never completed — so every image stayed in Loading forever and the
         // cell rendered as an empty plate.
-        when (state) {
-            is AsyncImagePainter.State.Loading -> ShimmerPlaceholder(Modifier.fillMaxSize())
-            is AsyncImagePainter.State.Success -> Unit
+        when {
+            /*
+             * Before the bounds arrive there is no request, and a painter with
+             * nothing to load reports *failure* rather than loading. Reading that
+             * literally would flash the initials plate over every cell for a
+             * frame on the way to the artwork — the "placeholder flash" this
+             * whole path is meant not to have. Not yet asked is still loading.
+             */
+            targetSize == null || state is AsyncImagePainter.State.Loading ->
+                ShimmerPlaceholder(Modifier.fillMaxSize())
+
+            state is AsyncImagePainter.State.Success -> Unit
             else -> ArtworkFallback(
                 text = fallbackText,
                 tint = fallbackTint,

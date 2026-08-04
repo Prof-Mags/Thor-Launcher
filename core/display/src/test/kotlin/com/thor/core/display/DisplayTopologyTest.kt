@@ -37,6 +37,56 @@ class DisplayTopologyTest {
         requestedMode = mode,
     )
 
+    // ---- What counts as a second panel --------------------------------------
+
+    @Test
+    fun `a public presentation display is the second panel`() {
+        assertThat(DisplayTopology.isUsableSecondary(displayId = 1, flags = FLAG_PRESENTATION))
+            .isTrue()
+    }
+
+    @Test
+    fun `the primary display is never the second panel`() {
+        assertThat(DisplayTopology.isUsableSecondary(displayId = 0, flags = FLAG_PRESENTATION))
+            .isFalse()
+    }
+
+    /** A recorder's or a cast target's own surface must not steal the info panel. */
+    @Test
+    fun `private virtual displays are not second panels`() {
+        assertThat(
+            DisplayTopology.isUsableSecondary(
+                displayId = 2,
+                flags = FLAG_PRESENTATION or FLAG_PRIVATE,
+            ),
+        ).isFalse()
+        assertThat(DisplayTopology.isUsableSecondary(displayId = 2, flags = 0)).isFalse()
+    }
+
+    /**
+     * The wake-from-sleep flash.
+     *
+     * Sleeping turns both panels off and they come back one at a time. While the
+     * rule consulted `Display.state`, the second panel read as *absent* for the
+     * frames before it caught up — so `AUTO` resolved to a single-screen layout,
+     * the launcher composed itself that way, and rebuilt as dual a moment later.
+     *
+     * Power state is not part of this question, which is why there is no state
+     * parameter to pass: the primary display is never called missing for being
+     * off, and the second panel is the same kind of thing.
+     */
+    @Test
+    fun `a second panel that is merely powered off is still a second panel`() {
+        // Exactly what the display reports while the device is waking: attached,
+        // public, presentation-capable — and not yet lit.
+        assertThat(DisplayTopology.isUsableSecondary(displayId = 1, flags = FLAG_PRESENTATION))
+            .isTrue()
+
+        // And the mode that would have been resolved from it stays dual.
+        assertThat(topology(DualScreenMode.AUTO, withSecondary = true).effectiveMode)
+            .isEqualTo(DualScreenMode.DUAL_DISPLAY)
+    }
+
     @Test
     fun `auto uses dual display when a second panel is present`() {
         val resolved = topology(DualScreenMode.AUTO, withSecondary = true)
@@ -172,5 +222,13 @@ class DisplayTopologyTest {
             .isEqualTo(DualScreenMode.SPLIT_SINGLE)
         assertThat(withMonitor(DualScreenMode.SINGLE).effectiveMode)
             .isEqualTo(DualScreenMode.SINGLE)
+    }
+
+    private companion object {
+        /** `Display.FLAG_PRESENTATION`, written out so this stays a JVM test. */
+        const val FLAG_PRESENTATION = 1 shl 3
+
+        /** `Display.FLAG_PRIVATE`. */
+        const val FLAG_PRIVATE = 1 shl 2
     }
 }

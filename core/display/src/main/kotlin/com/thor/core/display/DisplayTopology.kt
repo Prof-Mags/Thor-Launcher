@@ -125,10 +125,31 @@ data class DisplayTopology(
          */
         private const val EXTERNAL_THRESHOLD = 2
 
-        fun isUsableSecondary(display: Display): Boolean {
-            if (display.displayId == Display.DEFAULT_DISPLAY) return false
-            if (display.state == Display.STATE_OFF) return false
-            val flags = display.flags
+        fun isUsableSecondary(display: Display): Boolean =
+            isUsableSecondary(display.displayId, display.flags)
+
+        /**
+         * Whether a display is a second panel the launcher can draw on.
+         *
+         * Taken apart from [Display] so the rule can be tested — the flags are
+         * the whole of it, and a `Display` cannot be constructed off-device.
+         *
+         * **Power state is deliberately not consulted.** This used to reject a
+         * display in `STATE_OFF`, and that is what put the launcher into single
+         * screen for a moment on every wake: sleeping turns both panels off, and
+         * on waking they come back one at a time. For the frame or two where the
+         * primary was on and the second panel had not caught up, the second panel
+         * was reported as *absent* — so `AUTO` resolved to a single-screen layout,
+         * the launcher composed itself that way, and then rebuilt as dual the
+         * instant the panel reported in.
+         *
+         * The asymmetry gives the mistake away: the primary display is never
+         * treated as missing for being off, and the second panel is the same kind
+         * of thing. Whether a display exists and whether it is currently lit are
+         * two questions, and only the first one belongs here.
+         */
+        fun isUsableSecondary(displayId: Int, flags: Int): Boolean {
+            if (displayId == Display.DEFAULT_DISPLAY) return false
             val isPresentation = flags and Display.FLAG_PRESENTATION != 0
             val isPrivate = flags and Display.FLAG_PRIVATE != 0
             // The AYN Thor's second panel reports as a public presentation
