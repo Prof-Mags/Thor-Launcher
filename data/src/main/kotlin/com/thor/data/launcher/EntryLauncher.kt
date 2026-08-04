@@ -15,6 +15,7 @@ import android.os.Bundle
 import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
+import android.app.DownloadManager
 import android.provider.Settings
 import android.view.Display
 import androidx.core.net.toUri
@@ -94,6 +95,16 @@ enum class SystemPanel(
     BLUETOOTH(Settings.ACTION_BLUETOOTH_SETTINGS),
     VOLUME(Settings.Panel.ACTION_VOLUME, Settings.ACTION_SOUND_SETTINGS),
     ALL_SETTINGS(Settings.ACTION_SETTINGS),
+
+    /**
+     * The system's own downloads list.
+     *
+     * Not a launcher feature and deliberately not one: what "downloads" means on
+     * an Android device is already answered by the download manager, and every
+     * device has it. Loki has nothing of its own to show here and pointing at
+     * the real thing is more use than a screen that lists nothing.
+     */
+    DOWNLOADS(DownloadManager.ACTION_VIEW_DOWNLOADS),
 }
 
 /**

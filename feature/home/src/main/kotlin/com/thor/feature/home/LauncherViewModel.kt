@@ -38,6 +38,8 @@ import com.thor.feature.home.component.FolderPickerState
 import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.contextActionsFor
 import com.thor.feature.home.couch.CouchFocus
+import com.thor.feature.home.couch.CouchNavigation
+import com.thor.feature.home.couch.CouchZone
 import com.thor.feature.home.couch.CouchRail
 import com.thor.feature.home.couch.buildCouchRails
 import com.thor.feature.home.couch.couchPlatforms
@@ -898,6 +900,15 @@ class LauncherViewModel @Inject constructor(
         }
     }
 
+    /**
+     * The system's downloads list.
+     *
+     * Public because couch mode's dashboard offers it directly rather than
+     * through a shortcut tile: adding a thirteenth [ShortcutAction] would put a
+     * lone tile on a fourth row of a panel that currently fills three.
+     */
+    fun openDownloads() = openSystemPanel(SystemPanel.DOWNLOADS)
+
     private fun openSystemPanel(panel: SystemPanel) {
         val result = entryLauncher.openSystemPanel(panel)
         if (result is LaunchResult.Failed) {
@@ -1430,6 +1441,86 @@ class LauncherViewModel @Inject constructor(
             }
         }
 
+        /*
+         * The dashboard is four regions, not one shelf.
+         *
+         * Movement between them is [CouchNavigation], which is pure and tested;
+         * this only has to say what a press *does* once the cursor has arrived.
+         * Directions taken while the cursor is off the shelf must not fall
+         * through to the rail cursor below, which is what `moveRail` still
+         * drives for the shelf itself.
+         */
+        val focus = _couchFocus.value
+        val zone = focus.zone
+
+        fun applyMove(move: CouchNavigation.Move) = when (move) {
+            is CouchNavigation.Move.ExitToNavBar -> enterNavBar()
+            is CouchNavigation.Move.To -> {
+                val next = move.focus
+                if (next.zone == CouchZone.SHELF && zone == CouchZone.SHELF) {
+                    // Still on the shelf: go through the rail cursor so the
+                    // remembered item per rail keeps working.
+                    if (next.rail != focus.rail) {
+                        moveRail(next.rail - focus.rail)
+                    } else {
+                        setCouchFocus(rails, next.rail, next.item)
+                    }
+                } else {
+                    _couchFocus.value = next
+                }
+            }
+        }
+
+        if (zone != CouchZone.SHELF) {
+            when (command) {
+                ControllerCommand.NAVIGATE_UP -> {
+                    applyMove(
+                        if (zone == CouchZone.LIBRARY) {
+                            CouchNavigation.verticalInLibrary(focus, -1)
+                        } else {
+                            CouchNavigation.up(focus, rails.size)
+                        },
+                    )
+                    return
+                }
+
+                ControllerCommand.NAVIGATE_DOWN -> {
+                    applyMove(
+                        if (zone == CouchZone.LIBRARY) {
+                            CouchNavigation.verticalInLibrary(focus, 1)
+                        } else {
+                            CouchNavigation.down(focus, rails.size)
+                        },
+                    )
+                    return
+                }
+
+                ControllerCommand.NAVIGATE_LEFT -> {
+                    applyMove(CouchNavigation.horizontal(focus, -1, currentItems.size))
+                    return
+                }
+
+                ControllerCommand.NAVIGATE_RIGHT -> {
+                    applyMove(CouchNavigation.horizontal(focus, 1, currentItems.size))
+                    return
+                }
+
+                ControllerCommand.CONFIRM -> {
+                    onCouchZoneConfirmed(focus, focusedEntry, rails)
+                    return
+                }
+
+                // Back returns to the shelf rather than out of the mode: the
+                // cursor came from there and that is where it belongs.
+                ControllerCommand.BACK -> {
+                    _couchFocus.value = focus.copy(zone = CouchZone.SHELF)
+                    return
+                }
+
+                else -> Unit
+            }
+        }
+
         when (command) {
             ControllerCommand.NAVIGATE_LEFT ->
                 setCouchFocus(rails, currentRail, currentItem - 1)
@@ -1437,8 +1528,12 @@ class LauncherViewModel @Inject constructor(
             ControllerCommand.NAVIGATE_RIGHT ->
                 setCouchFocus(rails, currentRail, currentItem + 1)
 
-            ControllerCommand.NAVIGATE_UP -> moveRail(-1)
-            ControllerCommand.NAVIGATE_DOWN -> moveRail(1)
+            ControllerCommand.NAVIGATE_UP ->
+                applyMove(CouchNavigation.up(_couchFocus.value, rails.size))
+
+            ControllerCommand.NAVIGATE_DOWN ->
+                applyMove(CouchNavigation.down(_couchFocus.value, rails.size))
+
             ControllerCommand.PAGE_PREVIOUS,
             ControllerCommand.PAGE_NEXT,
             -> Unit
@@ -1468,11 +1563,78 @@ class LauncherViewModel @Inject constructor(
         }
     }
 
+    /**
+     * What Confirm does outside the shelf.
+     *
+     * Each region's actions are listed in the order they are drawn, because the
+     * cursor's position *is* the index — see [CouchNavigation]. Kept beside the
+     * command handler rather than in the composable so that a controller press
+     * and a touch reach the same code.
+     */
+    private fun onCouchZoneConfirmed(
+        focus: CouchFocus,
+        focusedEntry: GridEntry?,
+        rails: List<CouchRail>,
+    ) {
+        when (focus.zone) {
+            CouchZone.SPOTLIGHT -> when (focus.action) {
+                0 -> focusedEntry?.let(::launchEntry)
+                else -> focusedEntry?.let(::openCouchQuickDetails)
+            }
+
+            /*
+             * The same jumps the panel's rows make when tapped, in the order
+             * they are drawn: all games, favourites, recently played, installed,
+             * collections. Installed is the app drawer because that is where
+             * apps live everywhere else; the rest are shelves.
+             */
+            CouchZone.LIBRARY -> when (focus.action) {
+                LIBRARY_ROW_INSTALLED -> openAppDrawer()
+                else -> {
+                    val railId = when (focus.action) {
+                        LIBRARY_ROW_FAVOURITES -> "favourites"
+                        LIBRARY_ROW_RECENT -> "continue"
+                        LIBRARY_ROW_COLLECTIONS -> "collections"
+                        else -> rails.firstOrNull { it.id.startsWith("platform:") }?.id
+                    }
+                    rails.indexOfFirst { it.id == railId }
+                        .takeIf { it >= 0 }
+                        ?.let { index -> _couchFocus.value = CouchFocus(rail = index, item = 0) }
+                }
+            }
+
+            CouchZone.DASHBOARD -> when (focus.action) {
+                0 -> emit(LauncherEffect.OpenSearch)
+                1 -> openSortPicker()
+                2 -> uiState.value.entriesById.values
+                    .filterIsInstance<GameEntry>()
+                    .filterNot(GridEntry::isHidden)
+                    .randomOrNull()
+                    ?.let(::launchEntry)
+
+                3 -> onShortcut(ShortcutAction.BLUETOOTH)
+                4 -> openDownloads()
+                else -> requestCouchPowerMenu()
+            }
+
+            CouchZone.SHELF -> focusedEntry?.let(::launchEntry)
+        }
+    }
+
     /** Touch/pointer focus follows the same rail cursor the controller drives. */
     fun focusCouchEntry(rail: Int, item: Int) {
         val rails = couchRails(uiState.value)
         setCouchFocus(rails, rail, item)
     }
+
+    /**
+     * The power dialog, which only the accessibility service can raise.
+     *
+     * Emitted rather than called: the service lives in the app module and the
+     * view model does not know about it, which is the same boundary every other
+     * system action here crosses.
+     */
+    private fun requestCouchPowerMenu() = emit(LauncherEffect.RequestPowerMenu)
 
     private fun setCouchFocus(rails: List<CouchRail>, rail: Int, item: Int) {
         if (rails.isEmpty()) {
@@ -3155,3 +3317,15 @@ class LauncherViewModel @Inject constructor(
         const val DEFAULT_CAPTURE_DENSITY = 320
     }
 }
+
+/**
+ * Library panel rows, in the order the dashboard draws them.
+ *
+ * File-level rather than in the class's companion because the class already has
+ * one and Kotlin allows a single companion; these belong to the couch handler
+ * rather than to the view model's own configuration either way.
+ */
+private const val LIBRARY_ROW_FAVOURITES = 1
+private const val LIBRARY_ROW_RECENT = 2
+private const val LIBRARY_ROW_INSTALLED = 3
+private const val LIBRARY_ROW_COLLECTIONS = 4

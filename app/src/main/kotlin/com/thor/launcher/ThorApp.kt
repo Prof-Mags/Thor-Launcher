@@ -96,6 +96,7 @@ import com.thor.core.ui.input.LocalThorTextInput
 import com.thor.core.ui.input.ThorTextInputState
 import com.thor.core.ui.feedback.rememberThorFeedback
 import com.thor.feature.home.BottomScreen
+import com.thor.feature.home.couch.CouchDashboardActions
 import com.thor.launcher.stream.StreamSessionActivity
 import com.thor.feature.home.LauncherEffect
 import com.thor.feature.home.AppDrawerScreen
@@ -1538,6 +1539,10 @@ fun ThorApp(
                         feedback.play(FeedbackCue.DRAWER_OPEN)
                     }
 
+                    // The same route the pointer's power action takes: no public
+                    // intent opens this dialog, only the accessibility service.
+                    LauncherEffect.RequestPowerMenu -> mouse.requestPowerMenu()
+
                     /*
                      * A screen recording, which needs two things asked for first.
                      *
@@ -2055,6 +2060,25 @@ fun ThorApp(
                 // which is why this is not behind the same flag.
                 status = shellStatus,
                 statusActions = shellStatusActions,
+                /*
+                 * The dashboard's own controls.
+                 *
+                 * Every one of them goes to something that already exists —
+                 * `onShortcut` is the same dispatcher the shortcut panel's tiles
+                 * use, so search, the app drawer and the Bluetooth panel behave
+                 * identically whichever surface asked for them. The power dialog
+                 * is the odd one: no public intent opens it, so it is raised
+                 * through the accessibility service, exactly as the pointer's own
+                 * power action is.
+                 */
+                couchDashboardActions = remember(viewModel, mouse) {
+                    CouchDashboardActions(
+                        onShortcut = viewModel::onShortcut,
+                        onOpenFilters = viewModel::openSortPicker,
+                        onOpenDownloads = viewModel::openDownloads,
+                        onPowerMenu = mouse::requestPowerMenu,
+                    )
+                },
                 modifier = Modifier.fillMaxSize(),
             )
 

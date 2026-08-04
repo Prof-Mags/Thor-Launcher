@@ -61,6 +61,7 @@ import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
 import com.thor.core.model.Platform
+import com.thor.core.model.ShortcutAction
 import com.thor.core.model.PlatformFolders
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.feature.home.LauncherUiState
@@ -88,15 +89,17 @@ import java.util.Locale
  * └──┴──────────────────────────────────────────────┘
  * ```
  *
- * **What is real and what is not.** The counts, the shelf, the hero and the
- * storage bar are read from the library and the filesystem. Trophies, downloads,
- * controllers, power and the search and filter actions have nothing behind them
- * yet — this launcher has no achievement client, no download manager and no way
- * for an unprivileged app to power the device down. They are drawn as
- * [CouchPlaceholder] rather than omitted, so the shape of the screen can be
- * judged before the parts that would fill it exist; every one of them is marked
- * in the source and dimmed on screen, because a control that looks live and does
- * nothing is worse than one that says it is not ready.
+ * Everything here does something. The counts and the shelf come from the
+ * library, storage is read from the filesystem, and every control opens what it
+ * names — search, the sort picker, a random game, the Bluetooth panel where
+ * controllers are paired, the system's downloads list, and the power dialog
+ * through the accessibility service, which is the only route an unprivileged app
+ * has to it.
+ *
+ * The one exception is the trophy count, which is drawn dimmed and says `-- / --`
+ * because no achievement client ships. It is left visible rather than removed so
+ * the row keeps its shape, and a figure that cannot be had says so rather than
+ * showing a zero that would read as "none earned".
  */
 @Composable
 internal fun CouchHome(
@@ -107,6 +110,7 @@ internal fun CouchHome(
     onEntrySelected: (GridEntry) -> Unit,
     onEntryLongPressed: (GridEntry) -> Unit,
     onRailSelected: (Int) -> Unit,
+    actions: CouchDashboardActions,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -121,19 +125,13 @@ internal fun CouchHome(
         ?.let { Color(it.accentArgb) }
         ?: colors.cursor
 
-    // The hero is what the user was last doing, which is not the same thing as
-    // what the cursor is on: the shelf moves as they browse and the top of the
-    // screen should not follow it around.
-    val continueEntry = remember(entries) {
-        entries.filter { it.lastPlayedAt() != null }.maxByOrNull { it.lastPlayedAt() ?: 0L }
-    }
-
     Row(modifier = modifier.fillMaxSize()) {
         CouchSideRail(
             rails = rails,
             selectedRail = focus.rail,
             accent = accent,
             onRailSelected = onRailSelected,
+            onOpenDownloads = actions.onOpenDownloads,
         )
 
         Column(
@@ -145,16 +143,22 @@ internal fun CouchHome(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(SECTION_GAP.dp),
             ) {
-                CouchContinuePlaying(
-                    entry = continueEntry,
-                    platform = continueEntry?.platform(state.platformsById),
+                CouchSpotlight(
+                    entry = focusedEntry,
+                    platform = focusedEntry?.platform(state.platformsById),
                     accent = accent,
-                    onResume = { continueEntry?.let(onEntrySelected) },
-                    onMoreInfo = { continueEntry?.let(onEntryLongPressed) },
+                    focusedAction = focus.action.takeIf { focus.zone == CouchZone.SPOTLIGHT },
+                    onPlay = { focusedEntry?.let(onEntrySelected) },
+                    onMoreInfo = { focusedEntry?.let(onEntryLongPressed) },
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 CouchLibraryPanel(
                     counts = counts,
+                    rails = rails,
+                    accent = accent,
+                    focusedRow = focus.action.takeIf { focus.zone == CouchZone.LIBRARY },
+                    onRailSelected = onRailSelected,
+                    onOpenInstalled = { actions.onShortcut(ShortcutAction.APPS) },
                     modifier = Modifier.width(LIBRARY_PANEL_WIDTH.dp).fillMaxHeight(),
                 )
             }
@@ -171,6 +175,16 @@ internal fun CouchHome(
             )
 
             CouchDashboardBar(
+                actions = actions,
+                accent = accent,
+                focusedAction = focus.action.takeIf { focus.zone == CouchZone.DASHBOARD },
+                onRandomGame = {
+                    // Any game, not any entry: "random game" landing on the
+                    // calculator is a joke that stops being funny immediately.
+                    entries.filterIsInstance<GameEntry>()
+                        .randomOrNull()
+                        ?.let(onEntrySelected)
+                },
                 modifier = Modifier.fillMaxWidth().height(DASHBOARD_HEIGHT.dp),
             )
         }
@@ -187,12 +201,29 @@ internal fun CouchHome(
  * reaches all of the same places. Downloads is the exception and is marked as
  * such.
  */
+/**
+ * What the dashboard can reach outside its own screen.
+ *
+ * A holder rather than four more parameters on a signature that already carries
+ * a dozen, and `@Immutable` for the reason [ShellStatusActions] is: a bare bag
+ * of lambdas is unstable, and would recompose the whole dashboard on every frame
+ * the shelf moves.
+ */
+@androidx.compose.runtime.Immutable
+class CouchDashboardActions(
+    val onShortcut: (ShortcutAction) -> Unit = {},
+    val onOpenFilters: () -> Unit = {},
+    val onOpenDownloads: () -> Unit = {},
+    val onPowerMenu: () -> Unit = {},
+)
+
 @Composable
 private fun CouchSideRail(
     rails: List<CouchRail>,
     selectedRail: Int,
     accent: Color,
     onRailSelected: (Int) -> Unit,
+    onOpenDownloads: () -> Unit,
 ) {
     val colors = ThorTheme.colors
     val destinations = remember(rails) {
@@ -201,7 +232,9 @@ private fun CouchSideRail(
             CouchRailShortcut(Icons.Rounded.SportsEsports, "Games", rails.indexOfFirst { it.id.startsWith("platform:") }),
             CouchRailShortcut(Icons.Rounded.FavoriteBorder, "Favourites", rails.indexOfFirst { it.id == "favourites" }),
             CouchRailShortcut(Icons.Rounded.History, "Recent", rails.indexOfFirst { it.id == "continue" }),
-            CouchRailShortcut(Icons.Rounded.Download, "Downloads", -1),
+            // Not a rail: the system's own downloads list, which is what the
+            // word means on an Android device. See SystemPanel.DOWNLOADS.
+            CouchRailShortcut(Icons.Rounded.Download, "Downloads", DOWNLOADS_DESTINATION),
             CouchRailShortcut(Icons.Rounded.FolderOpen, "Collections", rails.indexOfFirst { it.id == "collections" }),
         )
     }
@@ -215,8 +248,10 @@ private fun CouchSideRail(
         verticalArrangement = Arrangement.spacedBy(SIDE_RAIL_GAP.dp),
     ) {
         destinations.forEach { destination ->
-            val reachable = destination.railIndex >= 0
-            val selected = reachable && destination.railIndex == selectedRail
+            val isDownloads = destination.railIndex == DOWNLOADS_DESTINATION
+            val reachable = isDownloads || destination.railIndex >= 0
+            val selected = !isDownloads && reachable &&
+                destination.railIndex == selectedRail
             Box(
                 modifier = Modifier
                     .size(SIDE_RAIL_ITEM.dp)
@@ -231,7 +266,13 @@ private fun CouchSideRail(
                             Modifier
                         },
                     )
-                    .clickable(enabled = reachable) { onRailSelected(destination.railIndex) },
+                    .clickable(enabled = reachable) {
+                        if (isDownloads) {
+                            onOpenDownloads()
+                        } else {
+                            onRailSelected(destination.railIndex)
+                        }
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -257,30 +298,45 @@ private data class CouchRailShortcut(
 
 // ---- Continue playing -------------------------------------------------------
 
+/**
+ * The game under the cursor, in full.
+ *
+ * This followed the *last played* entry to begin with, on the reasoning that a
+ * panel which moves while you browse is unsettling. That was wrong for this
+ * screen: the shelf is the thing being driven, and a detail panel that describes
+ * something else makes the largest region on a television answer a question
+ * nobody asked. Every other surface in the launcher — the information panel, the
+ * handheld's top screen — describes the selection, and this now matches them.
+ *
+ * Resume rather than Play when there is play time on the clock, because those
+ * are different promises and the launcher knows which one it can make.
+ */
 @Composable
-private fun CouchContinuePlaying(
+private fun CouchSpotlight(
     entry: GridEntry?,
     platform: Platform?,
     accent: Color,
-    onResume: () -> Unit,
+    /** Which button the controller is on, or null when it is elsewhere. */
+    focusedAction: Int?,
+    onPlay: () -> Unit,
     onMoreInfo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    val game = entry as? GameEntry
+    val played = (game?.stats?.totalPlayMillis ?: 0L) > 0L
 
     Column(modifier = modifier) {
-        CouchSectionLabel("Continue playing")
+        CouchSectionLabel(if (played) "Continue playing" else "Selected")
         Spacer(Modifier.height(10.dp))
 
         if (entry == null) {
             CouchEmptyPanel(
-                message = "Nothing played yet. Anything you launch shows up here.",
+                message = "Nothing here yet. Add a system and scan for games to begin.",
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             return@Column
         }
-
-        val game = entry as? GameEntry
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -332,25 +388,51 @@ private fun CouchContinuePlaying(
                     CouchFactChip(Icons.Rounded.EmojiEvents, "-- / --", placeholder = true)
                 }
 
-                Spacer(Modifier.height(14.dp))
+                /*
+                 * The description, which is the whole reason a panel this size
+                 * is worth the room.
+                 *
+                 * Weighted rather than given a line count: what fits depends on
+                 * the couch UI scale and on how long the title above it ran, and
+                 * a fixed height either clips a paragraph on a large television
+                 * or leaves a gap on a small one.
+                 */
+                Spacer(Modifier.height(10.dp))
+                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    val description = game?.metadata?.description?.takeIf { it.isNotBlank() }
+                    Text(
+                        text = description ?: "No description scraped for this one yet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (description != null) {
+                            colors.onSurfaceVariant
+                        } else {
+                            colors.onSurfaceVariant.copy(alpha = PLACEHOLDER_ALPHA)
+                        },
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CouchActionButton(
                         icon = Icons.Rounded.PlayArrow,
-                        label = "Resume",
+                        label = if (played) "Resume" else "Play",
                         primary = true,
                         accent = accent,
-                        onClick = onResume,
+                        focused = focusedAction == 0,
+                        onClick = onPlay,
                     )
                     CouchActionButton(
                         icon = Icons.Rounded.Info,
                         label = "More info",
                         primary = false,
                         accent = accent,
+                        focused = focusedAction == 1,
                         onClick = onMoreInfo,
                     )
                 }
 
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.height(12.dp))
                 CouchCompletionBar(game = game, accent = accent)
             }
         }
@@ -440,9 +522,33 @@ internal fun couchLibraryCounts(entries: List<GridEntry>): CouchLibraryCounts {
     )
 }
 
+/**
+ * The counts, each one a way into the shelf that holds them.
+ *
+ * Every row but Installed is a rail the deck already builds, so choosing one
+ * moves the cursor rather than opening a screen of its own - the shelf below is
+ * already the list these rows are counting. Installed is the app drawer, which
+ * is where apps live everywhere else in the launcher.
+ */
 @Composable
-private fun CouchLibraryPanel(counts: CouchLibraryCounts, modifier: Modifier = Modifier) {
+private fun CouchLibraryPanel(
+    counts: CouchLibraryCounts,
+    rails: List<CouchRail>,
+    accent: Color,
+    focusedRow: Int?,
+    onRailSelected: (Int) -> Unit,
+    onOpenInstalled: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = ThorTheme.colors
+    fun jumpTo(railId: String): (() -> Unit)? =
+        rails.indexOfFirst { it.id == railId }
+            .takeIf { it >= 0 }
+            ?.let { index -> { onRailSelected(index) } }
+
+    val firstPlatformRail = rails.indexOfFirst { it.id.startsWith("platform:") }
+        .takeIf { it >= 0 }
+
     Column(modifier = modifier) {
         CouchSectionLabel("Your library")
         Spacer(Modifier.height(10.dp))
@@ -454,11 +560,26 @@ private fun CouchLibraryPanel(counts: CouchLibraryCounts, modifier: Modifier = M
                 .background(colors.surface.copy(alpha = 0.55f))
                 .border(1.dp, colors.outline.copy(alpha = 0.18f), RoundedCornerShape(14.dp)),
         ) {
-            CouchLibraryRow(Icons.Rounded.GridView, "All games", counts.allGames)
-            CouchLibraryRow(Icons.Rounded.FavoriteBorder, "Favourites", counts.favourites)
-            CouchLibraryRow(Icons.Rounded.Schedule, "Recently played", counts.recentlyPlayed)
-            CouchLibraryRow(Icons.Rounded.Download, "Installed", counts.installed)
-            CouchLibraryRow(Icons.Rounded.FolderOpen, "Collections", counts.collections, last = true)
+            CouchLibraryRow(
+                Icons.Rounded.GridView, "All games", counts.allGames, focused = focusedRow == 0,
+                onClick = firstPlatformRail?.let { index -> { onRailSelected(index) } },
+            )
+            CouchLibraryRow(
+                Icons.Rounded.FavoriteBorder, "Favourites", counts.favourites, focused = focusedRow == 1,
+                onClick = jumpTo("favourites"),
+            )
+            CouchLibraryRow(
+                Icons.Rounded.Schedule, "Recently played", counts.recentlyPlayed, focused = focusedRow == 2,
+                onClick = jumpTo("continue"),
+            )
+            CouchLibraryRow(
+                Icons.Rounded.Download, "Installed", counts.installed, focused = focusedRow == 3,
+                onClick = onOpenInstalled,
+            )
+            CouchLibraryRow(
+                Icons.Rounded.FolderOpen, "Collections", counts.collections, focused = focusedRow == 4,
+                onClick = jumpTo("collections"), last = true,
+            )
         }
     }
 }
@@ -468,6 +589,8 @@ private fun CouchLibraryRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     count: Int,
+    focused: Boolean,
+    onClick: (() -> Unit)?,
     last: Boolean = false,
 ) {
     val colors = ThorTheme.colors
@@ -475,6 +598,8 @@ private fun CouchLibraryRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(LIBRARY_ROW_HEIGHT.dp)
+            .background(if (focused) colors.cursor.copy(alpha = 0.16f) else Color.Transparent)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -600,7 +725,13 @@ private fun CouchGamesShelf(
  * drawn rather than left out.
  */
 @Composable
-private fun CouchDashboardBar(modifier: Modifier = Modifier) {
+private fun CouchDashboardBar(
+    actions: CouchDashboardActions,
+    accent: Color,
+    focusedAction: Int?,
+    onRandomGame: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = ThorTheme.colors
     Row(
         modifier = modifier
@@ -612,14 +743,28 @@ private fun CouchDashboardBar(modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(SECTION_GAP.dp),
     ) {
         CouchDashboardGroup(title = "Quick access") {
-            CouchPlaceholder(Icons.Rounded.Search, "Search")
-            CouchPlaceholder(Icons.Rounded.FilterList, "Filters")
-            CouchPlaceholder(Icons.Rounded.Shuffle, "Random game")
+            CouchDashboardButton(
+                Icons.Rounded.Search, "Search", focusedAction == 0,
+            ) { actions.onShortcut(ShortcutAction.SEARCH) }
+            CouchDashboardButton(
+                Icons.Rounded.FilterList, "Filters", focusedAction == 1, actions.onOpenFilters,
+            )
+            CouchDashboardButton(
+                Icons.Rounded.Shuffle, "Random game", focusedAction == 2, onRandomGame,
+            )
         }
         CouchDashboardGroup(title = "System") {
-            CouchPlaceholder(Icons.Rounded.Gamepad, "Controllers")
-            CouchPlaceholder(Icons.Rounded.Download, "Downloads")
-            CouchPlaceholder(Icons.Rounded.PowerSettingsNew, "Power")
+            // Controllers pair over Bluetooth, which is the panel that actually
+            // manages them; there is no separate controller screen to open.
+            CouchDashboardButton(
+                Icons.Rounded.Gamepad, "Controllers", focusedAction == 3,
+            ) { actions.onShortcut(ShortcutAction.BLUETOOTH) }
+            CouchDashboardButton(
+                Icons.Rounded.Download, "Downloads", focusedAction == 4, actions.onOpenDownloads,
+            )
+            CouchDashboardButton(
+                Icons.Rounded.PowerSettingsNew, "Power", focusedAction == 5, actions.onPowerMenu,
+            )
         }
         CouchStorageMeter(modifier = Modifier.weight(1f))
     }
@@ -760,6 +905,7 @@ private fun CouchActionButton(
     label: String,
     primary: Boolean,
     accent: Color,
+    focused: Boolean,
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
@@ -768,10 +914,16 @@ private fun CouchActionButton(
             .clip(RoundedCornerShape(8.dp))
             .background(if (primary) accent else colors.surfaceHighest.copy(alpha = 0.8f))
             .then(
-                if (primary) {
-                    Modifier
-                } else {
-                    Modifier.border(1.dp, colors.outline.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                when {
+                    // The cursor outranks the button's own outline: on a
+                    // television the only question is which one a press hits.
+                    focused -> Modifier.border(2.dp, colors.cursor, RoundedCornerShape(8.dp))
+                    primary -> Modifier
+                    else -> Modifier.border(
+                        1.dp,
+                        colors.outline.copy(alpha = 0.3f),
+                        RoundedCornerShape(8.dp),
+                    )
                 },
             )
             .clickable(onClick = onClick)
@@ -796,25 +948,31 @@ private fun CouchActionButton(
     }
 }
 
-/**
- * A control drawn for the layout's sake, with nothing behind it yet.
- *
- * Dimmed and inert on purpose. The alternative — leaving the row out until its
- * features exist — makes the screen impossible to judge, and the alternative to
- * *that*, wiring it to something plausible, produces a button that responds and
- * lies.
- */
+/** One tile on the bottom row. */
 @Composable
-private fun CouchPlaceholder(
+private fun CouchDashboardButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
+    focused: Boolean,
+    onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(colors.surfaceElevated.copy(alpha = 0.35f))
-            .border(1.dp, colors.outline.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+            .background(
+                if (focused) {
+                    colors.cursor.copy(alpha = 0.22f)
+                } else {
+                    colors.surfaceElevated.copy(alpha = 0.55f)
+                },
+            )
+            .border(
+                if (focused) 2.dp else 1.dp,
+                if (focused) colors.cursor else colors.outline.copy(alpha = 0.18f),
+                RoundedCornerShape(8.dp),
+            )
+            .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -822,13 +980,13 @@ private fun CouchPlaceholder(
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = colors.onSurfaceVariant.copy(alpha = PLACEHOLDER_ALPHA),
+            tint = colors.onSurfaceVariant,
             modifier = Modifier.size(15.dp),
         )
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = colors.onSurface.copy(alpha = PLACEHOLDER_ALPHA),
+            color = colors.onSurface,
             maxLines = 1,
         )
     }
@@ -879,3 +1037,6 @@ private const val CARD_GAP = 12
 
 /** How faint a control with nothing behind it is drawn. */
 private const val PLACEHOLDER_ALPHA = 0.38f
+
+/** Not a rail index: the side rail's Downloads opens the system's list. */
+private const val DOWNLOADS_DESTINATION = -2

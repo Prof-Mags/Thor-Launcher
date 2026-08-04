@@ -51,6 +51,7 @@ import com.thor.feature.home.component.SideMenuAction
 import com.thor.feature.home.component.SortDialog
 import com.thor.feature.home.component.BottomNavBar
 import com.thor.feature.home.component.EmptySection
+import com.thor.feature.home.couch.CouchDashboardActions
 import com.thor.feature.home.couch.CouchScreen
 import com.thor.feature.home.couch.CouchFocus
 import com.thor.feature.home.couch.CouchPlatformMenu
@@ -152,6 +153,7 @@ fun BottomScreen(
     /** Profile and notifications for couch mode.s corner. */
     status: ShellStatus? = null,
     statusActions: ShellStatusActions = ShellStatusActions(),
+    couchDashboardActions: CouchDashboardActions = CouchDashboardActions(),
     modifier: Modifier = Modifier,
 ) {
     val dimens = ThorTheme.dimens
@@ -258,6 +260,7 @@ fun BottomScreen(
                 settingsContent = couchSettingsContent,
                 status = status,
                 statusActions = statusActions,
+                dashboardActions = couchDashboardActions,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {

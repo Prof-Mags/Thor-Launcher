@@ -146,6 +146,16 @@ sealed interface LauncherEffect {
     data object OpenSearch : LauncherEffect
 
     /**
+     * Raise the system's power dialog.
+     *
+     * An effect rather than a call, because no public intent opens it: the
+     * only route is `performGlobalAction` on the accessibility service, which
+     * lives in the app module. The shell forwards this to the same place the
+     * pointer's own power action goes.
+     */
+    data object RequestPowerMenu : LauncherEffect
+
+    /**
      * Ask for a recording of the real screen.
      *
      * Only this kind is handed up. It needs a consent dialog and a foreground

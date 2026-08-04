@@ -111,8 +111,23 @@ import kotlinx.coroutines.delay
  */
 internal const val COUCH_DASHBOARD_LAYOUT = true
 
-/** Controller position in Couch Mode's rail-based library. */
-data class CouchFocus(val rail: Int = 0, val item: Int = 0)
+/**
+ * Controller position in Couch Mode.
+ *
+ * [rail] and [item] are the shelf cursor and are kept even while the controller
+ * is elsewhere: the spotlight describes whatever the shelf is on, so leaving the
+ * shelf to press a button must not lose the place it was pressed from.
+ *
+ * [action] is the position *within* [zone] — which of the two spotlight buttons,
+ * which library row, which dashboard tile. It means nothing in
+ * [CouchZone.SHELF], where the position is [item].
+ */
+data class CouchFocus(
+    val rail: Int = 0,
+    val item: Int = 0,
+    val zone: CouchZone = CouchZone.SHELF,
+    val action: Int = 0,
+)
 
 /** A deliberate TV shelf, independent of the handheld grid and its empty cells. */
 data class CouchRail(
@@ -252,6 +267,8 @@ fun CouchScreen(
     /** Profile and notifications for the corner; null keeps the plain label. */
     status: ShellStatus? = null,
     statusActions: ShellStatusActions = ShellStatusActions(),
+    /** What the dashboard's own controls reach outside this screen. */
+    dashboardActions: CouchDashboardActions = CouchDashboardActions(),
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -286,20 +303,6 @@ fun CouchScreen(
         ((rails.getOrNull(safeRail)?.entries?.size ?: 0) - 1).coerceAtLeast(0),
     )
     val focusedEntry = rails.getOrNull(safeRail)?.entries?.getOrNull(safeItem)
-    val requestedBackdrop = focusedEntry?.couchBackdropArtwork()
-        ?: focusedEntry?.platform(state.platformsById)?.artwork?.heroUri
-    var settledBackdrop by remember { mutableStateOf(requestedBackdrop) }
-
-    LaunchedEffect(focusedEntry?.id, requestedBackdrop) {
-        if (requestedBackdrop == null || settledBackdrop == null) {
-            settledBackdrop = requestedBackdrop
-        } else {
-            // Do not decode every image crossed while the stick is held. The
-            // backdrop catches up as soon as the cursor briefly settles.
-            delay(BACKDROP_SETTLE_MS)
-            settledBackdrop = requestedBackdrop
-        }
-    }
     val visibleEntries = remember(state.entriesById) {
         state.entriesById.values.filterNot(GridEntry::isHidden)
     }
@@ -322,8 +325,12 @@ fun CouchScreen(
 
     Box(modifier = modifier.fillMaxSize().background(colors.background)) {
         if (selectedTab.isHome && !settingsSelected) {
-            CouchArtworkBackdrop(
-                artwork = settledBackdrop,
+            /*
+             * Drawn, not loaded. The selected game's artwork used to fill this
+             * and changed every time the cursor moved; see [CouchWallpaper] for
+             * why a television wants a fixed field behind its panels.
+             */
+            CouchWallpaper(
                 accent = focusedEntry?.platform(state.platformsById)
                     ?.let { Color(it.accentArgb) }
                     ?: colors.cursor,
@@ -375,6 +382,7 @@ fun CouchScreen(
                             onEntrySelected = onEntrySelected,
                             onEntryLongPressed = onEntryLongPressed,
                             onRailSelected = { rail -> onEntryFocused(rail, 0) },
+                            actions = dashboardActions,
                             modifier = Modifier.fillMaxWidth().weight(1f),
                         )
                     } else {
@@ -466,81 +474,6 @@ fun CouchScreen(
             }
         }
     }
-}
-
-@Composable
-private fun CouchArtworkBackdrop(artwork: String?, accent: Color) {
-    if (artwork == null) {
-        CouchAmbientBackground(accent)
-        return
-    }
-
-    val duration = if (ThorTheme.materials.animationsEnabled) BACKDROP_CROSSFADE_MS else 0
-    AnimatedContent(
-        targetState = artwork,
-        transitionSpec = {
-            fadeIn(tween(duration)) togetherWith fadeOut(tween(duration))
-        },
-        label = "couch-selected-artwork",
-        modifier = Modifier.fillMaxSize(),
-    ) { selectedArtwork ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            ArtworkImage(
-                model = selectedArtwork,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                crossfadeMillis = 0,
-                modifier = Modifier.fillMaxSize().alpha(0.82f),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.horizontalGradient(
-                            0f to Color.Black.copy(alpha = 0.50f),
-                            0.52f to Color.Black.copy(alpha = 0.18f),
-                            1f to Color.Black.copy(alpha = 0.30f),
-                        ),
-                    ),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to accent.copy(alpha = 0.09f),
-                            0.54f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = 0.70f),
-                        ),
-                    ),
-            )
-        }
-    }
-}
-
-@Composable
-private fun CouchAmbientBackground(accent: Color) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.horizontalGradient(
-                    0f to accent.copy(alpha = 0.085f),
-                    0.42f to Color.Transparent,
-                    1f to Color.Transparent,
-                ),
-            ),
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    0f to Color.Black.copy(alpha = 0.02f),
-                    1f to Color.Black.copy(alpha = 0.24f),
-                ),
-            ),
-    )
 }
 
 @Composable
