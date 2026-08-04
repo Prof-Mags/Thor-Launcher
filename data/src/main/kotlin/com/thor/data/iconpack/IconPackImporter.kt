@@ -165,6 +165,21 @@ class IconPackImporter @Inject constructor(
         Unit
     }
 
+    /**
+     * Whether this pack's artwork is actually on disk.
+     *
+     * [install] creates a directory per pack and copies every image into it
+     * before the record is written, so a record without one describes something
+     * that is not there. See `IconPackRepository.repairMissingPacks`.
+     *
+     * Not `suspend`, unlike everything else here, because it is one `stat` call
+     * rather than a copy of tens of megabytes — and because its caller feeds it
+     * to a plain predicate, which is what lets that rule be tested without a
+     * filesystem. Call it from a dispatcher that tolerates disk access; the one
+     * caller is already inside one.
+     */
+    fun hasFiles(packId: String): Boolean = File(root, packId).isDirectory
+
     // ---- Shared ------------------------------------------------------------
 
     /**

@@ -11,6 +11,7 @@ import com.thor.core.database.dao.GameDao
 import com.thor.core.database.dao.PlatformDao
 import com.thor.core.common.profile.ActiveProfileId
 import com.thor.core.datastore.SettingsRepository
+import com.thor.data.iconpack.IconPackRepository
 import com.thor.data.repository.GridLayoutRepository
 import com.thor.data.repository.LibraryRepository
 import com.thor.data.repository.toDomain
@@ -61,6 +62,7 @@ class LibrarySyncManager @Inject constructor(
     private val platformDao: PlatformDao,
     private val libraryRepository: LibraryRepository,
     private val gridRepository: GridLayoutRepository,
+    private val iconPackRepository: IconPackRepository,
     private val settings: SettingsRepository,
     @ActiveProfileId profileIds: Flow<String>,
     @ApplicationScope private val scope: CoroutineScope,
@@ -139,6 +141,10 @@ class LibrarySyncManager @Inject constructor(
 
     private suspend fun refreshApps() = withContext(ioDispatcher) {
         libraryRepository.ensurePlatformsSeeded()
+        // After the seed, because it writes to platform rows those must exist.
+        // A platform held by a pack that is not there shows no artwork at all,
+        // so this runs before the grid is drawn rather than at the next scan.
+        iconPackRepository.repairMissingPacks()
         val librarySettings = settings.library.first()
 
         val apps = appScanner.scan(includeSystemApps = !librarySettings.hideSystemApps)

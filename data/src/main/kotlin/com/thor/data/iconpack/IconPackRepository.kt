@@ -38,6 +38,35 @@ class IconPackRepository @Inject constructor(
 
     val installed: Flow<List<IconPack>> = settings.iconPacks
 
+    /**
+     * Drops pack records whose artwork is not on disk, and undresses what they
+     * dressed.
+     *
+     * Every real pack is copied into a directory of its own before its record is
+     * written, so a record without one is a claim on platforms that nothing can
+     * satisfy: the platform rows still name it as their owner, which suppresses
+     * the artwork Loki ships, while the URIs they hold resolve to nothing. The
+     * result is a system with no icon at all and no way for the user to work out
+     * why — the pack looks installed, because its record says so.
+     *
+     * Reached by a settings backup restored onto a device that has not got the
+     * files, by storage being cleared underneath the launcher, and by a build
+     * that wrote records for artwork it did not copy.
+     *
+     * Reverting is [remove]'s job and is done by calling it, so an orphan is put
+     * back exactly as an uninstall would put it back — falling to another pack
+     * where one covers the platform, rather than stripping it bare.
+     */
+    suspend fun repairMissingPacks() = withContext(ioDispatcher) {
+        val packs = settings.iconPacks.first()
+        val missing = orphanedPacks(packs) { importer.hasFiles(it) }
+
+        missing.forEach { pack ->
+            ThorLog.w(TAG, "Dropping ${pack.id}: its artwork is not on disk")
+            remove(pack.id)
+        }
+    }
+
     /** Imports a pack from a granted folder and applies it. */
     suspend fun installFromFolder(treeUri: Uri): IconPackImport =
         install(importer.importFromFolder(treeUri))
@@ -187,3 +216,28 @@ class IconPackRepository @Inject constructor(
         const val TAG = "IconPack"
     }
 }
+
+/**
+ * Pack records describing artwork that is not there.
+ *
+ * Top level and taking [hasFiles] as a function rather than reading the disk
+ * itself, so the rule can be tested without a filesystem — the rule is the part
+ * worth holding still, and getting it wrong is expensive in both directions: too
+ * eager strips artwork a user installed, too shy leaves systems permanently
+ * blank with no way to find out why.
+ */
+internal fun orphanedPacks(
+    packs: List<IconPack>,
+    hasFiles: (packId: String) -> Boolean,
+): List<IconPack> = packs
+    /*
+     * Never a record, always an owner written straight onto a platform.
+     *
+     * Excluded explicitly rather than trusted not to appear: were one ever to
+     * turn up in this list, it would have no directory — nothing copies files
+     * for it — so it would be read as an orphan and removing it would erase
+     * every image the user picked by hand. That is the one thing they cannot
+     * get back, and the check costs a line.
+     */
+    .filterNot { it.id == PlatformArtwork.USER_PACK_ID }
+    .filterNot { hasFiles(it.id) }
