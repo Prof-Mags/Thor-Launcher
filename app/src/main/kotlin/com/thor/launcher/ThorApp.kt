@@ -2027,6 +2027,7 @@ fun ThorApp(
                 couchClockStyle = settings.personalization.clockStyle,
                 showCouchStatusBar = settings.personalization.showStatusBar,
                 couchUiScale = settings.display.couchUiScale,
+                couchWallpaper = settings.display.couchWallpaper,
                 onCouchEntryFocused = viewModel::focusCouchEntry,
                 onCouchEntrySelected = viewModel::launchEntry,
                 onCouchEntryLongPressed = viewModel::openContextMenu,

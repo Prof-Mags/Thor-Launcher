@@ -42,6 +42,7 @@ import com.thor.feature.home.couch.CouchNavigation
 import com.thor.feature.home.couch.CouchZone
 import com.thor.feature.home.couch.CouchRail
 import com.thor.feature.home.couch.buildCouchRails
+import com.thor.feature.home.couch.couchLibraryRailIndex
 import com.thor.feature.home.couch.couchPlatforms
 import com.thor.data.launcher.LaunchFailure
 import com.thor.data.launcher.LaunchResult
@@ -1457,10 +1458,19 @@ class LauncherViewModel @Inject constructor(
             is CouchNavigation.Move.ExitToNavBar -> enterNavBar()
             is CouchNavigation.Move.To -> {
                 val next = move.focus
-                if (next.zone == CouchZone.SHELF && zone == CouchZone.SHELF) {
-                    // Still on the shelf: go through the rail cursor so the
-                    // remembered item per rail keeps working.
-                    if (next.rail != focus.rail) {
+                /*
+                 * Every landing on the shelf goes through the rail cursor.
+                 *
+                 * Returning from another zone used to assign the focus straight,
+                 * which skipped both things `setCouchFocus` does: clamping the
+                 * item to the rail it is actually on, and recording it as that
+                 * rail's remembered place. A shelf that shrank while the cursor
+                 * was away — a scrape finishing, a favourite cleared — left the
+                 * item past the end of it.
+                 */
+                if (next.zone == CouchZone.SHELF) {
+                    if (zone == CouchZone.SHELF && next.rail != focus.rail) {
+                        // Rail to rail: pick up where that rail was left.
                         moveRail(next.rail - focus.rail)
                     } else {
                         setCouchFocus(rails, next.rail, next.item)
@@ -1513,7 +1523,7 @@ class LauncherViewModel @Inject constructor(
                 // Back returns to the shelf rather than out of the mode: the
                 // cursor came from there and that is where it belongs.
                 ControllerCommand.BACK -> {
-                    _couchFocus.value = focus.copy(zone = CouchZone.SHELF)
+                    setCouchFocus(rails, focus.rail, focus.item)
                     return
                 }
 
@@ -1589,17 +1599,24 @@ class LauncherViewModel @Inject constructor(
              * apps live everywhere else; the rest are shelves.
              */
             CouchZone.LIBRARY -> when (focus.action) {
-                LIBRARY_ROW_INSTALLED -> openAppDrawer()
+                CouchNavigation.LIBRARY_ROW_INSTALLED -> openAppDrawer()
                 else -> {
-                    val railId = when (focus.action) {
-                        LIBRARY_ROW_FAVOURITES -> "favourites"
-                        LIBRARY_ROW_RECENT -> "continue"
-                        LIBRARY_ROW_COLLECTIONS -> "collections"
-                        else -> rails.firstOrNull { it.id.startsWith("platform:") }?.id
-                    }
-                    rails.indexOfFirst { it.id == railId }
-                        .takeIf { it >= 0 }
-                        ?.let { index -> _couchFocus.value = CouchFocus(rail = index, item = 0) }
+                    val index = couchLibraryRailIndex(rails, focus.action)
+                    /*
+                     * A row whose rail does not exist still leaves the panel.
+                     *
+                     * Favourites and Collections are only built once something is
+                     * in them, so those rows can point at nothing — and a press
+                     * that did nothing at all was indistinguishable from a
+                     * controller that had stopped responding. Returning to the
+                     * shelf at least answers the press. The row is drawn dimmed
+                     * as well, so the answer is visible before it is pressed.
+                     */
+                    setCouchFocus(
+                        rails = rails,
+                        rail = index ?: focus.rail,
+                        item = index?.let { couchItemByRailId[rails[it].id] ?: 0 } ?: focus.item,
+                    )
                 }
             }
 
@@ -3318,14 +3335,5 @@ class LauncherViewModel @Inject constructor(
     }
 }
 
-/**
- * Library panel rows, in the order the dashboard draws them.
- *
- * File-level rather than in the class's companion because the class already has
- * one and Kotlin allows a single companion; these belong to the couch handler
- * rather than to the view model's own configuration either way.
- */
-private const val LIBRARY_ROW_FAVOURITES = 1
-private const val LIBRARY_ROW_RECENT = 2
-private const val LIBRARY_ROW_INSTALLED = 3
-private const val LIBRARY_ROW_COLLECTIONS = 4
+// The library panel's row indices moved to CouchNavigation, which is where the
+// panel that defines their order already keeps its own counts.

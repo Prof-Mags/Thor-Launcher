@@ -16,6 +16,7 @@ import com.thor.core.model.CursorAnimation
 import com.thor.core.model.CursorStyle
 import com.thor.core.model.DockStyle
 import com.thor.core.model.DisplaySettings
+import com.thor.core.model.CouchWallpaperStyle
 import com.thor.core.model.DualScreenMode
 import com.thor.core.model.FolderStyle
 import com.thor.core.model.GridSpec
@@ -212,7 +213,7 @@ fun rowCountFor(
     SettingsPage.FEEDBACK -> 5
     SettingsPage.PROFILES -> profilesRowCount(profileRegistry)
     SettingsPage.PROFILE_EDIT -> profileEditRowCount(activeProfileHasAvatar)
-    SettingsPage.DUAL_SCREEN -> 6
+    SettingsPage.DUAL_SCREEN -> 7
     SettingsPage.PERFORMANCE -> 3
     SettingsPage.EXTENSIONS -> EXTENSIONS_ROWS
     SettingsPage.ACCESSIBILITY -> 5
@@ -1351,6 +1352,19 @@ private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: S
         },
     )
     RowDivider()
+    ChoiceRow(
+        title = "Couch background",
+        subtitle = "What Couch mode draws behind its dashboard. All of these are " +
+            "drawn rather than loaded, tinted by the highlighted system, and slow " +
+            "enough to sit behind something you are reading. Match launcher hands " +
+            "it back to the wallpaper the rest of the launcher uses.",
+        options = CouchWallpaperStyle.entries,
+        selected = display.couchWallpaper,
+        focused = focusedRow == 3,
+        label = CouchWallpaperStyle::label,
+        onSelected = { style -> viewModel.updateDisplay { it.copy(couchWallpaper = style) } },
+    )
+    RowDivider()
     SwitchRow(
         title = "Swap screens",
         subtitle = if (display.mode == DualScreenMode.COUCH) {
@@ -1359,7 +1373,7 @@ private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: S
             "Put the grid on the main panel instead"
         },
         checked = display.swapScreens,
-        focused = focusedRow == 3,
+        focused = focusedRow == 4,
         onCheckedChange = { on -> viewModel.updateDisplay { it.copy(swapScreens = on) } },
     )
     RowDivider()
@@ -1369,7 +1383,7 @@ private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: S
             "is showing both",
         value = display.splitRatio,
         range = 0.25f..0.75f,
-        focused = focusedRow == 4,
+        focused = focusedRow == 5,
         valueLabel = { "${(it * 100).toInt()}%" },
         onValueChange = { ratio -> viewModel.updateDisplay { it.copy(splitRatio = ratio) } },
     )
@@ -1377,7 +1391,7 @@ private fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: S
     SwitchRow(
         title = "Keep screen awake",
         checked = display.keepTopScreenAwake,
-        focused = focusedRow == 5,
+        focused = focusedRow == 6,
         onCheckedChange = { on -> viewModel.updateDisplay { it.copy(keepTopScreenAwake = on) } },
     )
 }

@@ -79,8 +79,10 @@ import androidx.compose.ui.zIndex
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.designsystem.theme.contrastingContentColor
+import com.thor.core.model.AnimatedWallpaper
 import com.thor.core.model.AppEntry
 import com.thor.core.model.ClockStyle
+import com.thor.core.model.CouchWallpaperStyle
 import com.thor.core.model.DisplaySettings
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
@@ -254,6 +256,11 @@ fun CouchScreen(
     clockStyle: ClockStyle,
     showStatusBar: Boolean,
     uiScale: Float,
+    /** What to draw behind the dashboard. */
+    wallpaper: CouchWallpaperStyle = CouchWallpaperStyle.RIDGES,
+    /** Deferred to by [CouchWallpaperStyle.THEME], and ignored otherwise. */
+    themeWallpaper: AnimatedWallpaper = AnimatedWallpaper.NONE,
+    wallpaperImageUri: String? = null,
     onTabSelected: (LauncherTab) -> Unit,
     onSettingsSelected: () -> Unit,
     onPlatformSelected: (Int) -> Unit,
@@ -331,9 +338,12 @@ fun CouchScreen(
              * why a television wants a fixed field behind its panels.
              */
             CouchWallpaper(
+                style = wallpaper,
                 accent = focusedEntry?.platform(state.platformsById)
                     ?.let { Color(it.accentArgb) }
                     ?: colors.cursor,
+                themeWallpaper = themeWallpaper,
+                wallpaperImageUri = wallpaperImageUri,
             )
         }
 
@@ -377,7 +387,22 @@ fun CouchScreen(
                         CouchHome(
                             state = state,
                             rails = rails,
-                            focus = CouchFocus(safeRail, safeItem),
+                            /*
+                             * The whole cursor, not just its shelf half.
+                             *
+                             * This was `CouchFocus(safeRail, safeItem)`, which
+                             * rebuilt the focus from two fields and so handed the
+                             * dashboard the defaults for the other two — zone
+                             * SHELF, action 0 — no matter where the controller
+                             * actually was. Everything still *moved*: the view
+                             * model tracked the zone and Confirm did the right
+                             * thing. None of it was drawn. Walking down to the
+                             * system row and pressing A opened the power dialog
+                             * from a screen that showed the cursor sitting on a
+                             * game, which is the worst version of this bug —
+                             * silent, and only reproducible with a controller.
+                             */
+                            focus = focus.copy(rail = safeRail, item = safeItem),
                             onEntryFocused = onEntryFocused,
                             onEntrySelected = onEntrySelected,
                             onEntryLongPressed = onEntryLongPressed,
@@ -1465,6 +1490,15 @@ private fun CouchRailContent(
     }
 }
 
+/**
+ * One card on a shelf.
+ *
+ * [resting] marks a cursor that is still on this card but not being driven —
+ * the dashboard keeps the shelf position while the controller is on a button, so
+ * the card has to say "this is where you were" without competing with the ring
+ * that says "this is what a press hits". It keeps the outline and gives up the
+ * lift, which is the difference between the two at ten feet.
+ */
 @Composable
 internal fun CouchCard(
     entry: GridEntry,
@@ -1474,11 +1508,13 @@ internal fun CouchCard(
     onFocus: () -> Unit,
     onSelected: () -> Unit,
     onLongPressed: () -> Unit,
+    resting: Boolean = false,
 ) {
     val colors = ThorTheme.colors
+    val lit = focused && !resting
     val focusColor = platform?.let { Color(it.accentArgb) } ?: colors.cursor
     val scale by animateFloatAsState(
-        targetValue = if (focused) 1.035f else 1f,
+        targetValue = if (lit) 1.035f else 1f,
         animationSpec = tween(160),
         label = "couch-card-focus",
     )
@@ -1488,7 +1524,7 @@ internal fun CouchCard(
         label = "couch-card-depth",
     )
     val elevation by animateDpAsState(
-        targetValue = if (focused) 10.dp else 0.dp,
+        targetValue = if (lit) 10.dp else 0.dp,
         animationSpec = tween(160),
         label = "couch-card-elevation",
     )
@@ -1515,8 +1551,12 @@ internal fun CouchCard(
             .clip(shape)
             .background(colors.surfaceHighest)
             .then(
-                if (focused) Modifier.border(2.dp, focusColor, shape)
-                else Modifier.border(1.dp, colors.outline.copy(alpha = 0.16f), shape),
+                when {
+                    lit -> Modifier.border(2.dp, focusColor, shape)
+                    // Held, not driven: the same ring at half strength.
+                    focused -> Modifier.border(2.dp, focusColor.copy(alpha = 0.45f), shape)
+                    else -> Modifier.border(1.dp, colors.outline.copy(alpha = 0.16f), shape)
+                },
             )
             .pointerInput(entry.id) {
                 detectTapGestures(

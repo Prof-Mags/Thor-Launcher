@@ -442,6 +442,8 @@ data class DisplaySettings(
     val couchOnExternalDisplay: Boolean = true,
     /** Physical scale of Couch Mode's navigation, hero, shelves and section UIs. */
     val couchUiScale: Float = DEFAULT_COUCH_UI_SCALE,
+    /** What Couch Mode draws behind its dashboard. */
+    val couchWallpaper: CouchWallpaperStyle = CouchWallpaperStyle.RIDGES,
     val keepTopScreenAwake: Boolean = true,
 ) {
     companion object {
@@ -449,6 +451,51 @@ data class DisplaySettings(
         const val MAX_COUCH_UI_SCALE = 1.25f
         const val DEFAULT_COUCH_UI_SCALE = 1.0f
     }
+}
+
+/**
+ * What Couch Mode draws behind its dashboard.
+ *
+ * Separate from [AnimatedWallpaper] rather than reusing it, because the two are
+ * behind different things. The launcher's own wallpaper sits under a grid of
+ * icons on a panel held at arm's length, where detail reads; these sit under
+ * large translucent panels on a television across a room, where it does not —
+ * so they are built from a few slow, wide shapes and stay dark and even under
+ * the regions that carry text.
+ *
+ * All of them are drawn rather than decoded: no asset, no memory, no decode on a
+ * screen the user leaves open. Each is tinted by the highlighted system's accent,
+ * so the room still shifts as the cursor crosses from one console to another.
+ *
+ * [THEME] is the way back to the launcher's own set for anyone who wants it, and
+ * every one of these settles to a fixed composition rather than disappearing when
+ * motion is turned off — see [AnimatedWallpaper] for why that distinction matters.
+ */
+@Serializable
+enum class CouchWallpaperStyle(val label: String) {
+    /** Layered hills drifting against each other. The default. */
+    RIDGES("Ridges"),
+
+    /** Slow vertical curtains of accent light. */
+    AURORA("Aurora"),
+
+    /** Large defocused fields kneading through one another. */
+    DRIFT("Drift"),
+
+    /** A perspective grid running away to a horizon line. */
+    HORIZON("Horizon"),
+
+    /** Motes rising slowly through the dark. */
+    EMBERS("Embers"),
+
+    /** Concentric rings breathing out from behind the panels. */
+    PULSE("Pulse"),
+
+    /** Whatever the launcher's own wallpaper setting is. */
+    THEME("Match launcher"),
+
+    /** The theme's background colour, and nothing else. */
+    SOLID("Solid colour"),
 }
 
 @Serializable

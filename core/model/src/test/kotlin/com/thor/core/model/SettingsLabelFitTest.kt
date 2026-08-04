@@ -26,6 +26,7 @@ class SettingsLabelFitTest {
             put("CornerStyle", CornerStyle.entries.map { it.label })
             put("MouseAction", MouseAction.entries.map { it.label })
             put("AnimatedWallpaper", AnimatedWallpaper.entries.map { it.label })
+            put("CouchWallpaperStyle", CouchWallpaperStyle.entries.map { it.label })
             put("IconShape", IconShape.entries.map { it.label })
             put("DockStyle", DockStyle.entries.map { it.label })
             put("CursorStyle", CursorStyle.entries.map { it.label })

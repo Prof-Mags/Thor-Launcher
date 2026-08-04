@@ -47,6 +47,19 @@ object CouchNavigation {
     /** The five rows of the library panel. */
     const val LIBRARY_ROWS = 5
 
+    /*
+     * The library panel's rows, in the order it draws them.
+     *
+     * Here rather than beside either the panel or the view model because both
+     * read them and the cursor's position *is* the index — a row added to the
+     * panel without a number added here is a press that lands on the row above.
+     */
+    const val LIBRARY_ROW_ALL_GAMES = 0
+    const val LIBRARY_ROW_FAVOURITES = 1
+    const val LIBRARY_ROW_RECENT = 2
+    const val LIBRARY_ROW_INSTALLED = 3
+    const val LIBRARY_ROW_COLLECTIONS = 4
+
     /** Search, Filters, Random, Controllers, Downloads, Power. */
     const val DASHBOARD_ACTIONS = 6
 
@@ -152,4 +165,29 @@ object CouchNavigation {
 
     private fun clamp(value: Int, count: Int): Int =
         if (count <= 0) 0 else value.coerceIn(0, count - 1)
+}
+
+/**
+ * The shelf a library row points at, or null when it has none.
+ *
+ * Favourites, Recently played and Collections are only built once something is
+ * in them, so those rows routinely point at a rail that does not exist — this
+ * returns null rather than a sentinel index so both callers have to say what
+ * they do about it. The panel dims the row; a press on it returns to the shelf.
+ *
+ * [CouchNavigation.LIBRARY_ROW_INSTALLED] is deliberately absent: apps are the
+ * app drawer, not a shelf, which is where they are everywhere else in the
+ * launcher.
+ */
+internal fun couchLibraryRailIndex(rails: List<CouchRail>, row: Int): Int? {
+    val id = when (row) {
+        CouchNavigation.LIBRARY_ROW_FAVOURITES -> "favourites"
+        CouchNavigation.LIBRARY_ROW_RECENT -> "continue"
+        CouchNavigation.LIBRARY_ROW_COLLECTIONS -> "collections"
+        CouchNavigation.LIBRARY_ROW_INSTALLED -> return null
+        // All games has no rail of its own; the whole library is the per-system
+        // rails, so it lands on the first of them.
+        else -> return rails.indexOfFirst { it.id.startsWith("platform:") }.takeIf { it >= 0 }
+    }
+    return rails.indexOfFirst { it.id == id }.takeIf { it >= 0 }
 }

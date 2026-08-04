@@ -46,6 +46,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,6 +67,8 @@ import com.thor.core.model.ShortcutAction
 import com.thor.core.model.PlatformFolders
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.feature.home.LauncherUiState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
@@ -166,6 +170,8 @@ internal fun CouchHome(
             CouchGamesShelf(
                 rail = shelfRail,
                 focusedItem = focus.item,
+                // Two rings lit at once is not a highlight, it is a question.
+                shelfActive = focus.zone == CouchZone.SHELF,
                 platforms = state.platformsById,
                 accent = accent,
                 onEntryFocused = { item -> onEntryFocused(focus.rail, item) },
@@ -228,7 +234,10 @@ private fun CouchSideRail(
     val colors = ThorTheme.colors
     val destinations = remember(rails) {
         listOf(
-            CouchRailShortcut(Icons.Rounded.Home, "Home", rails.indexOfFirst { it.id == "continue" }),
+            // The top of the shelf, whatever is there. Home pointed at the
+            // Continue rail, which is also what Recent points at — two icons,
+            // one destination, and both lit at once whenever it was selected.
+            CouchRailShortcut(Icons.Rounded.Home, "Home", if (rails.isEmpty()) -1 else 0),
             CouchRailShortcut(Icons.Rounded.SportsEsports, "Games", rails.indexOfFirst { it.id.startsWith("platform:") }),
             CouchRailShortcut(Icons.Rounded.FavoriteBorder, "Favourites", rails.indexOfFirst { it.id == "favourites" }),
             CouchRailShortcut(Icons.Rounded.History, "Recent", rails.indexOfFirst { it.id == "continue" }),
@@ -237,6 +246,18 @@ private fun CouchSideRail(
             CouchRailShortcut(Icons.Rounded.Download, "Downloads", DOWNLOADS_DESTINATION),
             CouchRailShortcut(Icons.Rounded.FolderOpen, "Collections", rails.indexOfFirst { it.id == "collections" }),
         )
+    }
+    /*
+     * One icon lit, even when two of them lead to the same rail.
+     *
+     * Home is rail 0 and Recent is the Continue rail, and on a device that has
+     * been played those are the same rail — as they are for Games and Home on
+     * one that has not. Marking the first match rather than every match means
+     * the rail list can keep offering the shortcuts that are useful without the
+     * highlight becoming ambiguous whenever two of them coincide.
+     */
+    val litDestination = remember(destinations, selectedRail) {
+        destinations.indexOfFirst { it.railIndex >= 0 && it.railIndex == selectedRail }
     }
 
     Column(
@@ -247,11 +268,10 @@ private fun CouchSideRail(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(SIDE_RAIL_GAP.dp),
     ) {
-        destinations.forEach { destination ->
+        destinations.forEachIndexed { position, destination ->
             val isDownloads = destination.railIndex == DOWNLOADS_DESTINATION
             val reachable = isDownloads || destination.railIndex >= 0
-            val selected = !isDownloads && reachable &&
-                destination.railIndex == selectedRail
+            val selected = position == litDestination
             Box(
                 modifier = Modifier
                     .size(SIDE_RAIL_ITEM.dp)
@@ -541,13 +561,16 @@ private fun CouchLibraryPanel(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
-    fun jumpTo(railId: String): (() -> Unit)? =
-        rails.indexOfFirst { it.id == railId }
-            .takeIf { it >= 0 }
-            ?.let { index -> { onRailSelected(index) } }
-
-    val firstPlatformRail = rails.indexOfFirst { it.id.startsWith("platform:") }
-        .takeIf { it >= 0 }
+    /*
+     * A row is only a control when its shelf exists.
+     *
+     * Favourites and Collections are built on demand, so before anything is in
+     * them these rows point at nothing. Sharing the lookup with the controller's
+     * Confirm — see [couchLibraryRailIndex] — is what keeps a tap and a press
+     * agreeing about which of them are live.
+     */
+    fun jumpTo(row: Int): (() -> Unit)? =
+        couchLibraryRailIndex(rails, row)?.let { index -> { onRailSelected(index) } }
 
     Column(modifier = modifier) {
         CouchSectionLabel("Your library")
@@ -561,24 +584,29 @@ private fun CouchLibraryPanel(
                 .border(1.dp, colors.outline.copy(alpha = 0.18f), RoundedCornerShape(14.dp)),
         ) {
             CouchLibraryRow(
-                Icons.Rounded.GridView, "All games", counts.allGames, focused = focusedRow == 0,
-                onClick = firstPlatformRail?.let { index -> { onRailSelected(index) } },
+                Icons.Rounded.GridView, "All games", counts.allGames,
+                focused = focusedRow == CouchNavigation.LIBRARY_ROW_ALL_GAMES,
+                onClick = jumpTo(CouchNavigation.LIBRARY_ROW_ALL_GAMES),
             )
             CouchLibraryRow(
-                Icons.Rounded.FavoriteBorder, "Favourites", counts.favourites, focused = focusedRow == 1,
-                onClick = jumpTo("favourites"),
+                Icons.Rounded.FavoriteBorder, "Favourites", counts.favourites,
+                focused = focusedRow == CouchNavigation.LIBRARY_ROW_FAVOURITES,
+                onClick = jumpTo(CouchNavigation.LIBRARY_ROW_FAVOURITES),
             )
             CouchLibraryRow(
-                Icons.Rounded.Schedule, "Recently played", counts.recentlyPlayed, focused = focusedRow == 2,
-                onClick = jumpTo("continue"),
+                Icons.Rounded.Schedule, "Recently played", counts.recentlyPlayed,
+                focused = focusedRow == CouchNavigation.LIBRARY_ROW_RECENT,
+                onClick = jumpTo(CouchNavigation.LIBRARY_ROW_RECENT),
             )
             CouchLibraryRow(
-                Icons.Rounded.Download, "Installed", counts.installed, focused = focusedRow == 3,
+                Icons.Rounded.Download, "Installed", counts.installed,
+                focused = focusedRow == CouchNavigation.LIBRARY_ROW_INSTALLED,
                 onClick = onOpenInstalled,
             )
             CouchLibraryRow(
-                Icons.Rounded.FolderOpen, "Collections", counts.collections, focused = focusedRow == 4,
-                onClick = jumpTo("collections"), last = true,
+                Icons.Rounded.FolderOpen, "Collections", counts.collections,
+                focused = focusedRow == CouchNavigation.LIBRARY_ROW_COLLECTIONS,
+                onClick = jumpTo(CouchNavigation.LIBRARY_ROW_COLLECTIONS), last = true,
             )
         }
     }
@@ -594,6 +622,10 @@ private fun CouchLibraryRow(
     last: Boolean = false,
 ) {
     val colors = ThorTheme.colors
+    // Dimmed when there is no shelf behind it, which is the same thing the
+    // trophy chip and the unreachable rail icons do with the same alpha.
+    val live = onClick != null
+    val alpha = if (live) 1f else PLACEHOLDER_ALPHA
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -607,13 +639,13 @@ private fun CouchLibraryRow(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = colors.onSurfaceVariant,
+            tint = colors.onSurfaceVariant.copy(alpha = alpha),
             modifier = Modifier.size(18.dp),
         )
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = colors.onSurface,
+            color = colors.onSurface.copy(alpha = alpha),
             modifier = Modifier.weight(1f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -621,13 +653,13 @@ private fun CouchLibraryRow(
         Text(
             text = count.toString(),
             style = MaterialTheme.typography.bodyMedium,
-            color = colors.onSurfaceVariant,
+            color = colors.onSurfaceVariant.copy(alpha = alpha),
             fontWeight = FontWeight.Bold,
         )
         Icon(
             imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
             contentDescription = null,
-            tint = colors.onSurfaceVariant.copy(alpha = 0.6f),
+            tint = colors.onSurfaceVariant.copy(alpha = 0.6f * alpha),
             modifier = Modifier.size(16.dp),
         )
     }
@@ -643,10 +675,20 @@ private fun CouchLibraryRow(
 
 // ---- Games shelf ------------------------------------------------------------
 
+/**
+ * The rail of cards.
+ *
+ * [shelfActive] is whether the controller is actually on it. The cursor stays
+ * put while the user is on a button — the spotlight is describing this card, so
+ * losing it would be worse — but it is drawn at rest rather than lit, because
+ * two full rings on a television is not a highlight, it is a question about
+ * which one the next press hits.
+ */
 @Composable
 private fun CouchGamesShelf(
     rail: CouchRail?,
     focusedItem: Int,
+    shelfActive: Boolean,
     platforms: Map<String, Platform>,
     accent: Color,
     onEntryFocused: (Int) -> Unit,
@@ -658,9 +700,22 @@ private fun CouchGamesShelf(
     val listState = rememberLazyListState()
 
     LaunchedEffect(rail?.id, focusedItem) {
-        if (rail != null && focusedItem in rail.entries.indices) {
-            listState.animateScrollToItem(focusedItem.coerceAtLeast(0))
-        }
+        if (rail == null || focusedItem !in rail.entries.indices) return@LaunchedEffect
+        /*
+         * Scroll only at an edge.
+         *
+         * This animated to the focused item on every change, which on a stick
+         * that repeats means re-laying out and re-animating the whole rail for
+         * each press — including the presses where the card was already fully on
+         * screen and nothing needed to move. The deck's own rail has done the
+         * visibility check since it was written; this one was missed.
+         */
+        val layout = listState.layoutInfo
+        val visible = layout.visibleItemsInfo.firstOrNull { it.index == focusedItem }
+        val fullyVisible = visible != null &&
+            visible.offset >= layout.viewportStartOffset &&
+            visible.offset + visible.size <= layout.viewportEndOffset
+        if (!fullyVisible) listState.animateScrollToItem(focusedItem)
     }
 
     Column(modifier = modifier) {
@@ -706,6 +761,7 @@ private fun CouchGamesShelf(
                     platform = entry.platform(platforms),
                     size = CARD_SIZE,
                     focused = index == focusedItem,
+                    resting = !shelfActive,
                     onFocus = { onEntryFocused(index) },
                     onSelected = { onEntrySelected(entry) },
                     onLongPressed = { onEntryLongPressed(entry) },
@@ -789,7 +845,19 @@ private fun CouchDashboardGroup(title: String, content: @Composable () -> Unit) 
 @Composable
 private fun CouchStorageMeter(modifier: Modifier = Modifier) {
     val colors = ThorTheme.colors
-    val storage = remember { readInternalStorage() }
+    /*
+     * Read off the main thread.
+     *
+     * `StatFs` is a `statvfs` syscall, and it was being made inside composition
+     * on the frame the dashboard first drew — on internal flash that returns
+     * fast, but the first frame of a launcher is the one frame that cannot
+     * afford to find out. Producing it instead lets the row lay out at zero and
+     * fill in, which is a meter arriving a frame late rather than a screen
+     * arriving late.
+     */
+    val storage by produceState(CouchStorage(0, 0, 0f)) {
+        value = withContext(Dispatchers.IO) { readInternalStorage() }
+    }
 
     Column(modifier = modifier) {
         CouchSectionLabel("Storage")

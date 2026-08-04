@@ -169,6 +169,70 @@ class CouchNavigationTest {
         assertThat(dashboard.item).isEqualTo(7)
     }
 
+    // ---- Which shelf a library row points at --------------------------------
+
+    private fun rails(vararg ids: String) = ids.map { CouchRail(it, it, emptyList()) }
+
+    @Test
+    fun `each library row lands on the shelf it is counting`() {
+        val deck = rails("continue", "favourites", "platform:snes", "collections")
+
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_RECENT)).isEqualTo(0)
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_FAVOURITES)).isEqualTo(1)
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_COLLECTIONS)).isEqualTo(3)
+    }
+
+    /** All games has no rail of its own; the library *is* the platform rails. */
+    @Test
+    fun `all games lands on the first system`() {
+        val deck = rails("continue", "favourites", "platform:snes", "platform:md")
+
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_ALL_GAMES))
+            .isEqualTo(2)
+    }
+
+    /**
+     * A row whose shelf has not been built yet reports nothing.
+     *
+     * Favourites and Collections only exist once something is in them, so this
+     * is the ordinary state of a fresh install rather than an edge case. Both
+     * callers have to handle it — the panel dims the row, a press leaves the
+     * panel — and neither can if this invents an index.
+     */
+    @Test
+    fun `a row with no shelf behind it reports none`() {
+        val deck = rails("platform:snes")
+
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_FAVOURITES)).isNull()
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_RECENT)).isNull()
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_COLLECTIONS)).isNull()
+        assertThat(couchLibraryRailIndex(emptyList(), CouchNavigation.LIBRARY_ROW_ALL_GAMES))
+            .isNull()
+    }
+
+    /** Apps are the app drawer, not a shelf — even when an Apps rail exists. */
+    @Test
+    fun `installed is not a shelf`() {
+        val deck = rails("continue", "apps", "platform:snes")
+
+        assertThat(couchLibraryRailIndex(deck, CouchNavigation.LIBRARY_ROW_INSTALLED)).isNull()
+    }
+
+    /** Every row the panel draws is accounted for, so none can press nothing. */
+    @Test
+    fun `the row indices cover the panel`() {
+        val rows = listOf(
+            CouchNavigation.LIBRARY_ROW_ALL_GAMES,
+            CouchNavigation.LIBRARY_ROW_FAVOURITES,
+            CouchNavigation.LIBRARY_ROW_RECENT,
+            CouchNavigation.LIBRARY_ROW_INSTALLED,
+            CouchNavigation.LIBRARY_ROW_COLLECTIONS,
+        )
+
+        assertThat(rows).containsExactlyElementsIn(0 until CouchNavigation.LIBRARY_ROWS)
+        assertThat(rows).hasSize(CouchNavigation.LIBRARY_ROWS)
+    }
+
     @Test
     fun `every zone reports how many positions it has`() {
         assertThat(CouchNavigation.actionCount(CouchZone.SPOTLIGHT))

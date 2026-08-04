@@ -30,6 +30,7 @@ import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AnimatedWallpaper
 import com.thor.core.model.ClockStyle
+import com.thor.core.model.CouchWallpaperStyle
 import com.thor.core.model.DockSettings
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
@@ -122,6 +123,8 @@ fun BottomScreen(
     couchClockStyle: ClockStyle = ClockStyle.DIGITAL_24,
     showCouchStatusBar: Boolean = true,
     couchUiScale: Float = 1f,
+    /** What couch mode draws behind its dashboard. */
+    couchWallpaper: CouchWallpaperStyle = CouchWallpaperStyle.RIDGES,
     onCouchEntryFocused: (rail: Int, item: Int) -> Unit = { _, _ -> },
     onCouchEntrySelected: (GridEntry) -> Unit = {},
     onCouchEntryLongPressed: (GridEntry) -> Unit = {},
@@ -248,6 +251,11 @@ fun BottomScreen(
                 clockStyle = couchClockStyle,
                 showStatusBar = showCouchStatusBar,
                 uiScale = couchUiScale,
+                wallpaper = couchWallpaper,
+                // Only read by the "Match launcher" style, which hands the whole
+                // background back to the launcher's own wallpaper and picture.
+                themeWallpaper = wallpaper,
+                wallpaperImageUri = wallpaperUri,
                 onTabSelected = onTabSelected,
                 onSettingsSelected = onCouchSettingsSelected,
                 onPlatformSelected = onCouchPlatformSelected,
