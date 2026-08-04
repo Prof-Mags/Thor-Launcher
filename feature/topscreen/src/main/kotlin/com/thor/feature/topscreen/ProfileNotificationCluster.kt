@@ -478,8 +478,15 @@ private fun NotificationRow(
     }
 }
 
-private const val CLUSTER_WIDTH = 340
-private const val SHADE_PADDING = 12
+/**
+ * Half what it was, header and shade together.
+ *
+ * The two are deliberately one number: the collapsed pill and the panel it
+ * opens are a single control, and a pill narrower than its own panel reads as a
+ * button sitting above an unrelated box.
+ */
+private const val CLUSTER_WIDTH = 170
+private const val SHADE_PADDING = 10
 private const val SHADE_MAX_HEIGHT = 290
 private const val SHADE_MS = 220
 private const val BADGE_SIZE = 15
