@@ -128,10 +128,9 @@ class SteamGridDbProvider @Inject constructor(
          * then have to be letterboxed in the cell — the thing that made the grid
          * look full of wide artwork in the first place.
          */
-            icon = firstImageUrl(
-                "$BASE_URL/grids/game/$gameId?dimensions=$SQUARE_GRID_DIMENSIONS",
-                apiKey,
-            ),
+            icon = squareImages(
+                images("$BASE_URL/grids/game/$gameId?dimensions=$SQUARE_GRID_DIMENSIONS", apiKey),
+            ).firstOrNull(),
         )
     }
 
@@ -139,12 +138,18 @@ class SteamGridDbProvider @Inject constructor(
         imageUrls(url, apiKey).firstOrNull()
 
     /** Every image an endpoint offers, in SteamGridDB's own order — best first. */
-    private suspend fun imageUrls(url: String, apiKey: String): List<String> = try {
+    private suspend fun imageUrls(url: String, apiKey: String): List<String> =
+        images(url, apiKey).mapNotNull(SgdbImage::url)
+
+    /**
+     * The images themselves, dimensions included.
+     *
+     * Returned whole rather than as urls because the square slot has to check
+     * the shape it was given; see [squareImages].
+     */
+    private suspend fun images(url: String, apiKey: String): List<SgdbImage> = try {
         get(url, apiKey)?.let { body ->
-            json.decodeFromString<SgdbResponse<List<SgdbImage>>>(body)
-                .data
-                ?.mapNotNull(SgdbImage::url)
-                .orEmpty()
+            json.decodeFromString<SgdbResponse<List<SgdbImage>>>(body).data.orEmpty()
         }.orEmpty()
     } catch (e: IOException) {
         ThorLog.d(TAG) { "Artwork request failed: $url" }
@@ -191,10 +196,13 @@ class SteamGridDbProvider @Inject constructor(
     )
 
     @Serializable
-    private data class SgdbImage(
-        val id: Int,
-        val url: String,
+    internal data class SgdbImage(
+        val id: Int = 0,
+        val url: String? = null,
         val thumb: String? = null,
+        /** Reported by the API, and checked rather than assumed. */
+        val width: Int? = null,
+        val height: Int? = null,
     )
 
     companion object {
@@ -220,3 +228,35 @@ class SteamGridDbProvider @Inject constructor(
         private const val SQUARE_GRID_DIMENSIONS = "1024x1024,512x512"
     }
 }
+
+/**
+ * Keeps only the images that are genuinely square.
+ *
+ * The request already asks for the 1:1 sizes, and this checks that it got them.
+ * That is not paranoia: the cell slot was filled straight from the first result
+ * of a *filtered* request, so anything that made the filter not apply — a
+ * parameter the API stopped honouring, a game with no 1:1 grid where the
+ * endpoint falls back to what it has — put a two-by-three cover in a square
+ * frame, which is exactly the tall artwork appearing in the grid.
+ *
+ * Verified against the response rather than the query, for the same reason the
+ * IGDB screenshots are: the query is a request and the response is a fact.
+ *
+ * A little tolerance, because a 1024 by 1023 upload is square in every sense
+ * that matters here. Nothing is returned when the game has no square art at all,
+ * and the cell then falls back to box art — which is the honest outcome, since
+ * no source of square game art exists beyond this one.
+ */
+internal fun squareImages(images: List<SteamGridDbProvider.SgdbImage>): List<String> = images
+    .filter { image ->
+        val width = image.width ?: return@filter false
+        val height = image.height ?: return@filter false
+        if (width <= 0 || height <= 0) return@filter false
+        val ratio = width.toFloat() / height
+        ratio in MIN_SQUARE_RATIO..MAX_SQUARE_RATIO
+    }
+    .mapNotNull(SteamGridDbProvider.SgdbImage::url)
+
+/** Within a couple of per cent of 1:1, which covers an off-by-one upload. */
+private const val MIN_SQUARE_RATIO = 0.97f
+private const val MAX_SQUARE_RATIO = 1.03f
