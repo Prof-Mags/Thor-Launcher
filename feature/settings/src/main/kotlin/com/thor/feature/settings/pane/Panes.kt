@@ -125,7 +125,7 @@ fun SettingsPageContent(
             SettingsPage.SCANNING ->
                 ScanningPage(settings, focusedRow, viewModel, gridClearResult)
             SettingsPage.ICON_PACKS -> IconPacksPage(
-                focusedRow, viewModel, iconPacks, iconPackStatus, importStatus,
+                settings, focusedRow, viewModel, iconPacks, iconPackStatus, importStatus,
             )
             SettingsPage.METADATA -> MetadataPage(
                 settings, focusedRow, viewModel, scrapeState, providerStatus,
@@ -192,11 +192,11 @@ fun rowCountFor(
     SettingsPage.PLATFORMS -> platformCount + 1 + if (platformCount > 0) 1 else 0
     SettingsPage.ROM_FOLDERS -> extraRomFolderCount + 1
     SettingsPage.SCANNING -> 8
-    // Two import rows, then one row per installed pack.
-    // Two pack imports, the artwork import, then one row per installed pack.
+    // The bundled switch, two pack imports and the artwork import, then one row
+    // per installed pack.
     SettingsPage.ICON_PACKS -> IMPORT_ROWS + iconPackCount
     // Scrape, only-missing, trailers, check, one per provider, then four credentials.
-    // Four credential rows plus IGDB.s pair.
+    // Four credential rows plus IGDB's pair.
     SettingsPage.METADATA -> PROVIDER_FIRST_ROW + PROVIDERS.size + 6
     SettingsPage.SORTING -> 2
     // Two keys and the debrid status line, then one row per indexer, then the
@@ -285,7 +285,7 @@ private fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
 }
 
 /**
- * Import, list and remove platform icon packs.
+ * Switch the bundled artwork on, then import, list and remove packs.
  *
  * Two ways in because packs arrive both ways: extracted into a folder, or still
  * as the archive they were downloaded as. Neither is more correct than the other
@@ -293,16 +293,34 @@ private fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
  */
 @Composable
 private fun IconPacksPage(
+    settings: ThorSettings,
     focusedRow: Int,
     viewModel: SettingsViewModel,
     packs: List<IconPack>,
     status: IconPackStatus,
     importStatus: String?,
 ) {
+    /*
+     * First, because it is the artwork most people will be looking at.
+     *
+     * Loki ships console renders for every system it models, and until this
+     * switch existed there was no way to see anything else on a platform folder
+     * short of installing a pack over the top of them.
+     */
+    SwitchRow(
+        title = "Bundled console icons",
+        subtitle = "Loki's own artwork on platform folders",
+        checked = settings.personalization.bundledPlatformIcons,
+        focused = focusedRow == 0,
+        onCheckedChange = { on ->
+            viewModel.updatePersonalization { it.copy(bundledPlatformIcons = on) }
+        },
+    )
+    RowDivider()
     DirectoryPickerRow(
         title = "Import from folder",
         subtitle = "Pick an extracted pack folder",
-        focused = focusedRow == 0,
+        focused = focusedRow == 1,
         onPicked = { uri, _ -> viewModel.installIconPackFromFolder(uri) },
     )
     RowDivider()
@@ -384,8 +402,10 @@ private val ZIP_MIME_TYPES = arrayOf(
     "application/octet-stream",
 )
 
-/** Rows above the list of installed packs. */
-/** Two pack imports and the game-artwork import above the installed list. */
+/**
+ * Rows above the list of installed packs: the bundled switch, the two pack
+ * imports and the game-artwork import.
+ */
 private const val IMPORT_ROWS = 4
 
 /**

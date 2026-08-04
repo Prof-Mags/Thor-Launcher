@@ -138,6 +138,20 @@ data class PersonalizationSettings(
     val showStatusBar: Boolean = true,
     val showPageIndicators: Boolean = true,
     val folderStyle: FolderStyle = FolderStyle.STACK,
+    /**
+     * Whether the console artwork Loki ships with dresses platform folders.
+     *
+     * On by default: it is the launcher's own set, and a grid whose systems are
+     * lettered plates until the user finds a switch has simply shipped its
+     * artwork turned off.
+     *
+     * A preference rather than content, and so it lives here beside
+     * [folderStyle]: the artwork is resolved when a cell is drawn and stored
+     * nowhere, which is what lets an installed pack or a hand-picked image win
+     * without anything having to be undone. Turning this off reveals whatever
+     * else the platform has, not a blank cell.
+     */
+    val bundledPlatformIcons: Boolean = true,
 )
 
 /**

@@ -45,6 +45,16 @@ data class ThorThemeState(
     val materials: ThorMaterials,
     val cursor: ThorCursorSpec,
     val shapes: ThorShapes,
+    /**
+     * Whether the platform artwork Loki ships with is drawn.
+     *
+     * Carried on the theme rather than passed down because the two places that
+     * ask are a grid cell and a couch card, each six or more layers below the
+     * screen that holds the settings. Threading one boolean through every one of
+     * those — and through the app drawer, which reuses the same cell — would put
+     * a parameter nothing in between has any use for into all of them.
+     */
+    val bundledPlatformIcons: Boolean,
 )
 
 /**
@@ -385,6 +395,7 @@ fun ThorTheme(
         materials = materials,
         cursor = cursorSpec,
         shapes = shapes,
+        bundledPlatformIcons = personalization.bundledPlatformIcons,
     )
 
     CompositionLocalProvider(LocalThorTheme provides state) {
@@ -419,4 +430,7 @@ object ThorTheme {
 
     val shapes: ThorShapes
         @Composable get() = LocalThorTheme.current.shapes
+
+    val bundledPlatformIcons: Boolean
+        @Composable get() = LocalThorTheme.current.bundledPlatformIcons
 }

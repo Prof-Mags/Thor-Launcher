@@ -1,6 +1,7 @@
 package com.thor.core.ui.icon
 
 import com.google.common.truth.Truth.assertThat
+import com.thor.core.model.BuiltInPlatforms
 import com.thor.core.model.PlatformArtwork
 import org.junit.Test
 
@@ -45,12 +46,45 @@ class PlatformIconsTest {
         assertThat(PlatformIcons.preferredOver(null, "snes")).isNotNull()
     }
 
+    /**
+     * Coverage, stated rather than counted.
+     *
+     * Written as the exact set of *misses* so both directions are caught: a
+     * system quietly losing its icon fails, and so does one gaining an icon
+     * without this list being updated to say so.
+     *
+     * PC and Android are not consoles and have nothing to draw — one is whatever
+     * the user points Loki at, the other is the device it runs on.
+     */
+    @Test
+    fun `every console is covered and the two non-consoles are not`() {
+        val uncovered = BuiltInPlatforms.ALL
+            .map { it.id }
+            .filter { PlatformIcons.forPlatform(it) == null }
+
+        assertThat(uncovered).containsExactly("pc", "android")
+    }
+
     @Test
     fun `a system this set does not cover falls through`() {
-        // Amiga, MSX, ZX Spectrum, ColecoVision, Intellivision and SG-1000 have
-        // no artwork here, and a missing entry is not an error.
-        assertThat(PlatformIcons.preferredOver(PlatformArtwork.NONE, "amiga")).isNull()
-        assertThat(PlatformIcons.forPlatform("msx")).isNull()
+        // A missing entry is not an error; it is a platform with nothing to draw.
+        assertThat(PlatformIcons.preferredOver(PlatformArtwork.NONE, "pc")).isNull()
+        assertThat(PlatformIcons.forPlatform("android")).isNull()
+    }
+
+    /**
+     * The six added after the first pass, which had no artwork at all.
+     *
+     * Named individually because they are the ones whose source files exist
+     * under a different name than the platform id, and a rename is the failure
+     * this whole map is written to survive.
+     */
+    @Test
+    fun `the home computers and early consoles resolve`() {
+        listOf("amiga", "msx", "zxspectrum", "colecovision", "intellivision", "sg1000")
+            .forEach { id ->
+                assertThat(PlatformIcons.forPlatform(id)).isNotNull()
+            }
     }
 
     @Test

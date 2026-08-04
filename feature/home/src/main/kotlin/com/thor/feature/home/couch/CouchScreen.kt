@@ -1681,7 +1681,7 @@ private fun CouchCard(
 private fun FolderCard(folder: FolderEntry, platform: Platform?) {
     val colors = ThorTheme.colors
     val art = folder.artworkUri ?: platform?.artwork?.heroUri
-    val bundled = PlatformIcons.preferredOver(platform?.artwork, platform?.id)
+    val bundled = PlatformIcons.preferredOverEnabled(platform?.artwork, platform?.id)
     if (bundled != null) {
         // Fitted rather than cropped, unlike scraped artwork: these are console
         // renders on transparency, and cropping one to fill a card cuts the

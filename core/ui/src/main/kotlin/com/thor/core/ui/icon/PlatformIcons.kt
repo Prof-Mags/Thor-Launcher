@@ -1,6 +1,8 @@
 package com.thor.core.ui.icon
 
 import androidx.annotation.DrawableRes
+import androidx.compose.runtime.Composable
+import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.PlatformArtwork
 import com.thor.core.ui.R
 
@@ -15,9 +17,11 @@ import com.thor.core.ui.R
  * having to be undone first, and nothing is duplicated into every profile's
  * database.
  *
- * Six systems have no artwork here — SG-1000, Amiga, ZX Spectrum, MSX,
- * ColecoVision and Intellivision — and fall back to the drawn glyph as before.
- * A missing entry is not an error; it is a platform this set does not cover.
+ * Every console Loki models is covered. The two that are not — PC and Android —
+ * are not consoles and have nothing to draw: one is whatever the user points the
+ * launcher at, the other is the device it runs on. Both fall back to the drawn
+ * glyph. A missing entry is not an error; it is a platform this set does not
+ * cover.
  */
 object PlatformIcons {
 
@@ -46,6 +50,21 @@ object PlatformIcons {
     }
 
     /**
+     * [preferredOver], with the user's switch applied first.
+     *
+     * Both rules in one place so a call site cannot honour one and forget the
+     * other — which would show the artwork on the grid and not in couch mode, or
+     * leave the setting doing nothing on whichever surface was added next.
+     *
+     * Off is not "draw nothing": the branch below this one falls through to
+     * whatever artwork the platform already has, and then to its short name.
+     */
+    @Composable
+    @DrawableRes
+    fun preferredOverEnabled(artwork: PlatformArtwork?, platformId: String?): Int? =
+        if (ThorTheme.bundledPlatformIcons) preferredOver(artwork, platformId) else null
+
+    /**
      * Keyed by platform id rather than by the artwork's own filename.
      *
      * The two disagree more often than they agree — the artist names a file
@@ -57,11 +76,13 @@ object PlatformIcons {
     private val ICONS: Map<String, Int> = mapOf(
         "3do" to R.drawable.platform_3do,
         "3ds" to R.drawable.platform_3ds,
+        "amiga" to R.drawable.platform_amiga,
         "amstradcpc" to R.drawable.platform_amstradcpc,
         "arcade" to R.drawable.platform_arcade,
         "atari2600" to R.drawable.platform_atari2600,
         "atari7800" to R.drawable.platform_atari7800,
         "c64" to R.drawable.platform_c64,
+        "colecovision" to R.drawable.platform_colecovision,
         "dos" to R.drawable.platform_dos,
         "dreamcast" to R.drawable.platform_dreamcast,
         "gamecube" to R.drawable.platform_gamecube,
@@ -70,9 +91,11 @@ object PlatformIcons {
         "gba" to R.drawable.platform_gba,
         "gbc" to R.drawable.platform_gbc,
         "genesis" to R.drawable.platform_genesis,
+        "intellivision" to R.drawable.platform_intellivision,
         "jaguar" to R.drawable.platform_jaguar,
         "lynx" to R.drawable.platform_lynx,
         "mastersystem" to R.drawable.platform_mastersystem,
+        "msx" to R.drawable.platform_msx,
         "n64" to R.drawable.platform_n64,
         "nds" to R.drawable.platform_nds,
         "neogeo" to R.drawable.platform_neogeo,
@@ -89,6 +112,7 @@ object PlatformIcons {
         "scummvm" to R.drawable.platform_scummvm,
         "sega32x" to R.drawable.platform_sega32x,
         "segacd" to R.drawable.platform_segacd,
+        "sg1000" to R.drawable.platform_sg1000,
         "snes" to R.drawable.platform_snes,
         "switch" to R.drawable.platform_switch,
         "virtualboy" to R.drawable.platform_virtualboy,
@@ -96,5 +120,6 @@ object PlatformIcons {
         "wiiu" to R.drawable.platform_wiiu,
         "wonderswan" to R.drawable.platform_wonderswan,
         "xbox" to R.drawable.platform_xbox,
+        "zxspectrum" to R.drawable.platform_zxspectrum,
     )
 }

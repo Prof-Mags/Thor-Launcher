@@ -352,7 +352,7 @@ private fun FolderShell(
             .background(accent.copy(alpha = 0.28f), shape),
         contentAlignment = Alignment.Center,
     ) {
-        val bundled = PlatformIcons.preferredOver(platform?.artwork, platform?.id)
+        val bundled = PlatformIcons.preferredOverEnabled(platform?.artwork, platform?.id)
         when {
             /*
              * The shipped artwork outranks whatever a scraper found, but not a
