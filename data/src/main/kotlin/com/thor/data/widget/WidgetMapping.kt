@@ -2,6 +2,7 @@ package com.thor.data.widget
 
 import com.thor.core.database.model.WidgetEntity
 import com.thor.core.model.CellSpan
+import com.thor.core.model.LauncherWidget
 import com.thor.core.model.WidgetEntry
 
 /**
@@ -20,6 +21,11 @@ fun WidgetEntity.toDomain(): WidgetEntry = WidgetEntry(
     sortTitle = label.lowercase(),
     appWidgetId = appWidgetId,
     providerComponent = provider,
+    // Null for a hosted app widget, which is what `kind` distinguishes. A row
+    // marked built-in whose name no longer parses — a widget removed from a
+    // later build — resolves to null and is then drawn as unavailable, which is
+    // the same treatment an uninstalled provider gets.
+    builtIn = if (kind == WidgetEntity.KIND_BUILT_IN) LauncherWidget.from(provider) else null,
     spanColumns = spanColumns,
     spanRows = spanRows,
 )

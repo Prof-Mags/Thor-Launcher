@@ -37,4 +37,14 @@ interface WidgetDao {
      */
     @Query("SELECT app_widget_id FROM widgets")
     suspend fun allIds(): List<Int>
+
+    /**
+     * The smallest id in the table, which is how a built-in gets its key.
+     *
+     * The launcher's own widgets are not allocated by the platform and so have
+     * no id of their own; they take one from below zero, where the platform's
+     * allocator never goes. Null when the table is empty.
+     */
+    @Query("SELECT MIN(app_widget_id) FROM widgets")
+    suspend fun lowestId(): Int?
 }

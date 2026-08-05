@@ -29,11 +29,32 @@ import androidx.room.PrimaryKey
 data class WidgetEntity(
     @PrimaryKey
     @ColumnInfo(name = "app_widget_id") val appWidgetId: Int,
-    /** Flattened `ComponentName`, so the provider can be named after a restart. */
+    /**
+     * The flattened `ComponentName` of an app widget's provider, or the name of a
+     * [com.thor.core.model.LauncherWidget] for one the launcher draws itself.
+     *
+     * One column for both because it is the same fact — which widget this is —
+     * and [kind] already says how to read it. A second nullable column would
+     * have made "both set" and "neither set" expressible, and neither is.
+     */
     @ColumnInfo(name = "provider") val provider: String,
     /** The provider's own label at the time it was placed. */
     @ColumnInfo(name = "label") val label: String,
     @ColumnInfo(name = "span_columns") val spanColumns: Int,
     @ColumnInfo(name = "span_rows") val spanRows: Int,
     @ColumnInfo(name = "added_at") val addedAtEpochMs: Long,
-)
+    /**
+     * `app` for a hosted Android widget, `builtin` for one of the launcher's own.
+     *
+     * Defaulted rather than inferred from the id's sign, which is what an earlier
+     * draft did: negative ids happen to be safe today because the platform hands
+     * out positive ones, but that is a property of an implementation nobody
+     * promised, and a row whose meaning depends on it cannot be read by eye.
+     */
+    @ColumnInfo(name = "kind", defaultValue = KIND_APP) val kind: String = KIND_APP,
+) {
+    companion object {
+        const val KIND_APP = "app"
+        const val KIND_BUILT_IN = "builtin"
+    }
+}

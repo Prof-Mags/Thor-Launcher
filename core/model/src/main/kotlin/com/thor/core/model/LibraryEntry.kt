@@ -52,6 +52,16 @@ data class WidgetEntry(
     val appWidgetId: Int,
     /** Flattened `ComponentName` of the provider, for rebinding after a restart. */
     val providerComponent: String,
+    /**
+     * Set when the launcher draws this itself; see [LauncherWidget].
+     *
+     * Null means an Android app widget, which is hosted rather than drawn and
+     * whose [appWidgetId] is a real allocation from the platform. A built-in has
+     * nothing to allocate — its id exists only to give the row a key — which is
+     * the one difference every caller has to respect, because releasing an id
+     * that was never allocated is a no-op at best.
+     */
+    val builtIn: LauncherWidget? = null,
     /** How many grid cells wide and tall, at the spec the widget was placed under. */
     val spanColumns: Int = 1,
     val spanRows: Int = 1,
@@ -61,6 +71,9 @@ data class WidgetEntry(
 
     /** Cells occupied, which is what the grid has to reserve. */
     val cellCount: Int get() = spanColumns * spanRows
+
+    /** True when the widget host is not involved at any point in its life. */
+    val isBuiltIn: Boolean get() = builtIn != null
 
     companion object {
         /** Ids are prefixed so a widget is recognisable without a lookup. */

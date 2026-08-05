@@ -46,7 +46,6 @@ import com.thor.core.ui.component.AnimatedWallpaperBackground
 import com.thor.core.ui.component.ModeChangeVeil
 import com.thor.core.ui.profile.ShellStatus
 import com.thor.core.ui.profile.ShellStatusActions
-import com.thor.data.widget.WidgetOption
 import com.thor.feature.home.couch.CouchDashboardActions
 import com.thor.feature.home.couch.CouchDetailScroll
 import com.thor.feature.home.couch.CouchFocus
@@ -59,6 +58,7 @@ import com.thor.feature.home.couch.platform
 import com.thor.feature.home.dialog.FolderPickerDialog
 import com.thor.feature.home.dialog.FolderPickerState
 import com.thor.feature.home.dialog.SortDialog
+import com.thor.feature.home.dialog.WidgetChoice
 import com.thor.feature.home.dialog.WidgetPickerDialog
 import com.thor.feature.home.dialog.WidgetPickerState
 import com.thor.feature.home.grid.LauncherGrid
@@ -119,11 +119,13 @@ fun BottomScreen(
     onCellAction: (CellAction) -> Unit = {},
     onCellMenuDismissed: () -> Unit = {},
     widgetPicker: WidgetPickerState = WidgetPickerState(),
-    onWidgetPicked: (WidgetOption) -> Unit = {},
+    onWidgetPicked: (WidgetChoice) -> Unit = {},
     onWidgetPickerDismissed: () -> Unit = {},
     /** Inflates a placed widget; see [com.thor.feature.home.grid.WidgetLayer]. */
     createWidgetView: (Context, Int) -> View? = { _, _ -> null },
     onWidgetMeasured: (appWidgetId: Int, widthDp: Int, heightDp: Int) -> Unit = { _, _, _ -> },
+    /** Starts a game pressed inside one of the launcher's own widgets. */
+    onWidgetLaunch: (GridEntry) -> Unit = {},
     /** One cell wider, narrower, taller or shorter; see [WidgetResizeControls]. */
     onWidgetResizeStep: (columns: Int, rows: Int) -> Unit = { _, _ -> },
     onWidgetResizeDone: () -> Unit = {},
@@ -335,6 +337,7 @@ fun BottomScreen(
                     onPinch = onPinch,
                     createWidgetView = createWidgetView,
                     onWidgetMeasured = onWidgetMeasured,
+                    onWidgetLaunch = onWidgetLaunch,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),

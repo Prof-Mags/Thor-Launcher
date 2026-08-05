@@ -70,7 +70,7 @@ abstract class ThorDatabase : RoomDatabase() {
     abstract fun widgetDao(): WidgetDao
 
     companion object {
-        const val VERSION = 5
+        const val VERSION = 6
         const val NAME = "thor-library.db"
     }
 }

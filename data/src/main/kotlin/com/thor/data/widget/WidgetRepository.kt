@@ -14,6 +14,7 @@ import com.thor.core.common.log.ThorLog
 import com.thor.core.database.dao.WidgetDao
 import com.thor.core.database.model.WidgetEntity
 import com.thor.core.model.CellSpan
+import com.thor.core.model.LauncherWidget
 import com.thor.core.model.WidgetEntry
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -204,6 +205,38 @@ class WidgetRepository @Inject constructor(
         WidgetEntry.idFor(appWidgetId)
     }
 
+    /**
+     * Stores one of the launcher's own widgets.
+     *
+     * None of [beginPlacement]'s ceremony applies: there is no provider to bind,
+     * no consent to ask for and no setup screen to run, because nothing outside
+     * this process is involved. It still needs a row, and that row still needs a
+     * key — so it gets an id from below zero, where the platform's allocator
+     * never goes, and [WidgetEntity.kind] records which sort it is rather than
+     * leaving the sign of the id to say so.
+     *
+     * @return the grid entry id, so the caller can give it a cell.
+     */
+    suspend fun placeBuiltIn(
+        widget: LauncherWidget,
+        span: CellSpan,
+        nowEpochMs: Long,
+    ): String = withContext(defaultDispatcher) {
+        val appWidgetId = (widgetDao.lowestId() ?: 0).coerceAtMost(0) - 1
+        widgetDao.upsert(
+            WidgetEntity(
+                appWidgetId = appWidgetId,
+                provider = widget.name,
+                label = widget.title,
+                spanColumns = span.columns.coerceAtLeast(1),
+                spanRows = span.rows.coerceAtLeast(1),
+                addedAtEpochMs = nowEpochMs,
+                kind = WidgetEntity.KIND_BUILT_IN,
+            ),
+        )
+        WidgetEntry.idFor(appWidgetId)
+    }
+
     suspend fun resize(appWidgetId: Int, span: CellSpan) = withContext(defaultDispatcher) {
         widgetDao.resize(
             id = appWidgetId,
@@ -221,7 +254,10 @@ class WidgetRepository @Inject constructor(
      */
     suspend fun remove(appWidgetId: Int) = withContext(defaultDispatcher) {
         widgetDao.delete(appWidgetId)
-        host.release(appWidgetId)
+        // Only a real allocation is handed back. A built-in's id came from this
+        // class, not from the platform, and asking the host to release one it
+        // never issued is at best a no-op and at worst a log line per removal.
+        if (appWidgetId >= 0) host.release(appWidgetId)
     }
 
     /** Hands back an id the user allocated and then abandoned. */
@@ -235,7 +271,10 @@ class WidgetRepository @Inject constructor(
      * they accumulate for the life of the install without ever being visible.
      */
     suspend fun reconcile() = withContext(defaultDispatcher) {
-        val known = widgetDao.allIds()
+        // Built-in ids were never allocated, so they are not the host's to be
+        // told about — and the host would report every one of them as an
+        // orphan, which is a set this method deletes.
+        val known = widgetDao.allIds().filter { it >= 0 }
         val orphans = host.orphans(known)
         if (orphans.isEmpty()) return@withContext
         ThorLog.i(TAG, "Releasing ${orphans.size} abandoned widget id(s)")

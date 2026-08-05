@@ -179,6 +179,19 @@ object ThorMigrations {
         }
     }
 
+    /**
+     * Widgets learn whether the launcher draws them.
+     *
+     * One column, added in place with a default, because every row that exists
+     * when this runs is an Android app widget — there was no other kind until
+     * now, so the default is not a guess but a statement of fact about the data.
+     */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `widgets` ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'app'")
+        }
+    }
+
     val ALL: Array<Migration> =
-        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 }

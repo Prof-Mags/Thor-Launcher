@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.model.GridEntry
 import com.thor.core.model.WidgetEntry
 
 /**
@@ -95,6 +96,9 @@ fun WidgetLayer(
     heldId: String?,
     createView: (Context, Int) -> View?,
     onMeasured: (appWidgetId: Int, widthDp: Int, heightDp: Int) -> Unit,
+    /** What the launcher's own widgets draw from; see [LauncherWidgetCard]. */
+    widgetData: LauncherWidgetData,
+    onLaunch: (GridEntry) -> Unit,
     /** Both report the widget's *anchor* cell, so the grid's own handlers fit. */
     onTapped: (row: Int, column: Int) -> Unit,
     onLongPressed: (row: Int, column: Int) -> Unit,
@@ -119,6 +123,8 @@ fun WidgetLayer(
                 editing = editing,
                 createView = createView,
                 onMeasured = onMeasured,
+                widgetData = widgetData,
+                onLaunch = onLaunch,
                 onTapped = { onTapped(placed.row, placed.column) },
                 onLongPressed = { onLongPressed(placed.row, placed.column) },
                 modifier = Modifier
@@ -158,6 +164,8 @@ private fun WidgetFrame(
     editing: Boolean,
     createView: (Context, Int) -> View?,
     onMeasured: (appWidgetId: Int, widthDp: Int, heightDp: Int) -> Unit,
+    widgetData: LauncherWidgetData,
+    onLaunch: (GridEntry) -> Unit,
     onTapped: () -> Unit,
     onLongPressed: () -> Unit,
     modifier: Modifier = Modifier,
@@ -176,7 +184,12 @@ private fun WidgetFrame(
      * neighbouring pages too, and a widget rebuilt on every page settle is a
      * visible stutter on the panel.
      */
-    val hostView = remember(entry.appWidgetId) { createView(context, entry.appWidgetId) }
+    val hostView = remember(entry.appWidgetId, entry.builtIn) {
+        // Nothing to inflate for one of the launcher's own — it is Compose, not
+        // a `RemoteViews` from another process — and asking the host for a view
+        // on an id it never allocated would log a failure per composition.
+        if (entry.isBuiltIn) null else createView(context, entry.appWidgetId)
+    }
 
     Box(
         modifier = modifier
@@ -184,14 +197,27 @@ private fun WidgetFrame(
             .clip(shape)
             .background(colors.surfaceElevated, shape)
             .onSizeChanged { size ->
-                if (size.width == 0 || size.height == 0) return@onSizeChanged
+                // Only a provider needs telling; the launcher's own widgets are
+                // measured by the same layout pass that sizes this box.
+                if (entry.isBuiltIn || size.width == 0 || size.height == 0) return@onSizeChanged
                 with(density) {
-                    onMeasured(entry.appWidgetId, size.width.toDp().value.toInt(), size.height.toDp().value.toInt())
+                    onMeasured(
+                        entry.appWidgetId,
+                        size.width.toDp().value.toInt(),
+                        size.height.toDp().value.toInt(),
+                    )
                 }
             },
         contentAlignment = Alignment.Center,
     ) {
-        if (hostView == null) {
+        val builtIn = entry.builtIn
+        if (builtIn != null) {
+            LauncherWidgetCard(
+                widget = builtIn,
+                data = widgetData,
+                onLaunch = onLaunch,
+            )
+        } else if (hostView == null) {
             UnavailableWidget(entry)
         } else {
             AndroidView(

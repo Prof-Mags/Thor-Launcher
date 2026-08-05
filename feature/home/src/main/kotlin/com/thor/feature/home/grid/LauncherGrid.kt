@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
+import com.thor.core.model.GridEntry
 import com.thor.core.model.PlatformFolders
 import com.thor.core.model.WidgetEntry
 import com.thor.feature.home.couch.platform
@@ -31,6 +32,8 @@ fun LauncherGrid(
     createWidgetView: (Context, Int) -> View? = { _, _ -> null },
     /** Tells a provider the size of the box it was given, in dp. */
     onWidgetMeasured: (appWidgetId: Int, widthDp: Int, heightDp: Int) -> Unit = { _, _, _ -> },
+    /** Starts a game pressed inside one of the launcher's own widgets. */
+    onWidgetLaunch: (GridEntry) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val heldId = (state.editMode as? EditMode.Holding)?.entryId
@@ -43,7 +46,7 @@ fun LauncherGrid(
      * rather than repeatedly scanning the entire library.
      */
     val homeEntries = remember(state.placements, state.entriesById, state.spec.columns) {
-        val pages = mutableMapOf<Int, MutableMap<Int, com.thor.core.model.GridEntry>>()
+        val pages = mutableMapOf<Int, MutableMap<Int, GridEntry>>()
         state.placements.forEach { placement ->
             state.entriesById[placement.entryId]?.let { entry ->
                 // A widget is not a cell. It is drawn over the matrix by
@@ -72,6 +75,35 @@ fun LauncherGrid(
                 }
             }
             .groupBy({ it.first }, { it.second })
+    }
+
+    /*
+     * What the launcher's own widgets draw from.
+     *
+     * Resolved once per library change, and only when one of them is actually
+     * placed: four of the five are different questions asked of the same list of
+     * games, and on a library of a few thousand that is a sort nobody should pay
+     * for on a grid with no widgets on it.
+     */
+    val widgetData = remember(state.entriesById, state.platformsById, widgetsByPage) {
+        if (widgetsByPage.values.none { page -> page.any { it.entry.isBuiltIn } }) {
+            LauncherWidgetData()
+        } else {
+            val games = state.entriesById.values.filterIsInstance<GameEntry>()
+            LauncherWidgetData(
+                recent = games
+                    .filter { it.stats.hasBeenPlayed }
+                    .sortedByDescending { it.stats.lastPlayedEpochMs ?: 0L }
+                    .take(WIDGET_GAME_LIMIT),
+                favourites = games
+                    .filter(GameEntry::isFavorite)
+                    .sortedBy(GameEntry::sortTitle)
+                    .take(WIDGET_GAME_LIMIT),
+                gameCount = games.size,
+                totalPlayMillis = games.sumOf { it.stats.totalPlayMillis },
+                platformsById = state.platformsById,
+            )
+        }
     }
 
     // Folder preview artwork is also layout data; resolve it once per library
@@ -189,6 +221,8 @@ fun LauncherGrid(
                         heldId = heldId,
                         createView = createWidgetView,
                         onMeasured = onWidgetMeasured,
+                        widgetData = widgetData,
+                        onLaunch = onWidgetLaunch,
                         onTapped = onCellTapped,
                         onLongPressed = onCellLongPressed,
                     )
@@ -201,3 +235,12 @@ fun LauncherGrid(
 
 /** How many children a folder's 2×2 preview can show. */
 private const val FOLDER_PREVIEW_COUNT = 4
+
+/**
+ * The longest list any of the launcher's own widgets can show.
+ *
+ * A ceiling on the work rather than on the layout — how many actually fit is
+ * measured from the widget's own box, and this only stops a library of thousands
+ * being sorted in full for a strip that shows five.
+ */
+private const val WIDGET_GAME_LIMIT = 8

@@ -87,6 +87,33 @@ class ThorMigrationsTest {
         assertThat(tables(v4) - tables(v5)).isEmpty()
     }
 
+    /**
+     * 5 → 6 adds a column in place, so the check is the one version 3 gets: that
+     * the column it adds is the one the entity gained, spelled the same way, and
+     * carrying the default that makes every existing row still mean what it did.
+     */
+    @Test
+    fun `version 6 adds exactly the widget kind column`() {
+        val v5 = normalise(exportedDdl(version = 5, table = "widgets"))
+        val v6 = normalise(exportedDdl(version = 6, table = "widgets"))
+
+        assertThat(columnNames(v6) - columnNames(v5)).containsExactly("kind")
+        // Every widget that existed before this column did is an app widget;
+        // without the default an upgraded install has rows Room cannot read.
+        assertThat(v6).contains("`kind` TEXT NOT NULL DEFAULT 'app'")
+    }
+
+    @Test
+    fun `the widget kind arrives without adding a table`() {
+        val v5 = File(SCHEMA_DIR, "5.json").readText()
+        val v6 = File(SCHEMA_DIR, "6.json").readText()
+
+        val tables = { json: String ->
+            Regex("\"tableName\": \"(\\w+)\"").findAll(json).map { it.groupValues[1] }.toSet()
+        }
+        assertThat(tables(v6)).isEqualTo(tables(v5))
+    }
+
     @Test
     fun `migrations declare the expected version ranges`() {
         assertThat(ThorMigrations.MIGRATION_1_2.startVersion).isEqualTo(1)

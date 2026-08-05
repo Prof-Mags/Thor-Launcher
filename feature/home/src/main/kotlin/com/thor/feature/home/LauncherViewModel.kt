@@ -20,6 +20,7 @@ import com.thor.core.model.GridEntry
 import com.thor.core.model.CellSpan
 import com.thor.core.model.GridFootprint
 import com.thor.core.model.GridSpec
+import com.thor.core.model.LauncherWidget
 import com.thor.core.model.WidgetEntry
 import com.thor.core.model.KeyboardKey
 import com.thor.core.model.KeyboardLayer
@@ -61,6 +62,7 @@ import com.thor.feature.home.couch.platform
 import com.thor.feature.home.dialog.EmulatorOption
 import com.thor.feature.home.dialog.EntryEdits
 import com.thor.feature.home.dialog.FolderPickerState
+import com.thor.feature.home.dialog.WidgetChoice
 import com.thor.feature.home.dialog.WidgetPickerState
 import com.thor.feature.home.menu.CELL_ACTIONS
 import com.thor.feature.home.menu.CellAction
@@ -3554,14 +3556,16 @@ class LauncherViewModel @Inject constructor(
     // ------------------------------------------------------ the widget picker
 
     fun openWidgetPicker() {
-        _widgetPicker.value = WidgetPickerState(visible = true, options = null)
+        // The launcher's own are known without asking anything, so the picker
+        // opens with them already listed rather than on a spinner.
+        _widgetPicker.value = WidgetPickerState(visible = true, appOptions = null)
         viewModelScope.launchSafely(TAG) {
             val options = widgetRepository.options()
             // Only if the picker is still the thing on screen: listing providers
             // is package-manager work across a binder, and the user is free to
             // dismiss it while that runs.
             if (_widgetPicker.value.visible) {
-                _widgetPicker.update { it.copy(options = options, focusedIndex = 0) }
+                _widgetPicker.update { it.copy(appOptions = options) }
             }
         }
     }
@@ -3583,7 +3587,36 @@ class LauncherViewModel @Inject constructor(
      * silently then configure, ask to bind and then configure, or place directly.
      * See [PendingWidget] for why the middle of that is the dangerous part.
      */
-    fun chooseWidget(option: WidgetOption) {
+    fun chooseWidget(choice: WidgetChoice) {
+        when (choice) {
+            is WidgetChoice.BuiltIn -> placeBuiltInWidget(choice.widget)
+            is WidgetChoice.App -> beginAppWidget(choice.option)
+        }
+    }
+
+    /**
+     * One of the launcher's own, which is placed in a single step.
+     *
+     * None of the app-widget ceremony applies — there is no id to allocate from
+     * the platform, no consent to ask for and no setup screen to run — so this
+     * is a write and a placement rather than a state machine spanning two trips
+     * out of the launcher.
+     */
+    private fun placeBuiltInWidget(widget: LauncherWidget) {
+        val cell = _cellMenu.value
+        closeWidgetPicker()
+
+        viewModelScope.launchSafely(TAG) {
+            val entryId = widgetRepository.placeBuiltIn(
+                widget = widget,
+                span = widget.span,
+                nowEpochMs = System.currentTimeMillis(),
+            )
+            placeWidgetEntry(entryId, widget.span, cell.page, cell.row, cell.column)
+        }
+    }
+
+    private fun beginAppWidget(option: WidgetOption) {
         val cell = _cellMenu.value
         val component = ComponentName.unflattenFromString(option.component) ?: return
         closeWidgetPicker()
@@ -3599,6 +3632,27 @@ class LauncherViewModel @Inject constructor(
             )
             if (request.bound) continueWidgetPlacement() else emit(LauncherEffect.RequestWidgetBind)
         }
+    }
+
+    /**
+     * Gives a stored widget its cell.
+     *
+     * The cell the menu was raised on when it fits there, and the first place it
+     * does otherwise. Refusing outright would be the wrong answer to a widget
+     * three cells wide chosen from the last column — the user asked for the
+     * widget, and the position is the part they could not have known about.
+     */
+    private suspend fun placeWidgetEntry(
+        entryId: String,
+        span: CellSpan,
+        page: Int,
+        row: Int,
+        column: Int,
+    ) {
+        if (gridRepository.placeEntryAt(entryId, page, row, column)) return
+        val slot = gridRepository.firstFreeCellFor(span)
+        gridRepository.placeEntryAt(entryId, slot.pageIndex, slot.row, slot.column)
+        emit(LauncherEffect.ShowMessage("No room there, so it went to the first space"))
     }
 
     /** The consent dialog for the widget waiting to be placed. */
@@ -3639,14 +3693,7 @@ class LauncherViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Stores the widget and gives it its cell.
-     *
-     * The cell the menu was raised on when it fits there, and the first place it
-     * does otherwise. Refusing outright would be the wrong answer to a widget
-     * three cells wide chosen from the last column — the user asked for the
-     * widget, and the position is the part they could not have known about.
-     */
+    /** Stores the app widget the user finished setting up, and places it. */
     private suspend fun finishWidgetPlacement() {
         val pending = pendingWidget ?: return
         pendingWidget = null
@@ -3661,12 +3708,7 @@ class LauncherViewModel @Inject constructor(
             nowEpochMs = System.currentTimeMillis(),
         )
 
-        val placed = gridRepository.placeEntryAt(entryId, pending.page, pending.row, pending.column)
-        if (!placed) {
-            val slot = gridRepository.firstFreeCellFor(span)
-            gridRepository.placeEntryAt(entryId, slot.pageIndex, slot.row, slot.column)
-            emit(LauncherEffect.ShowMessage("No room there, so it went to the first space"))
-        }
+        placeWidgetEntry(entryId, span, pending.page, pending.row, pending.column)
     }
 
     private fun discardPendingWidget(message: String?) {
@@ -3689,7 +3731,7 @@ class LauncherViewModel @Inject constructor(
             }
 
             ControllerCommand.CONFIRM ->
-                picker.options?.getOrNull(picker.focusedIndex)?.let(::chooseWidget)
+                picker.choiceAt(picker.focusedIndex)?.let(::chooseWidget)
 
             ControllerCommand.BACK, ControllerCommand.CONTEXT_MENU -> closeWidgetPicker()
             else -> Unit
