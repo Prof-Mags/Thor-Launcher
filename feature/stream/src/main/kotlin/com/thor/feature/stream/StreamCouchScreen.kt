@@ -130,6 +130,7 @@ fun StreamCouchScreen(
                     clientName = clientName,
                     onHostSelected = onHostSelected,
                     onOpenAddHost = onOpenAddHost,
+                    onOpenHelp = onOpenHelp,
                     onRefreshHost = onRefreshHost,
                     onRefreshAll = onRefreshAll,
                     onStartStream = onStartStream,
@@ -164,6 +165,7 @@ fun StreamCouchScreen(
             CouchLegend(
                 entries = when {
                     state.zone == StreamCouchZone.RAIL -> RAIL_LEGEND
+                    state.zone == StreamCouchZone.HEADER -> HEADER_LEGEND
                     state.page == StreamCouchPage.ADD_HOST -> ADD_HOST_LEGEND
                     state.page == StreamCouchPage.HELP -> HELP_LEGEND
                     else -> COMPUTERS_LEGEND
@@ -424,6 +426,7 @@ private fun CouchComputersPage(
     clientName: String,
     onHostSelected: (Int) -> Unit,
     onOpenAddHost: () -> Unit,
+    onOpenHelp: () -> Unit,
     onRefreshHost: (StreamHost) -> Unit,
     onRefreshAll: () -> Unit,
     onStartStream: () -> Unit,
@@ -461,17 +464,53 @@ private fun CouchComputersPage(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            StreamActionButton(
-                label = "REFRESH",
-                icon = Icons.Rounded.Refresh,
-                enabled = state.hosts.isNotEmpty(),
-                onClick = onRefreshAll,
-                modifier = Modifier.width(HEADER_ACTION_WIDTH.dp),
-            )
+            /*
+             * The page's own controls, drawn from the state rather than written
+             * out here, so the row the cursor walks and the row on screen cannot
+             * disagree about what is on it.
+             *
+             * Unfilled: they sit on the page beside its title rather than inside
+             * a panel, and a slab of surface up here reads as a second heading
+             * arguing with the first. The outline is enough to say they are
+             * pressable, and the fill arrives with the cursor.
+             */
+            Row(horizontalArrangement = Arrangement.spacedBy(HEADER_ACTION_GAP.dp)) {
+                state.headerActions.forEach { action ->
+                    StreamActionButton(
+                        label = when (action) {
+                            StreamHeaderAction.HELP -> "HELP"
+                            StreamHeaderAction.REFRESH -> "REFRESH"
+                        },
+                        icon = when (action) {
+                            StreamHeaderAction.HELP -> Icons.AutoMirrored.Rounded.HelpOutline
+                            StreamHeaderAction.REFRESH -> Icons.Rounded.Refresh
+                        },
+                        quiet = true,
+                        controllerFocused = state.zone == StreamCouchZone.HEADER &&
+                            state.focusedHeaderAction == action,
+                        onClick = when (action) {
+                            StreamHeaderAction.HELP -> onOpenHelp
+                            StreamHeaderAction.REFRESH -> onRefreshAll
+                        },
+                        // Sized to their own labels. With no fill behind them, a
+                        // shared width is not a tidy pair of boxes any more — it
+                        // is "HELP" adrift in the middle of nothing.
+                        modifier = Modifier.width(
+                            when (action) {
+                                StreamHeaderAction.HELP -> HEADER_HELP_WIDTH.dp
+                                StreamHeaderAction.REFRESH -> HEADER_ACTION_WIDTH.dp
+                            },
+                        ),
+                    )
+                }
+            }
         }
 
         if (state.hosts.isEmpty()) {
             CouchDiscoveryPanel(
+                // The panel's button is what Confirm does while the cursor is on
+                // an empty page, so it wears the ring that says so.
+                focused = state.zone == StreamCouchZone.GRID,
                 onAddHost = onOpenAddHost,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
@@ -838,6 +877,9 @@ private fun CouchHostBand(
                         label = "ADD A PC",
                         icon = Icons.Rounded.Add,
                         primary = true,
+                        // The band is a stop on the way down even with no PC to
+                        // act on, because it still has this one control on it.
+                        controllerFocused = focused,
                         onClick = onOpenAddHost,
                         modifier = Modifier.width(BAND_ACTION_WIDTH.dp),
                     )
@@ -1015,7 +1057,11 @@ private fun CouchStrip(text: String, error: Boolean) {
  * send them to it with nothing to try.
  */
 @Composable
-private fun CouchDiscoveryPanel(onAddHost: () -> Unit, modifier: Modifier = Modifier) {
+private fun CouchDiscoveryPanel(
+    focused: Boolean,
+    onAddHost: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = ThorTheme.colors
 
     GlassSurface(modifier = modifier, shape = ThorTheme.shapes.panel) {
@@ -1067,6 +1113,7 @@ private fun CouchDiscoveryPanel(onAddHost: () -> Unit, modifier: Modifier = Modi
                 label = "ADD A PC BY ADDRESS",
                 icon = Icons.Rounded.Add,
                 primary = true,
+                controllerFocused = focused,
                 onClick = onAddHost,
                 modifier = Modifier.padding(top = 18.dp).width(EMPTY_ACTION_WIDTH.dp),
             )
@@ -1724,6 +1771,11 @@ private val RAIL_LEGEND = listOf(
     "RIGHT" to "Back to the page",
 )
 
+private val HEADER_LEGEND = listOf(
+    "A" to "Open",
+    "DOWN" to "Back to the PCs",
+)
+
 /**
  * What the pad does once a stream is up.
  *
@@ -1847,6 +1899,8 @@ private const val ADD_MARK = 46
 private const val ADD_ICON = 26
 
 private const val HEADER_ACTION_WIDTH = 132
+private const val HEADER_HELP_WIDTH = 100
+private const val HEADER_ACTION_GAP = 6
 
 private const val BAND_PADDING = 13
 private const val BAND_GAP = 12

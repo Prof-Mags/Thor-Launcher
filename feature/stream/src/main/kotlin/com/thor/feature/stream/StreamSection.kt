@@ -1017,6 +1017,7 @@ internal fun StreamActionButton(
     primary: Boolean = false,
     destructive: Boolean = false,
     controllerFocused: Boolean = false,
+    quiet: Boolean = false,
 ) {
     val colors = ThorTheme.colors
     val hover = rememberPointerHover()
@@ -1027,6 +1028,16 @@ internal fun StreamActionButton(
         else -> colors.onSurface
     }
     val background = when {
+        /*
+         * Nothing behind it until it is reached.
+         *
+         * For the controls that sit on the page rather than in a panel — the
+         * ones above a screen's own content, where a filled slab reads as a
+         * second header competing with the title beside it. The outline still
+         * says it is pressable, and the fill comes back the moment the cursor
+         * or the pointer arrives, which is when it has something to say.
+         */
+        quiet && !highlighted -> Color.Transparent
         !enabled -> colors.surface
         highlighted -> tint
         primary || destructive -> tint.copy(alpha = 0.16f)

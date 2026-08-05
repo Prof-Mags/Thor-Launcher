@@ -3,6 +3,7 @@ package com.thor.feature.stream
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import com.thor.core.model.HostStatus
+import com.thor.core.model.StreamHost
 import org.junit.Test
 
 /**
@@ -140,6 +141,51 @@ class StreamCouchScreenTest {
         assertThat(titles).isNotEmpty()
         assertThat(titles).containsNoDuplicates()
         assertThat(STREAM_HELP_SECTIONS.filter { it.body.isBlank() }).isEmpty()
+    }
+
+    // ---- The controls above the wall -----------------------------------------
+
+    /**
+     * The row the cursor walks is the row that is drawn.
+     *
+     * Both come from this one list, because they used to come from two: the
+     * header was written out by hand and the cursor counted something else, and
+     * a control the pad can land on but the screen does not draw is a press that
+     * does nothing with nothing lit.
+     */
+    @Test
+    fun `the header offers help, and refresh once there is something to refresh`() {
+        val empty = StreamUiState()
+        val populated = StreamUiState(hosts = listOf(StreamHost(address = "192.168.1.20")))
+
+        assertThat(empty.headerActions).containsExactly(StreamHeaderAction.HELP)
+        assertThat(populated.headerActions)
+            .containsExactly(StreamHeaderAction.HELP, StreamHeaderAction.REFRESH)
+            .inOrder()
+    }
+
+    /**
+     * The cursor is kept, and clamped, rather than reset.
+     *
+     * Refresh leaves the row when the last PC is removed. A cursor still holding
+     * its index would be pointing past the end of a row with one control on it,
+     * and Confirm would find nothing to run while the header sat there lit.
+     */
+    @Test
+    fun `a header cursor left past the end lands on what is still there`() {
+        val state = StreamUiState(headerCursor = 1)
+
+        assertThat(state.focusedHeaderAction).isEqualTo(StreamHeaderAction.HELP)
+    }
+
+    @Test
+    fun `the header cursor picks out the control it is on`() {
+        val state = StreamUiState(
+            hosts = listOf(StreamHost(address = "192.168.1.20")),
+            headerCursor = 1,
+        )
+
+        assertThat(state.focusedHeaderAction).isEqualTo(StreamHeaderAction.REFRESH)
     }
 
     // ---- What a card says ----------------------------------------------------

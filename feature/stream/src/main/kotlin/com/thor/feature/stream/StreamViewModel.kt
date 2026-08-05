@@ -56,6 +56,22 @@ enum class StreamHostAction {
 }
 
 /**
+ * The computers page's own controls, above the wall rather than on a PC.
+ *
+ * A list rather than two buttons drawn where they fit, because the controller
+ * walks it: a control the pointer can press and the pad cannot is a control that
+ * does not exist for whoever is sitting down. Refresh drops out when there are no
+ * PCs — a cursor stop that cannot do anything is worse than one fewer stop.
+ */
+enum class StreamHeaderAction {
+    /** Opens the section's instructions. The shortcut the reference puts here. */
+    HELP,
+
+    /** Re-asks every PC how it is. */
+    REFRESH,
+}
+
+/**
  * Which page Couch Mode's Stream section is showing.
  *
  * Only the television layout has pages. The handheld arrangement shows both
@@ -80,6 +96,17 @@ enum class StreamCouchZone {
      * and nowhere else — help — was a page no viewer with a pad could open.
      */
     RAIL,
+
+    /**
+     * The page's own controls, along the top.
+     *
+     * Between the wall and the navigation bar, so pressing up walks out of the
+     * screen the way it was walked into: the top row of cards, then the header,
+     * then the shell. Before this the header was above the first card and
+     * unreachable from it, which put Refresh and Help on a screen designed to be
+     * driven from a sofa and left them to the pointer.
+     */
+    HEADER,
 
     /** The wall of PCs. */
     GRID,
@@ -153,6 +180,8 @@ data class StreamUiState(
     val zone: StreamCouchZone = StreamCouchZone.GRID,
     /** Which destination the rail's own cursor is on, while it holds one. */
     val railFocus: StreamCouchPage = StreamCouchPage.COMPUTERS,
+    /** Which of the page's own controls the controller is on, while it holds one. */
+    val headerCursor: Int = 0,
     /** Which section of the help page is being read. */
     val helpCursor: Int = 0,
     /** Which control on the television's add-a-PC form the controller is on. */
@@ -225,6 +254,26 @@ data class StreamUiState(
 
     val focusedHostAction: StreamHostAction?
         get() = hostActions.getOrNull(actionCursor.coerceIn(0, (hostActions.size - 1).coerceAtLeast(0)))
+
+    /**
+     * Exactly the controls drawn above the wall, in the order they are drawn.
+     *
+     * Refresh is only there when there is something to refresh. Discovery runs
+     * on its own, so on an empty page the button would re-ask a list of nothing
+     * — and both the cursor and the pointer would find a control that visibly
+     * does nothing at all.
+     */
+    val headerActions: List<StreamHeaderAction>
+        get() = if (hosts.isEmpty()) {
+            listOf(StreamHeaderAction.HELP)
+        } else {
+            listOf(StreamHeaderAction.HELP, StreamHeaderAction.REFRESH)
+        }
+
+    val focusedHeaderAction: StreamHeaderAction?
+        get() = headerActions.getOrNull(
+            headerCursor.coerceIn(0, (headerActions.size - 1).coerceAtLeast(0)),
+        )
 }
 
 /**
@@ -450,6 +499,22 @@ class StreamViewModel @Inject constructor(
         _uiState.update {
             it.copy(zone = StreamCouchZone.RAIL, railFocus = page)
         }
+    }
+
+    /** Sends the controller to the page's own controls, above the wall. */
+    fun focusHeader(index: Int = _uiState.value.headerCursor) {
+        _uiState.update {
+            it.copy(
+                zone = StreamCouchZone.HEADER,
+                headerCursor = index.coerceIn(0, (it.headerActions.size - 1).coerceAtLeast(0)),
+            )
+        }
+    }
+
+    /** Runs the same operation as a tap on the corresponding header button. */
+    fun performHeaderAction(action: StreamHeaderAction) = when (action) {
+        StreamHeaderAction.HELP -> openHelp()
+        StreamHeaderAction.REFRESH -> refreshAll()
     }
 
     fun openPage(page: StreamCouchPage) = when (page) {
@@ -721,6 +786,9 @@ class StreamViewModel @Inject constructor(
         // The rail is drawn beside every page and takes the controller from all
         // of them, so it is asked before the page is.
         if (_uiState.value.zone == StreamCouchZone.RAIL) return handleRailCommand(command)
+        // Only the computers page has a header, and every way of leaving that
+        // page puts the cursor back on the wall, so this zone implies it.
+        if (_uiState.value.zone == StreamCouchZone.HEADER) return handleHeaderCommand(command)
 
         when (_uiState.value.page) {
             StreamCouchPage.ADD_HOST -> return handleAddHostCommand(command)
@@ -760,11 +828,15 @@ class StreamViewModel @Inject constructor(
                 else -> moveToCell(cell + 1, cells)
             }
 
+            // Up off the top row is the page's own controls, and up off those is
+            // the navigation bar — so the way out of the screen is the way in,
+            // one row at a time, rather than a jump over a header the cursor
+            // could never land on.
             ControllerCommand.NAVIGATE_UP -> when {
                 onActions -> { setZone(StreamCouchZone.GRID); true }
                 else -> streamGridTarget(cell, cells, STREAM_COUCH_COLUMNS, rows = -1)
                     ?.let { moveToCell(it, cells) }
-                    ?: false
+                    ?: run { focusHeader(); true }
             }
 
             ControllerCommand.NAVIGATE_DOWN -> when {
@@ -776,7 +848,10 @@ class StreamViewModel @Inject constructor(
                     val target = streamGridTarget(cell, cells, STREAM_COUCH_COLUMNS, rows = 1)
                     when {
                         target != null -> moveToCell(target, cells)
-                        state.hostActions.isNotEmpty() -> {
+                        // The band is a stop whenever it has a control on it,
+                        // and with no PC chosen the one it has is "add a PC" —
+                        // which is the whole of what an empty page can offer.
+                        state.hostActions.isNotEmpty() || state.selected == null -> {
                             setZone(StreamCouchZone.ACTIONS)
                             true
                         }
@@ -872,6 +947,46 @@ class StreamViewModel @Inject constructor(
 
             ControllerCommand.CONFIRM -> {
                 openPage(_uiState.value.railFocus)
+                true
+            }
+
+            else -> false
+        }
+    }
+
+    /**
+     * The page's own controls, while the controller is on them.
+     *
+     * Up is declined, and that is the point of the zone rather than an omission:
+     * the shell only ever sees the presses this screen turns down, so this is
+     * what keeps the navigation bar one press above the top of the page.
+     */
+    private fun handleHeaderCommand(command: ControllerCommand): Boolean {
+        val actions = _uiState.value.headerActions
+        val current = _uiState.value.headerCursor.coerceIn(0, (actions.size - 1).coerceAtLeast(0))
+
+        return when (command) {
+            ControllerCommand.NAVIGATE_LEFT -> {
+                // Left off the first control is the rail, exactly as it is from
+                // the first column of the wall below.
+                if (current <= 0) focusRail(_uiState.value.page) else focusHeader(current - 1)
+                true
+            }
+
+            ControllerCommand.NAVIGATE_RIGHT -> {
+                focusHeader((current + 1).coerceAtMost((actions.size - 1).coerceAtLeast(0)))
+                true
+            }
+
+            ControllerCommand.NAVIGATE_DOWN, ControllerCommand.BACK -> {
+                setZone(StreamCouchZone.GRID)
+                true
+            }
+
+            ControllerCommand.NAVIGATE_UP -> false
+
+            ControllerCommand.CONFIRM -> {
+                _uiState.value.focusedHeaderAction?.let(::performHeaderAction)
                 true
             }
 
