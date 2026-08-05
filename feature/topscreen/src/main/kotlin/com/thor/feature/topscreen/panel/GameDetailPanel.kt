@@ -1016,14 +1016,19 @@ private const val DESCRIPTION_SCALE_STEP = 0.03f
 private const val GAME_MEDIA_ASPECT = 16f / 9f
 
 /**
- * And the ceiling on it, as a share of the panel's height.
+ * The ceiling on it, as a share of the panel's height.
  *
- * The strip is a picker: the image it selects is also drawn full-bleed behind the
- * whole panel, so it is showing you *which* screenshot is back there rather than
- * being the only place to see it. A third of the panel was too much to spend
- * saying that, and the synopsis was paying for it.
+ * Set above what a full-width sixteen-by-nine frame actually needs, so in the
+ * ordinary case it does not bind at all and the strip runs the width of the
+ * card. That is the point of the number: at a quarter it bound on every card,
+ * and since the frame keeps its ratio the width came off instead — a correct
+ * little picture with a band of empty card beside it.
+ *
+ * It still exists for the genuinely short panel, where the strip narrows rather
+ * than cropping. Losing width is recoverable by looking at the backdrop, which
+ * is the same image full-bleed; losing the top and bottom of the picture is not.
  */
-private const val GAME_MEDIA_MAX_FRACTION = 0.25f
+private const val GAME_MEDIA_MAX_FRACTION = 0.42f
 
 /** Scales both the size and its leading, so the text keeps its proportions. */
 private fun TextStyle.scaledBy(scale: Float): TextStyle = if (scale == 1f) {

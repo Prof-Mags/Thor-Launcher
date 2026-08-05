@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -130,7 +131,21 @@ private fun PlatformProfileCard(
     val shape = ThorTheme.shapes.panel
     val outlineBrush = platformAccentBrush(accent, alpha = .22f)
 
-    Box(modifier = modifier.infoPanelSurface(outlineBrush, shape)) {
+    BoxWithConstraints(modifier = modifier.infoPanelSurface(outlineBrush, shape)) {
+        /*
+         * How much description this card can afford.
+         *
+         * Fixed at four lines before, which is right on a tall panel and two
+         * lines too many on a short one — and the sections below paid for it.
+         * Read from the card rather than guessed, so the same content behaves on
+         * a handheld panel and on a television.
+         */
+        val descriptionLines = when {
+            maxHeight >= PLATFORM_TALL_CARD.dp -> PLATFORM_DESCRIPTION_LINES
+            maxHeight >= PLATFORM_SHORT_CARD.dp -> PLATFORM_DESCRIPTION_LINES - 1
+            else -> PLATFORM_DESCRIPTION_LINES - 2
+        }
+
         /*
          * The card's own top edge, and only the card's.
          *
@@ -186,28 +201,27 @@ private fun PlatformProfileCard(
                 PlatformDivider()
                 PlatformSectionTitle("DESCRIPTION")
                 /*
-                 * The one part of this card that gives up its space.
+                 * Bounded by how many lines the card can afford, not by weight.
                  *
-                 * A Column measures its unweighted children first and its
-                 * weighted ones with what is left, so making the description the
-                 * weighted one inverts the priority that caused the bug: it used
-                 * to take four lines whatever the card could afford, and the
-                 * sections below it — the ones the user actually came to read —
-                 * were measured against nothing and clipped away. Everything
-                 * below is now guaranteed its height and the description
-                 * ellipsizes into whatever remains.
+                 * Weighting it did stop the sections below being clipped, but at
+                 * the price of a worse fault: a weighted child *fills* its share,
+                 * so on any card with room to spare the description became a tall
+                 * box with four lines at the top of it and everything below
+                 * pushed to the bottom — a hand's width of nothing between the
+                 * text and the highlights.
                  *
-                 * It also absorbs the slack, which is why the spacer that used to
-                 * push the game rows to the bottom is gone: with the description
-                 * filling its slot, the sections under it are already there.
+                 * Choosing the line count instead keeps it packed. The sections
+                 * under it are unweighted and so are measured first, which is the
+                 * guarantee that mattered; the description then takes whole lines
+                 * and no more, and the slack goes to one place further down where
+                 * a gap is meant to be.
                  */
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.onSurfaceVariant,
-                    maxLines = PLATFORM_DESCRIPTION_LINES,
+                    maxLines = descriptionLines,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
                 )
             }
 
@@ -215,10 +229,10 @@ private fun PlatformProfileCard(
             PlatformHighlights(profile.highlights, accent)
 
             if (featuredGames.isNotEmpty()) {
-                // Only when there is no description to hold the slack; two
-                // weighted children would split it and shrink the description for
-                // no reason.
-                if (description == null) Spacer(modifier = Modifier.weight(1f))
+                // The card's one gap, and it belongs here: everything above is a
+                // description of the system and this is what the user has done
+                // with it. Anywhere else the space reads as a mistake.
+                Spacer(modifier = Modifier.weight(1f))
                 PlatformSectionTitle(
                     if (showingActivity) "CONTINUE PLAYING" else "LIBRARY HIGHLIGHTS",
                 )
@@ -743,6 +757,15 @@ private const val PLATFORM_HEADER_GAP = 16
 private const val PLATFORM_ICON_SIZE = 80
 private const val PLATFORM_ICON_PADDING = 17
 private const val PLATFORM_DESCRIPTION_LINES = 4
+
+/**
+ * Card heights at which the description gives up a line.
+ *
+ * In design units, so these are the same fraction of the screen everywhere;
+ * see `DesignScale`.
+ */
+private const val PLATFORM_TALL_CARD = 460
+private const val PLATFORM_SHORT_CARD = 380
 private const val STAT_ICON_SIZE = 29
 private const val STAT_DIVIDER_HEIGHT = 45
 private const val HIGHLIGHT_ICON_SIZE = 34
