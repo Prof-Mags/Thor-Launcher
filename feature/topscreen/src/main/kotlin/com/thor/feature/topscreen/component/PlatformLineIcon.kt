@@ -1,4 +1,5 @@
 package com.thor.feature.topscreen.component
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -9,13 +10,39 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import com.thor.core.model.PlatformGlyph
-import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.PI
 import kotlin.math.sin
 
-/** Loki's platform icon language: rounded, open line work in the platform accent. */
+/**
+ * Loki's platform icon language: rounded, open line work in the platform accent.
+ *
+ * Drawn rather than shipped as vectors because every one of them is tinted with
+ * the system's own accent, and a compiled-in drawable cannot take a colour that
+ * is computed from the platform's palette at runtime.
+ *
+ * Three rules hold the set together, and each of them was being broken:
+ *
+ * Every glyph is drawn at [MAIN] weight, with [LIGHT] reserved for detail that
+ * is genuinely secondary — a sheen on a disc, a motion arc. There were six
+ * different widths in here, chosen per glyph, so a row of them read as icons
+ * from three different sets.
+ *
+ * Every glyph fills the same optical box, about a seventh in from each edge.
+ * Nothing enforces that — a Canvas has no opinion — but each of them keeps to
+ * it. Some were running to the full extent and others stopping well short, and
+ * at the 34dp these are drawn at that is the difference between two icons
+ * looking the same size and one looking broken.
+ *
+ * Every glyph is its own drawing. Four pairs shared one — a "StreetPass" and a
+ * "Local multiplayer" highlight drew the identical mark — which is the one fault
+ * here the user can actually name, because it makes two different facts about a
+ * console look like the same fact stated twice.
+ */
 @Composable
 internal fun PlatformLineIcon(
     glyph: PlatformGlyph,
@@ -23,288 +50,375 @@ internal fun PlatformLineIcon(
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier) {
-        val unit = size.minDimension
-        val xInset = (size.width - unit) / 2f
-        val yInset = (size.height - unit) / 2f
-        fun point(x: Float, y: Float) = Offset(xInset + x * unit, yInset + y * unit)
-        fun line(x1: Float, y1: Float, x2: Float, y2: Float, width: Float = 0.065f) {
-            drawLine(
-                color = tint,
-                start = point(x1, y1),
-                end = point(x2, y2),
-                strokeWidth = unit * width,
-                cap = StrokeCap.Round,
-            )
-        }
-        fun circle(x: Float, y: Float, radius: Float, filled: Boolean = false) {
-            drawCircle(
-                color = tint,
-                radius = unit * radius,
-                center = point(x, y),
-                style = if (filled) {
-                    androidx.compose.ui.graphics.drawscope.Fill
-                } else {
-                    Stroke(unit * 0.06f, cap = StrokeCap.Round)
-                },
-            )
-        }
-        fun roundRect(
-            left: Float,
-            top: Float,
-            right: Float,
-            bottom: Float,
-            radius: Float = 0.08f,
-        ) {
-            drawRoundRect(
-                color = tint,
-                topLeft = point(left, top),
-                size = Size((right - left) * unit, (bottom - top) * unit),
-                cornerRadius = CornerRadius(radius * unit),
-                style = Stroke(unit * 0.06f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-        }
-        fun path(build: Path.() -> Unit) {
-            drawPath(
-                path = Path().apply(build),
-                color = tint,
-                style = Stroke(unit * 0.06f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-        }
-
+        val pen = LinePen(this, tint)
         when (glyph) {
-            PlatformGlyph.GAME_LIBRARY -> {
-                path {
-                    moveTo(point(.25f, .38f).x, point(.25f, .38f).y)
-                    cubicTo(
-                        point(.13f, .40f).x, point(.13f, .40f).y,
-                        point(.08f, .73f).x, point(.08f, .73f).y,
-                        point(.21f, .78f).x, point(.21f, .78f).y,
-                    )
-                    cubicTo(
-                        point(.30f, .82f).x, point(.30f, .82f).y,
-                        point(.34f, .67f).x, point(.34f, .67f).y,
-                        point(.43f, .66f).x, point(.43f, .66f).y,
-                    )
-                    lineTo(point(.57f, .66f).x, point(.57f, .66f).y)
-                    cubicTo(
-                        point(.66f, .67f).x, point(.66f, .67f).y,
-                        point(.70f, .82f).x, point(.70f, .82f).y,
-                        point(.79f, .78f).x, point(.79f, .78f).y,
-                    )
-                    cubicTo(
-                        point(.92f, .73f).x, point(.92f, .73f).y,
-                        point(.87f, .40f).x, point(.87f, .40f).y,
-                        point(.75f, .38f).x, point(.75f, .38f).y,
-                    )
-                    close()
-                }
-                line(.27f, .52f, .43f, .52f)
-                line(.35f, .44f, .35f, .60f)
-                circle(.68f, .49f, .035f, filled = true)
-                circle(.77f, .57f, .035f, filled = true)
-            }
-
-            PlatformGlyph.FAVOURITE -> {
-                val star = Path()
-                repeat(10) { index ->
-                    val radius = if (index % 2 == 0) .39f else .17f
-                    val angle = -PI / 2 + index * PI / 5
-                    val p = point(
-                        .5f + cos(angle).toFloat() * radius,
-                        .5f + sin(angle).toFloat() * radius,
-                    )
-                    if (index == 0) star.moveTo(p.x, p.y) else star.lineTo(p.x, p.y)
-                }
-                star.close()
-                drawPath(star, tint, style = Stroke(unit * .06f, join = StrokeJoin.Round))
-            }
-
-            PlatformGlyph.CLOCK, PlatformGlyph.PLAYTIME -> {
-                drawCircle(
-                    color = tint,
-                    radius = unit * .34f,
-                    center = point(.5f, .5f),
-                    style = Stroke(unit * .06f, cap = StrokeCap.Round),
-                )
-                line(.5f, .28f, .5f, .52f)
-                line(.5f, .52f, .67f, .61f)
-                if (glyph == PlatformGlyph.PLAYTIME) {
-                    drawArc(
-                        color = tint.copy(alpha = .45f),
-                        startAngle = 25f,
-                        sweepAngle = 115f,
-                        useCenter = false,
-                        topLeft = point(.08f, .08f),
-                        size = Size(.84f * unit, .84f * unit),
-                        style = Stroke(unit * .035f, cap = StrokeCap.Round),
-                    )
-                }
-            }
-
-            PlatformGlyph.PLAY -> {
-                path {
-                    moveTo(point(.35f, .25f).x, point(.35f, .25f).y)
-                    lineTo(point(.75f, .5f).x, point(.75f, .5f).y)
-                    lineTo(point(.35f, .75f).x, point(.35f, .75f).y)
-                    close()
-                }
-            }
-
-            PlatformGlyph.DUAL_SCREEN -> {
-                roundRect(.24f, .14f, .76f, .43f)
-                roundRect(.29f, .57f, .71f, .86f)
-                line(.45f, .50f, .55f, .50f, .045f)
-            }
-
-            PlatformGlyph.DEPTH -> {
-                circle(.40f, .50f, .28f)
-                circle(.60f, .50f, .28f)
-                line(.50f, .22f, .50f, .78f, .035f)
-            }
-
-            PlatformGlyph.TOUCH -> {
-                roundRect(.24f, .10f, .66f, .86f, .06f)
-                line(.38f, .19f, .52f, .19f, .035f)
-                path {
-                    moveTo(point(.56f, .76f).x, point(.56f, .76f).y)
-                    lineTo(point(.56f, .47f).x, point(.56f, .47f).y)
-                    cubicTo(
-                        point(.56f, .37f).x, point(.56f, .37f).y,
-                        point(.69f, .37f).x, point(.69f, .37f).y,
-                        point(.69f, .48f).x, point(.69f, .48f).y,
-                    )
-                    lineTo(point(.69f, .57f).x, point(.69f, .57f).y)
-                    cubicTo(
-                        point(.83f, .49f).x, point(.83f, .49f).y,
-                        point(.86f, .61f).x, point(.86f, .61f).y,
-                        point(.78f, .78f).x, point(.78f, .78f).y,
-                    )
-                }
-            }
-
-            PlatformGlyph.SOCIAL, PlatformGlyph.MULTIPLAYER -> {
-                circle(.50f, .31f, .11f)
-                path {
-                    moveTo(point(.30f, .73f).x, point(.30f, .73f).y)
-                    cubicTo(
-                        point(.33f, .50f).x, point(.33f, .50f).y,
-                        point(.67f, .50f).x, point(.67f, .50f).y,
-                        point(.70f, .73f).x, point(.70f, .73f).y,
-                    )
-                }
-                circle(.21f, .40f, .075f)
-                circle(.79f, .40f, .075f)
-                line(.10f, .68f, .27f, .57f)
-                line(.90f, .68f, .73f, .57f)
-            }
-
-            PlatformGlyph.MOTION -> {
-                roundRect(.31f, .17f, .69f, .82f, .11f)
-                circle(.50f, .29f, .035f, filled = true)
-                line(.41f, .51f, .59f, .51f)
-                line(.50f, .42f, .50f, .60f)
-                drawArc(tint, 130f, 100f, false, point(.07f, .25f), Size(.27f * unit, .50f * unit), style = Stroke(unit * .045f))
-                drawArc(tint, -50f, 100f, false, point(.66f, .25f), Size(.27f * unit, .50f * unit), style = Stroke(unit * .045f))
-            }
-
-            PlatformGlyph.HYBRID -> {
-                roundRect(.25f, .26f, .75f, .72f, .04f)
-                roundRect(.08f, .19f, .25f, .79f, .08f)
-                roundRect(.75f, .19f, .92f, .79f, .08f)
-                circle(.165f, .37f, .035f, filled = true)
-                circle(.835f, .61f, .035f, filled = true)
-            }
-
-            PlatformGlyph.PORTABLE -> {
-                roundRect(.09f, .27f, .91f, .73f, .13f)
-                roundRect(.31f, .34f, .69f, .66f, .03f)
-                line(.17f, .50f, .27f, .50f)
-                line(.22f, .45f, .22f, .55f)
-                circle(.79f, .46f, .025f, filled = true)
-                circle(.84f, .54f, .025f, filled = true)
-            }
-
-            PlatformGlyph.LINK -> {
-                roundRect(.08f, .20f, .37f, .80f, .06f)
-                roundRect(.63f, .20f, .92f, .80f, .06f)
-                line(.37f, .43f, .63f, .43f)
-                line(.37f, .57f, .63f, .57f)
-            }
-
-            PlatformGlyph.DISC -> {
-                circle(.50f, .50f, .36f)
-                circle(.50f, .50f, .09f)
-                drawArc(tint.copy(alpha = .55f), 205f, 85f, false, point(.24f, .24f), Size(.52f * unit, .52f * unit), style = Stroke(unit * .035f))
-            }
-
-            PlatformGlyph.CUBE -> {
-                path {
-                    moveTo(point(.50f, .12f).x, point(.50f, .12f).y)
-                    lineTo(point(.83f, .30f).x, point(.83f, .30f).y)
-                    lineTo(point(.83f, .68f).x, point(.83f, .68f).y)
-                    lineTo(point(.50f, .88f).x, point(.50f, .88f).y)
-                    lineTo(point(.17f, .68f).x, point(.17f, .68f).y)
-                    lineTo(point(.17f, .30f).x, point(.17f, .30f).y)
-                    close()
-                    moveTo(point(.17f, .30f).x, point(.17f, .30f).y)
-                    lineTo(point(.50f, .50f).x, point(.50f, .50f).y)
-                    lineTo(point(.83f, .30f).x, point(.83f, .30f).y)
-                    moveTo(point(.50f, .50f).x, point(.50f, .50f).y)
-                    lineTo(point(.50f, .88f).x, point(.50f, .88f).y)
-                }
-            }
-
-            PlatformGlyph.ONLINE -> {
-                circle(.50f, .50f, .36f)
-                drawOval(tint, point(.34f, .14f), Size(.32f * unit, .72f * unit), style = Stroke(unit * .05f))
-                line(.16f, .50f, .84f, .50f, .045f)
-                drawArc(tint, 200f, 140f, false, point(.17f, .30f), Size(.66f * unit, .40f * unit), style = Stroke(unit * .04f))
-            }
-
-            PlatformGlyph.ARCADE -> {
-                roundRect(.16f, .54f, .84f, .80f, .04f)
-                line(.39f, .54f, .50f, .27f)
-                circle(.53f, .20f, .09f)
-                circle(.68f, .64f, .035f, filled = true)
-                circle(.77f, .68f, .035f, filled = true)
-            }
-
-            PlatformGlyph.PERFORMANCE -> {
-                drawArc(tint, 180f, 180f, false, point(.14f, .25f), Size(.72f * unit, .72f * unit), style = Stroke(unit * .06f, cap = StrokeCap.Round))
-                line(.50f, .62f, .72f, .37f)
-                circle(.50f, .62f, .045f, filled = true)
-                line(.25f, .72f, .75f, .72f)
-            }
-
-            PlatformGlyph.KEYBOARD -> {
-                roundRect(.09f, .25f, .91f, .75f, .05f)
-                repeat(3) { row ->
-                    repeat(6) { column ->
-                        circle(.20f + column * .12f, .37f + row * .12f, .018f, filled = true)
-                    }
-                }
-                line(.32f, .66f, .68f, .66f, .04f)
-            }
-
-            PlatformGlyph.MEDIA -> {
-                roundRect(.13f, .20f, .87f, .80f, .04f)
-                line(.28f, .20f, .28f, .80f, .035f)
-                line(.72f, .20f, .72f, .80f, .035f)
-                line(.13f, .38f, .28f, .38f, .035f)
-                line(.72f, .38f, .87f, .38f, .035f)
-                line(.13f, .62f, .28f, .62f, .035f)
-                line(.72f, .62f, .87f, .62f, .035f)
-            }
-
-            PlatformGlyph.CLASSICS -> {
-                roundRect(.22f, .27f, .78f, .78f, .05f)
-                line(.36f, .27f, .36f, .16f)
-                line(.36f, .16f, .64f, .16f)
-                line(.64f, .16f, .64f, .27f)
-                circle(.50f, .52f, .12f)
-                line(.42f, .78f, .42f, .86f)
-                line(.58f, .78f, .58f, .86f)
-            }
+            PlatformGlyph.GAME_LIBRARY -> pen.gamepad()
+            PlatformGlyph.FAVOURITE -> pen.star()
+            PlatformGlyph.CLOCK -> pen.clock(withProgress = false)
+            PlatformGlyph.PLAYTIME -> pen.clock(withProgress = true)
+            PlatformGlyph.PLAY -> pen.play()
+            PlatformGlyph.DUAL_SCREEN -> pen.dualScreen()
+            PlatformGlyph.DEPTH -> pen.depth()
+            PlatformGlyph.TOUCH -> pen.touch()
+            PlatformGlyph.SOCIAL -> pen.social()
+            PlatformGlyph.MULTIPLAYER -> pen.multiplayer()
+            PlatformGlyph.MOTION -> pen.motion()
+            PlatformGlyph.HYBRID -> pen.hybrid()
+            PlatformGlyph.PORTABLE -> pen.portable()
+            PlatformGlyph.LINK -> pen.link()
+            PlatformGlyph.DISC -> pen.disc()
+            PlatformGlyph.CUBE -> pen.cube()
+            PlatformGlyph.ONLINE -> pen.globe()
+            PlatformGlyph.ARCADE -> pen.arcade()
+            PlatformGlyph.PERFORMANCE -> pen.speedometer()
+            PlatformGlyph.KEYBOARD -> pen.keyboard()
+            PlatformGlyph.MEDIA -> pen.filmStrip()
+            PlatformGlyph.CLASSICS -> pen.cartridge()
         }
     }
 }
+
+/**
+ * The drawing surface, in glyph coordinates.
+ *
+ * Everything below works in a 0..1 square that is centred in whatever box the
+ * caller gave, so a glyph is written once and is correct at any size. The helper
+ * methods exist so that a glyph reads as a description of a shape rather than as
+ * arithmetic — which is what the previous set had become, with every point
+ * spelled out twice to build a path.
+ */
+private class LinePen(private val scope: DrawScope, private val tint: Color) {
+
+    private val unit = scope.size.minDimension
+    private val originX = (scope.size.width - unit) / 2f
+    private val originY = (scope.size.height - unit) / 2f
+
+    private fun at(x: Float, y: Float) = Offset(originX + x * unit, originY + y * unit)
+
+    private fun strokeOf(width: Float) =
+        Stroke(unit * width, cap = StrokeCap.Round, join = StrokeJoin.Round)
+
+    fun line(x1: Float, y1: Float, x2: Float, y2: Float, width: Float = MAIN) {
+        scope.drawLine(tint, at(x1, y1), at(x2, y2), unit * width, StrokeCap.Round)
+    }
+
+    fun circle(x: Float, y: Float, radius: Float, width: Float = MAIN) {
+        scope.drawCircle(tint, unit * radius, at(x, y), style = strokeOf(width))
+    }
+
+    fun dot(x: Float, y: Float, radius: Float = DOT) {
+        scope.drawCircle(tint, unit * radius, at(x, y), style = Fill)
+    }
+
+    fun box(
+        left: Float,
+        top: Float,
+        right: Float,
+        bottom: Float,
+        radius: Float = 0.07f,
+        width: Float = MAIN,
+    ) {
+        scope.drawRoundRect(
+            color = tint,
+            topLeft = at(left, top),
+            size = Size((right - left) * unit, (bottom - top) * unit),
+            cornerRadius = CornerRadius(radius * unit),
+            style = strokeOf(width),
+        )
+    }
+
+    fun arc(
+        left: Float,
+        top: Float,
+        right: Float,
+        bottom: Float,
+        startAngle: Float,
+        sweep: Float,
+        width: Float = MAIN,
+        alpha: Float = 1f,
+    ) {
+        scope.drawArc(
+            color = tint.copy(alpha = alpha),
+            startAngle = startAngle,
+            sweepAngle = sweep,
+            useCenter = false,
+            topLeft = at(left, top),
+            size = Size((right - left) * unit, (bottom - top) * unit),
+            style = strokeOf(width),
+        )
+    }
+
+    /** A closed outline through the given points. */
+    fun shape(vararg points: Pair<Float, Float>, width: Float = MAIN, filled: Boolean = false) {
+        val path = Path()
+        points.forEachIndexed { index, (x, y) ->
+            val point = at(x, y)
+            if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
+        }
+        path.close()
+        scope.drawPath(path, tint, style = if (filled) Fill else strokeOf(width))
+    }
+
+    // ------------------------------------------------------------- the glyphs
+
+    /**
+     * A gamepad, which is the general "games" mark.
+     *
+     * Grips rather than a plain rounded box: a pad without them is a remote
+     * control, and at this size the silhouette is doing most of the work.
+     */
+    fun gamepad() {
+        val path = Path()
+        val start = at(0.34f, 0.34f)
+        path.moveTo(start.x, start.y)
+        path.cubicTo(
+            at(0.18f, 0.34f).x, at(0.18f, 0.34f).y,
+            at(0.12f, 0.70f).x, at(0.12f, 0.70f).y,
+            at(0.24f, 0.74f).x, at(0.24f, 0.74f).y,
+        )
+        path.cubicTo(
+            at(0.33f, 0.77f).x, at(0.33f, 0.77f).y,
+            at(0.34f, 0.62f).x, at(0.34f, 0.62f).y,
+            at(0.43f, 0.62f).x, at(0.43f, 0.62f).y,
+        )
+        path.lineTo(at(0.57f, 0.62f).x, at(0.57f, 0.62f).y)
+        path.cubicTo(
+            at(0.66f, 0.62f).x, at(0.66f, 0.62f).y,
+            at(0.67f, 0.77f).x, at(0.67f, 0.77f).y,
+            at(0.76f, 0.74f).x, at(0.76f, 0.74f).y,
+        )
+        path.cubicTo(
+            at(0.88f, 0.70f).x, at(0.88f, 0.70f).y,
+            at(0.82f, 0.34f).x, at(0.82f, 0.34f).y,
+            at(0.66f, 0.34f).x, at(0.66f, 0.34f).y,
+        )
+        path.close()
+        scope.drawPath(path, tint, style = strokeOf(MAIN))
+
+        line(0.27f, 0.47f, 0.39f, 0.47f, LIGHT)
+        line(0.33f, 0.41f, 0.33f, 0.53f, LIGHT)
+        dot(0.66f, 0.43f)
+        dot(0.74f, 0.51f)
+    }
+
+    fun star() {
+        val points = (0 until 10).map { index ->
+            val radius = if (index % 2 == 0) 0.34f else 0.15f
+            val angle = -PI / 2 + index * PI / 5
+            (0.5f + cos(angle).toFloat() * radius) to (0.5f + sin(angle).toFloat() * radius)
+        }
+        shape(*points.toTypedArray())
+    }
+
+    /**
+     * A clock, and the same clock with an elapsed ring around it.
+     *
+     * The ring is the whole difference between "time" and "time spent", and it
+     * used to be a faint arc laid over an identical face — near enough invisible
+     * at this size, which is why the two glyphs read as one.
+     */
+    fun clock(withProgress: Boolean) {
+        val face = if (withProgress) 0.26f else 0.33f
+        circle(0.5f, 0.5f, face)
+        line(0.5f, 0.5f, 0.5f, 0.5f - face * 0.62f, LIGHT)
+        line(0.5f, 0.5f, 0.5f + face * 0.55f, 0.5f + face * 0.30f, LIGHT)
+        if (withProgress) {
+            arc(0.13f, 0.13f, 0.87f, 0.87f, startAngle = -90f, sweep = 250f)
+        }
+    }
+
+    /** A play triangle inside its button, which is how it is met everywhere else. */
+    fun play() {
+        circle(0.5f, 0.5f, 0.34f)
+        shape(0.42f to 0.35f, 0.68f to 0.5f, 0.42f to 0.65f, filled = true)
+    }
+
+    /**
+     * Two screens and a hinge — the launcher's own shape.
+     *
+     * Deliberately the same drawing as the app icon: this glyph appears on the
+     * platform this launcher was built for, and the two marks agreeing is worth
+     * more than either being individually optimal.
+     */
+    fun dualScreen() {
+        box(0.20f, 0.16f, 0.80f, 0.44f, radius = 0.05f)
+        line(0.34f, 0.50f, 0.66f, 0.50f, LIGHT)
+        box(0.26f, 0.56f, 0.74f, 0.84f, radius = 0.05f)
+    }
+
+    /**
+     * Depth, as a receding stack.
+     *
+     * Two overlapping circles were the old drawing, which is the mark for a
+     * Venn diagram or for stereo audio and reads as neither depth nor 3D.
+     */
+    fun depth() {
+        box(0.14f, 0.30f, 0.62f, 0.78f, radius = 0.05f, width = LIGHT)
+        box(0.26f, 0.24f, 0.74f, 0.72f, radius = 0.05f, width = LIGHT)
+        box(0.38f, 0.18f, 0.86f, 0.66f, radius = 0.05f)
+    }
+
+    /** A screen with a fingertip on it, and the ripple that makes it a touch. */
+    fun touch() {
+        box(0.16f, 0.14f, 0.68f, 0.86f, radius = 0.06f)
+        line(0.32f, 0.22f, 0.52f, 0.22f, LIGHT)
+        dot(0.48f, 0.52f, 0.055f)
+        arc(0.32f, 0.36f, 0.64f, 0.68f, startAngle = -60f, sweep = 120f, width = LIGHT)
+        arc(0.24f, 0.28f, 0.72f, 0.76f, startAngle = -55f, sweep = 110f, width = LIGHT, alpha = 0.55f)
+    }
+
+    /** Two figures and the exchange between them. */
+    fun social() {
+        circle(0.32f, 0.30f, 0.11f)
+        arc(0.14f, 0.46f, 0.50f, 0.82f, startAngle = 180f, sweep = 180f)
+        circle(0.68f, 0.30f, 0.11f)
+        arc(0.50f, 0.46f, 0.86f, 0.82f, startAngle = 180f, sweep = 180f)
+        line(0.44f, 0.62f, 0.56f, 0.62f, LIGHT)
+    }
+
+    /** Three figures: a group rather than a pair, so it is not [social] again. */
+    fun multiplayer() {
+        circle(0.5f, 0.24f, 0.10f)
+        arc(0.32f, 0.38f, 0.68f, 0.74f, startAngle = 180f, sweep = 180f)
+        circle(0.20f, 0.42f, 0.085f, LIGHT)
+        arc(0.05f, 0.55f, 0.35f, 0.85f, startAngle = 180f, sweep = 180f, width = LIGHT)
+        circle(0.80f, 0.42f, 0.085f, LIGHT)
+        arc(0.65f, 0.55f, 0.95f, 0.85f, startAngle = 180f, sweep = 180f, width = LIGHT)
+    }
+
+    /** A controller mid-swing, which is what motion control looks like. */
+    fun motion() {
+        box(0.36f, 0.20f, 0.64f, 0.80f, radius = 0.11f)
+        dot(0.50f, 0.31f, 0.035f)
+        line(0.44f, 0.52f, 0.56f, 0.52f, LIGHT)
+        arc(0.10f, 0.28f, 0.32f, 0.72f, startAngle = 120f, sweep = 120f, width = LIGHT)
+        arc(0.68f, 0.28f, 0.90f, 0.72f, startAngle = -60f, sweep = 120f, width = LIGHT)
+    }
+
+    /** A console body with its two rails off the sides. */
+    fun hybrid() {
+        box(0.28f, 0.28f, 0.72f, 0.72f, radius = 0.04f)
+        box(0.10f, 0.22f, 0.24f, 0.78f, radius = 0.06f, width = LIGHT)
+        box(0.76f, 0.22f, 0.90f, 0.78f, radius = 0.06f, width = LIGHT)
+        dot(0.17f, 0.38f, 0.03f)
+        dot(0.83f, 0.62f, 0.03f)
+    }
+
+    /** A handheld: screen in the middle, pad one side, buttons the other. */
+    fun portable() {
+        box(0.10f, 0.26f, 0.90f, 0.74f, radius = 0.12f)
+        box(0.34f, 0.34f, 0.66f, 0.66f, radius = 0.03f, width = LIGHT)
+        line(0.18f, 0.50f, 0.28f, 0.50f, LIGHT)
+        line(0.23f, 0.45f, 0.23f, 0.55f, LIGHT)
+        dot(0.76f, 0.45f, 0.03f)
+        dot(0.82f, 0.55f, 0.03f)
+    }
+
+    /** Two devices talking to each other, side by side. */
+    fun link() {
+        box(0.08f, 0.24f, 0.34f, 0.76f, radius = 0.05f)
+        box(0.66f, 0.24f, 0.92f, 0.76f, radius = 0.05f)
+        line(0.38f, 0.42f, 0.62f, 0.42f, LIGHT)
+        line(0.38f, 0.58f, 0.62f, 0.58f, LIGHT)
+        dot(0.50f, 0.50f, 0.03f)
+    }
+
+    fun disc() {
+        circle(0.5f, 0.5f, 0.34f)
+        circle(0.5f, 0.5f, 0.085f, LIGHT)
+        arc(0.24f, 0.24f, 0.76f, 0.76f, startAngle = 200f, sweep = 80f, width = LIGHT, alpha = 0.6f)
+    }
+
+    fun cube() {
+        shape(
+            0.50f to 0.14f,
+            0.82f to 0.32f,
+            0.82f to 0.68f,
+            0.50f to 0.86f,
+            0.18f to 0.68f,
+            0.18f to 0.32f,
+        )
+        line(0.18f, 0.32f, 0.50f, 0.50f, LIGHT)
+        line(0.82f, 0.32f, 0.50f, 0.50f, LIGHT)
+        line(0.50f, 0.50f, 0.50f, 0.86f, LIGHT)
+    }
+
+    /** A globe: the outline, one meridian, and two latitudes. */
+    fun globe() {
+        circle(0.5f, 0.5f, 0.34f)
+        scope.drawOval(
+            color = tint,
+            topLeft = at(0.36f, 0.16f),
+            size = Size(0.28f * unit, 0.68f * unit),
+            style = strokeOf(LIGHT),
+        )
+        line(0.17f, 0.50f, 0.83f, 0.50f, LIGHT)
+        arc(0.20f, 0.28f, 0.80f, 0.62f, startAngle = 200f, sweep = 140f, width = LIGHT)
+    }
+
+    /** A cabinet with a stick and two buttons on the panel. */
+    fun arcade() {
+        box(0.20f, 0.16f, 0.80f, 0.84f, radius = 0.06f)
+        line(0.20f, 0.52f, 0.80f, 0.52f, LIGHT)
+        line(0.42f, 0.72f, 0.42f, 0.62f, LIGHT)
+        dot(0.42f, 0.60f, 0.045f)
+        dot(0.58f, 0.68f, 0.032f)
+        dot(0.67f, 0.72f, 0.032f)
+    }
+
+    /** A dial with its needle past the middle. */
+    fun speedometer() {
+        arc(0.14f, 0.22f, 0.86f, 0.94f, startAngle = 180f, sweep = 180f)
+        line(0.50f, 0.58f, 0.70f, 0.36f)
+        dot(0.50f, 0.58f, 0.045f)
+        dot(0.22f, 0.52f, 0.028f)
+        dot(0.34f, 0.32f, 0.028f)
+        dot(0.66f, 0.32f, 0.028f)
+    }
+
+    fun keyboard() {
+        box(0.08f, 0.28f, 0.92f, 0.72f, radius = 0.05f)
+        repeat(2) { row ->
+            repeat(6) { column ->
+                dot(0.18f + column * 0.128f, 0.39f + row * 0.11f, 0.022f)
+            }
+        }
+        line(0.32f, 0.63f, 0.68f, 0.63f, LIGHT)
+    }
+
+    /** A strip of film: the frame with its two perforated edges. */
+    fun filmStrip() {
+        box(0.12f, 0.20f, 0.88f, 0.80f, radius = 0.05f)
+        line(0.28f, 0.20f, 0.28f, 0.80f, LIGHT)
+        line(0.72f, 0.20f, 0.72f, 0.80f, LIGHT)
+        listOf(0.34f, 0.50f, 0.66f).forEach { y ->
+            dot(0.20f, y, 0.03f)
+            dot(0.80f, y, 0.03f)
+        }
+    }
+
+    /** A cartridge, label and all — the mark for everything before discs. */
+    fun cartridge() {
+        box(0.22f, 0.22f, 0.78f, 0.82f, radius = 0.05f)
+        box(0.32f, 0.32f, 0.68f, 0.54f, radius = 0.03f, width = LIGHT)
+        line(0.36f, 0.22f, 0.36f, 0.14f, LIGHT)
+        line(0.36f, 0.14f, 0.64f, 0.14f, LIGHT)
+        line(0.64f, 0.14f, 0.64f, 0.22f, LIGHT)
+        line(0.38f, 0.66f, 0.62f, 0.66f, LIGHT)
+        line(0.38f, 0.74f, 0.54f, 0.74f, LIGHT)
+    }
+}
+
+/**
+ * The set's two weights.
+ *
+ * [MAIN] carries the silhouette — the part that has to survive being seen from
+ * across a room — and [LIGHT] is for detail inside it. There is no third: an
+ * icon set with a weight per glyph is a set only in the sense that it is in one
+ * file.
+ */
+private const val MAIN = 0.07f
+private const val LIGHT = 0.045f
+
+/** The default filled dot, which is the smallest mark the set uses. */
+private const val DOT = 0.035f
