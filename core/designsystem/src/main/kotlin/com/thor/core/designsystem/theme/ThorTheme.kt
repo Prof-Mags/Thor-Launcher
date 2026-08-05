@@ -306,8 +306,20 @@ fun ThorTheme(
     }
 
     val blurSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    /*
+     * Every value read inside is a key, including the ones read only to be
+     * copied.
+     *
+     * A `remember` whose block reads a setting absent from its keys is a setting
+     * that cannot be changed: the block does not run again, so the old value is
+     * kept and the preference silently does nothing. That is what happened to
+     * the info panel style — it was passed through faithfully and never
+     * recomputed, so the option looked broken while the code that used it was
+     * correct.
+     */
     val materials = remember(
         spec, personalization.glassEffects, personalization.wallpaperDim,
+        personalization.infoPanelStyle,
         performance.blurEnabled, performance.performanceMode,
         blurSupported, reduceMotion,
     ) {

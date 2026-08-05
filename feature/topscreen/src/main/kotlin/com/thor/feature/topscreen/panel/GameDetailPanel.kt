@@ -184,6 +184,8 @@ private fun GameProfileCard(
 
             if (selectedMedia != null) {
                 GameSectionTitle("MEDIA")
+                val mediaHeight = (contentWidth / GAME_MEDIA_ASPECT)
+                    .coerceAtMost(cardHeight * GAME_MEDIA_MAX_FRACTION)
                 /*
                  * Sixteen by nine, but never more than a quarter of the panel.
                  *
@@ -202,17 +204,25 @@ private fun GameProfileCard(
                     selected = selectedScreenshot,
                     count = screenshots.size,
                     accent = accent,
-                    // Resolved as a height rather than left to `aspectRatio`, which
-                    // cannot be given a ceiling: with the width already fixed by
-                    // `fillMaxWidth` it has no freedom to honour one, and a
-                    // `heightIn` after it constrains the image inside the box
-                    // instead of the box itself.
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(
-                            (contentWidth / GAME_MEDIA_ASPECT)
-                                .coerceAtMost(cardHeight * GAME_MEDIA_MAX_FRACTION),
-                        ),
+                    /*
+                     * Sixteen by nine exactly, whichever dimension is binding.
+                     *
+                     * Both are given rather than a width and a capped height.
+                     * That was the fault: the frame took the card's full width
+                     * and a height that the ceiling could cut, so once the
+                     * ceiling bound it was no longer sixteen by nine — and the
+                     * image inside is cropped to the frame, so what the ceiling
+                     * took came off the top and bottom of the picture. It read
+                     * as artwork slightly clipped, because it was.
+                     *
+                     * Deriving the width back from the capped height keeps the
+                     * ratio true and spends the ceiling on the frame's width,
+                     * where nothing is lost.
+                     */
+                    modifier = Modifier.size(
+                        width = mediaHeight * GAME_MEDIA_ASPECT,
+                        height = mediaHeight,
+                    ),
                 )
             }
         }

@@ -248,7 +248,20 @@ class ScreenScraperProvider @Inject constructor(
         }
 
         return ArtworkSet(
-            boxArt = pick("box-2D", "box-2D-side", "box-texture"),
+            /*
+             * The front of the box, and nothing that merely contains one.
+             *
+             * The fallbacks here used to be `box-2D-side` and `box-texture`, and
+             * neither is a cover: the first is the *spine*, a tall thin strip,
+             * and the second is the unfolded wraparound — front, spine and back
+             * as one very wide image. Both were then drawn in a portrait cell
+             * that crops to fill, which is why a handful of games came out
+             * looking like a slice of something rather than a cover.
+             *
+             * `box-3D` is the same artwork photographed at an angle and is still
+             * portrait, so it stands in where a flat scan is missing.
+             */
+            boxArt = pick("box-2D", "box-3D"),
             hero = pick("fanart", "screenmarquee", "ss"),
             logo = pick("wheel", "wheel-hd", "screenmarquee"),
             // ScreenScraper has no square icon type; `wheel-carbon-steel` and
