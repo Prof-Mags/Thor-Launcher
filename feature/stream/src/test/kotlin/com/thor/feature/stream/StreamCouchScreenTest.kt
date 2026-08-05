@@ -221,4 +221,61 @@ class StreamCouchScreenTest {
         assertThat(HostStatus.Checking.couchLabel()).isEqualTo("Checking")
         assertThat(HostStatus.Offline("No route to host").couchLabel()).isEqualTo("Offline")
     }
+
+    // ---- The words on the buttons --------------------------------------------
+
+    /**
+     * Short enough to survive the row they share.
+     *
+     * The buttons take an equal slice of one row and ellipsise what does not fit,
+     * which on the handheld panel is about seven characters each — so this is not
+     * a style preference, it is the difference between a button that says what it
+     * does and one that says "CHECK AGA…". Asserted as a length because that is
+     * the actual constraint; asserting the exact strings would pass just as well
+     * with a two-word label typed back in.
+     */
+    @Test
+    fun `every action label fits the slice it is given`() {
+        StreamHostAction.entries.forEach { action ->
+            listOf(null, ONLINE_IDLE, ONLINE_IN_SESSION).forEach { online ->
+                val label = streamActionLabel(action, online)
+                assertThat(label).isNotEmpty()
+                assertThat(label.length).isAtMost(MAX_ACTION_LABEL)
+            }
+        }
+    }
+
+    /**
+     * Refresh says one thing.
+     *
+     * It used to be "REFRESH" on a paired PC and "CHECK AGAIN" on an unpaired one,
+     * which is the same action described twice — and only the longer description
+     * was ever cut, so the split was visible to the user solely as a bug.
+     */
+    @Test
+    fun `refresh reads the same whether or not the PC is paired`() {
+        val paired = streamActionLabel(StreamHostAction.REFRESH, ONLINE_IDLE)
+        val unpaired = streamActionLabel(StreamHostAction.REFRESH, HostStatus.Online("PC", false))
+
+        assertThat(paired).isEqualTo(unpaired)
+        assertThat(streamActionLabel(StreamHostAction.REFRESH, null)).isEqualTo(paired)
+    }
+
+    /** Resuming and starting are different enough to be worth different words. */
+    @Test
+    fun `starting a stream reads differently from resuming one`() {
+        assertThat(streamActionLabel(StreamHostAction.START_STREAM, ONLINE_IDLE))
+            .isNotEqualTo(streamActionLabel(StreamHostAction.START_STREAM, ONLINE_IN_SESSION))
+    }
+
+    private companion object {
+        val ONLINE_IDLE = HostStatus.Online(name = "PC", paired = true)
+        val ONLINE_IN_SESSION = HostStatus.Online(name = "PC", paired = true, currentGame = "Game")
+
+        /**
+         * Roughly what a third of the handheld panel holds at label size, once the
+         * icon, the gap and the button's own padding are paid for.
+         */
+        const val MAX_ACTION_LABEL = 8
+    }
 }

@@ -98,7 +98,7 @@ private fun GameProfileCard(
         selectedScreenshot.coerceIn(0, (screenshots.size - 1).coerceAtLeast(0)),
     ) ?: artwork.hero
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .shadow(12.dp, shape, clip = false)
             .clip(shape)
@@ -126,6 +126,12 @@ private fun GameProfileCard(
             )
             .border(1.dp, platformAccentBrush(accent, alpha = .22f), shape),
     ) {
+        // Read out here rather than at the call site below: inside the Column the
+        // implicit receiver is a ColumnScope and the card's own constraints are no
+        // longer reachable without naming them.
+        val cardHeight = maxHeight
+        val contentWidth = maxWidth - (GAME_HORIZONTAL_PADDING * 2).dp
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -173,21 +179,34 @@ private fun GameProfileCard(
             if (selectedMedia != null) {
                 GameSectionTitle("MEDIA")
                 /*
-                 * Shares the leftover with the description rather than taking a
-                 * fixed 16:9 of the card's full width.
+                 * Sixteen by nine, but never more than a quarter of the panel.
                  *
-                 * That is what left the synopsis with almost nothing: the card is
-                 * wide, so a sixteen-by-nine block of it is over two hundred dp
-                 * tall, and the description got whatever survived the masthead and
-                 * the statistics. The screenshot is scaled to fit rather than
-                 * cropped, so a shorter slot letterboxes it instead of cutting it.
+                 * The ratio alone was the reason long synopses were being cut. The
+                 * card is wide, so a sixteen-by-nine block of its full width came
+                 * out over a third of the panel's height, and the description — the
+                 * one thing on here that appears nowhere else — was left with
+                 * whatever survived the masthead, the statistics and that. A
+                 * ceiling settles it without going back to sharing the leftover,
+                 * which starved the strip instead: the shape is kept until it
+                 * reaches the cap and the image is fitted rather than cropped, so a
+                 * shorter slot letterboxes it and every dp saved goes to the text.
                  */
                 GameMedia(
                     model = selectedMedia,
                     selected = selectedScreenshot,
                     count = screenshots.size,
                     accent = accent,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(GAME_MEDIA_ASPECT),
+                    // Resolved as a height rather than left to `aspectRatio`, which
+                    // cannot be given a ceiling: with the width already fixed by
+                    // `fillMaxWidth` it has no freedom to honour one, and a
+                    // `heightIn` after it constrains the image inside the box
+                    // instead of the box itself.
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(
+                            (contentWidth / GAME_MEDIA_ASPECT)
+                                .coerceAtMost(cardHeight * GAME_MEDIA_MAX_FRACTION),
+                        ),
                 )
             }
         }
@@ -782,8 +801,15 @@ internal fun fittedTextScale(available: Int, measureHeight: (Float) -> Int): Flo
  * Below this the text is smaller than anything else on the panel and stops
  * looking like a deliberate choice; a synopsis long enough to need it is better
  * ellipsised than rendered at a size nobody reads.
+ *
+ * It was 0.95, which gave the fitter a five per cent range — so "shrink until it
+ * fits" was in practice "ellipsise", and the mechanism that exists to stop a
+ * synopsis being cut was doing nothing at all. Fifteen per cent is enough range
+ * to be worth having and still lands well above the smallest type on the panel;
+ * the rest of the room comes from capping the media strip, which is the honest
+ * place to find it.
  */
-private const val MIN_DESCRIPTION_SCALE = 0.95f
+internal const val MIN_DESCRIPTION_SCALE = 0.85f
 private const val DESCRIPTION_SCALE_STEP = 0.03f
 
 /**
@@ -808,6 +834,16 @@ private const val DESCRIPTION_SCALE_STEP = 0.03f
  * somewhere to put an image that is taller than it is wide.
  */
 private const val GAME_MEDIA_ASPECT = 16f / 9f
+
+/**
+ * And the ceiling on it, as a share of the panel's height.
+ *
+ * The strip is a picker: the image it selects is also drawn full-bleed behind the
+ * whole panel, so it is showing you *which* screenshot is back there rather than
+ * being the only place to see it. A third of the panel was too much to spend
+ * saying that, and the synopsis was paying for it.
+ */
+private const val GAME_MEDIA_MAX_FRACTION = 0.25f
 
 /** Scales both the size and its leading, so the text keeps its proportions. */
 private fun TextStyle.scaledBy(scale: Float): TextStyle = if (scale == 1f) {

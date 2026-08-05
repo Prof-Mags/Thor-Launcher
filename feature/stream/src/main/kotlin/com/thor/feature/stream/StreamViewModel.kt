@@ -337,9 +337,20 @@ class StreamViewModel @Inject constructor(
      *
      * Per host rather than in a batch, so a PC that is asleep delays only its own
      * row — the others answer in the time it takes them.
+     *
+     * @param announce whether to show the check while it is happening. True for a
+     *   press of Refresh, where the user has asked a question and is owed the sight
+     *   of it being asked. False for the periodic re-check that runs behind the
+     *   screen: that one flipped every badge to "Checking" and back on a timer, so
+     *   a page nobody had touched appeared to be reloading itself every few
+     *   seconds. The answer still lands when it arrives; only the churn goes.
      */
-    fun refresh(host: StreamHost) {
-        _uiState.update { it.copy(statuses = it.statuses + (host.address to HostStatus.Checking)) }
+    fun refresh(host: StreamHost, announce: Boolean = true) {
+        if (announce) {
+            _uiState.update {
+                it.copy(statuses = it.statuses + (host.address to HostStatus.Checking))
+            }
+        }
 
         viewModelScope.launchSafely(
             tag = TAG,
@@ -370,10 +381,10 @@ class StreamViewModel @Inject constructor(
      * already under way with a host, and re-asking mid-exchange rewrites the
      * badge the user is watching for the answer to a different question.
      */
-    fun refreshAll() {
+    fun refreshAll(announce: Boolean = true) {
         val state = _uiState.value
         if (state.connecting || state.pairing != PairingState.Idle) return
-        state.hosts.forEach(::refresh)
+        state.hosts.forEach { refresh(it, announce = announce) }
     }
 
     fun move(delta: Int) {

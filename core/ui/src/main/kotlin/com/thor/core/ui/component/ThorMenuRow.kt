@@ -66,6 +66,15 @@ fun ThorMenuRow(
     selected: Boolean = false,
     accent: Color? = null,
     enabled: Boolean = true,
+    /**
+     * How many lines the title may run to before it is cut.
+     *
+     * One nearly everywhere, because a menu row is scanned rather than read and a
+     * wrapping title makes the rows different heights. Raised where the label is a
+     * name rather than a caption and the row exists to identify it — a platform
+     * picker offering "Nintendo Entertainment Sy…" is offering a guess.
+     */
+    labelMaxLines: Int = 1,
 ) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
@@ -152,7 +161,7 @@ fun ThorMenuRow(
                     lit -> colors.onSurface
                     else -> colors.onSurfaceVariant
                 },
-                maxLines = 1,
+                maxLines = labelMaxLines,
                 overflow = TextOverflow.Ellipsis,
             )
             description?.let {

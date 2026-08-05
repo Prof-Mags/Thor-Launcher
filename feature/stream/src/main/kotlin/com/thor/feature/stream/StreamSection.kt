@@ -832,22 +832,7 @@ private fun HostActions(
             )
         } else {
             state.hostActions.forEach { action ->
-                val label = when (action) {
-                    StreamHostAction.START_STREAM -> if (online?.currentGame != null) {
-                        "RESUME STREAM"
-                    } else {
-                        "START STREAM"
-                    }
-                    StreamHostAction.STOP_SESSION -> "STOP SESSION"
-                    StreamHostAction.REFRESH -> if (online?.paired == true) {
-                        "REFRESH"
-                    } else {
-                        "CHECK AGAIN"
-                    }
-                    StreamHostAction.PAIR -> "PAIR PC"
-                    StreamHostAction.CANCEL_PAIRING -> "CANCEL PAIRING"
-                    StreamHostAction.FORGET -> "REMOVE"
-                }
+                val label = streamActionLabel(action, online)
                 val icon = when (action) {
                     StreamHostAction.START_STREAM -> Icons.Rounded.PlayArrow
                     StreamHostAction.STOP_SESSION -> Icons.Rounded.Stop
@@ -879,6 +864,35 @@ private fun HostActions(
         }
     }
 }
+
+/**
+ * One word per button, wherever one word will do.
+ *
+ * The buttons share a row and take an equal slice of it, so on the handheld panel
+ * each gets about seven characters before the label is ellipsised — and the labels
+ * were "STOP SESSION", "CHECK AGAIN", "CANCEL PAIRING" and "START STREAM". Every
+ * one of them was cut, and a button reading "CHECK AGA…" is worse than a short
+ * label because it looks like a rendering fault rather than a decision.
+ *
+ * The second word was carrying nothing in any of them. This is the PC-streaming
+ * screen with a play icon on the button; "START" is not ambiguous here, and
+ * neither is "STOP" beside a stop icon on a machine that is mid-session. "REFRESH"
+ * replaces the paired/unpaired split as well — the two said the same thing in
+ * different numbers of characters, and only the longer one was ever cut.
+ *
+ * Shared by both views rather than written out twice. Couch mode has room for the
+ * longer strings, but the same action wearing two names across two screens of one
+ * feature is how a launcher stops reading as one program.
+ */
+internal fun streamActionLabel(action: StreamHostAction, online: HostStatus.Online?): String =
+    when (action) {
+        StreamHostAction.START_STREAM -> if (online?.currentGame != null) "RESUME" else "START"
+        StreamHostAction.STOP_SESSION -> "STOP"
+        StreamHostAction.REFRESH -> "REFRESH"
+        StreamHostAction.PAIR -> "PAIR"
+        StreamHostAction.CANCEL_PAIRING -> "CANCEL"
+        StreamHostAction.FORGET -> "REMOVE"
+    }
 
 @Composable
 private fun ManualHostPanel(

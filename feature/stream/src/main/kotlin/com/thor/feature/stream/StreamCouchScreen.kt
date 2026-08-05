@@ -946,16 +946,7 @@ private fun CouchHostActions(
 
         state.hostActions.forEach { action ->
             StreamActionButton(
-                label = when (action) {
-                    StreamHostAction.START_STREAM ->
-                        if (online?.currentGame != null) "RESUME" else "STREAM"
-                    StreamHostAction.STOP_SESSION -> "STOP SESSION"
-                    StreamHostAction.REFRESH ->
-                        if (online?.paired == true) "REFRESH" else "CHECK AGAIN"
-                    StreamHostAction.PAIR -> "PAIR PC"
-                    StreamHostAction.CANCEL_PAIRING -> "CANCEL"
-                    StreamHostAction.FORGET -> "REMOVE"
-                },
+                label = streamActionLabel(action, online),
                 icon = when (action) {
                     StreamHostAction.START_STREAM -> Icons.Rounded.PlayArrow
                     StreamHostAction.STOP_SESSION -> Icons.Rounded.Stop

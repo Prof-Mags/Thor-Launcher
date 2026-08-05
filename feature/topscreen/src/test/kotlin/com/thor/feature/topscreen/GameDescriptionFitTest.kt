@@ -26,11 +26,27 @@ class GameDescriptionFitTest {
 
     @Test
     fun `a small overflow is absorbed by stepping down`() {
-        // 500px into 490px is within the 5 per cent the floor allows.
         val scale = fittedTextScale(available = 490, measureHeight = proportional(500))
 
         assertThat(scale).isLessThan(1f)
         assertThat(proportional(500)(scale)).isAtMost(490)
+    }
+
+    /**
+     * The floor has to leave enough range to be worth having.
+     *
+     * It was 0.95, which meant the fitter could absorb a five per cent overflow and
+     * nothing more — so "shrink until it fits" was in practice "ellipsise", and the
+     * mechanism that exists to stop a synopsis being cut mid-clause was doing
+     * nothing at all for any description long enough to need it. A twelve per cent
+     * overflow is an ordinary length of paragraph and has to survive.
+     */
+    @Test
+    fun `an overflow of about a tenth is still absorbed`() {
+        val scale = fittedTextScale(available = 440, measureHeight = proportional(500))
+
+        assertThat(scale).isGreaterThan(MIN_DESCRIPTION_SCALE)
+        assertThat(proportional(500)(scale)).isAtMost(440)
     }
 
     @Test
@@ -44,10 +60,11 @@ class GameDescriptionFitTest {
     @Test
     fun `an overflow past the floor ellipsises rather than shrinking to fit`() {
         // The floor is deliberately shallow: text small enough to fit anything
-        // trades one unreadable outcome for another.
+        // trades one unreadable outcome for another. Named rather than written out,
+        // so moving it does not silently change what this claims.
         val scale = fittedTextScale(available = 300, measureHeight = proportional(500))
 
-        assertThat(scale).isEqualTo(0.95f)
+        assertThat(scale).isEqualTo(MIN_DESCRIPTION_SCALE)
         assertThat(proportional(500)(scale)).isGreaterThan(300)
     }
 
@@ -55,7 +72,7 @@ class GameDescriptionFitTest {
     fun `a description no size can fit stops at the floor rather than looping`() {
         val scale = fittedTextScale(available = 10, measureHeight = proportional(5_000))
 
-        assertThat(scale).isEqualTo(0.95f)
+        assertThat(scale).isEqualTo(MIN_DESCRIPTION_SCALE)
     }
 
     @Test

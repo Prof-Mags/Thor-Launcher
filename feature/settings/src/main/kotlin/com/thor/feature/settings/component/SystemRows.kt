@@ -246,6 +246,11 @@ private fun PickerRow(
         label = platform.name,
         description = platform.subtitle,
         focused = highlighted,
+        // The one list where the label is the whole point. "Nintendo Entertainment
+        // System", "PC Engine / TurboGrafx-16" and "Sega Genesis / Mega Drive" all
+        // ran past the end of a single line, and the halves that got cut are
+        // exactly the halves that tell two similar systems apart.
+        labelMaxLines = 2,
         // The system's own colour, in the slot the accent gradient occupies
         // everywhere else. A list of forty consoles is easier to run an eye down
         // when each carries the colour it wears on the grid.
@@ -554,6 +559,17 @@ private fun PlatformAction(
 }
 
 private const val PLATFORM_ACTION_COUNT = 2
-/** Wide enough to read a system name, narrow enough to stay a dialog. */
-private const val PICKER_WIDTH_FRACTION = 0.72f
-private const val PICKER_MAX_HEIGHT = 420
+
+/**
+ * Nearly the whole panel.
+ *
+ * It was 0.72, chosen so the box still read as a dialog — but the thing it is a
+ * dialog *for* is a list of names, several of which are four words long, and after
+ * the artwork tile and the insets there was not a line's worth of room left for
+ * them. A picker that cannot show what it is offering has stopped being a picker,
+ * and the margin it was protecting is worth less than the names.
+ */
+private const val PICKER_WIDTH_FRACTION = 0.94f
+
+/** Tall enough to be worth scrolling, short enough to still float over the page. */
+private const val PICKER_MAX_HEIGHT = 460

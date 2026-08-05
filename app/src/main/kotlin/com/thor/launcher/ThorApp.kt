@@ -1716,9 +1716,16 @@ fun ThorApp(
                 streamViewModel.closeAddHost()
                 return@LaunchedEffect
             }
+            /*
+             * The first ask is the user's — they have just opened the screen and a
+             * visible check is the page telling them so. Every ask after it is the
+             * launcher's own idea, and those go quietly: the badges keep whatever
+             * they last said until a different answer comes back.
+             */
+            streamViewModel.refreshAll()
             while (true) {
-                streamViewModel.refreshAll()
                 delay(STREAM_RECHECK_MS)
+                streamViewModel.refreshAll(announce = false)
             }
         }
 
@@ -3160,7 +3167,17 @@ private const val COUCH_INTRO_LOAD_MS = 1_200
  * requests a minute on a local network. Each one is per host and off the main
  * thread, so a PC that is asleep delays only its own row.
  */
-private const val STREAM_RECHECK_MS = 12_000L
+/**
+ * How often the open Stream screen re-asks the PCs how they are.
+ *
+ * Up from twelve seconds. That was chosen against the *cost* of a probe on a local
+ * network, which is nothing, and never against what it was for: catching a machine
+ * that has woken up since the page opened. Nobody wakes a PC and then times how
+ * long the launcher takes to notice, and asking five times a minute made a screen
+ * that was doing nothing look busy — the check is silent now, which removes the
+ * flicker, but a poll nobody benefits from is still a poll nobody benefits from.
+ */
+private const val STREAM_RECHECK_MS = 45_000L
 
 /** The shape a panel is assumed to be before the displays have reported in. */
 private const val DEFAULT_PANEL_ASPECT = 16f / 10f
