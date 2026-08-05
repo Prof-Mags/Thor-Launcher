@@ -15,6 +15,7 @@ import com.thor.core.database.dao.GridDao
 import com.thor.core.database.dao.PlatformDao
 import com.thor.core.database.dao.PlayHistoryDao
 import com.thor.core.database.dao.WatchProgressDao
+import com.thor.core.database.dao.WidgetDao
 import com.thor.core.database.profileScopedDao
 import dagger.Module
 import dagger.Provides
@@ -89,4 +90,17 @@ object DatabaseModule {
     @Singleton
     fun providesAchievementDao(active: ActiveDatabase): AchievementDao =
         profileScopedDao(AchievementDao::class.java, active.current, active::require, ThorDatabase::achievementDao)
+
+    /**
+     * Profile-scoped like the rest, which is the right answer for widgets too.
+     *
+     * A widget id is allocated by one host and remembered by one database, so a
+     * profile switch has to change both together. Sharing this table across
+     * profiles would leave each of them drawing the other's widgets, and the
+     * first removal from either would release ids the other still points at.
+     */
+    @Provides
+    @Singleton
+    fun providesWidgetDao(active: ActiveDatabase): WidgetDao =
+        profileScopedDao(WidgetDao::class.java, active.current, active::require, ThorDatabase::widgetDao)
 }

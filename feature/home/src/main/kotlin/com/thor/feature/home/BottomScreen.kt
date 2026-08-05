@@ -1,5 +1,7 @@
 package com.thor.feature.home
 
+import android.content.Context
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -43,11 +45,13 @@ import com.thor.core.model.LauncherTab
 import com.thor.core.model.PanelLayout
 import com.thor.core.model.PlatformFolders
 import com.thor.core.model.SortOrder
+import com.thor.core.model.WidgetEntry
 import com.thor.core.ui.component.AnimatedWallpaperBackground
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.component.ModeChangeVeil
 import com.thor.core.ui.profile.ShellStatus
 import com.thor.core.ui.profile.ShellStatusActions
+import com.thor.data.widget.WidgetOption
 import com.thor.feature.home.couch.CouchDashboardActions
 import com.thor.feature.home.couch.CouchDetailScroll
 import com.thor.feature.home.couch.CouchFocus
@@ -60,9 +64,14 @@ import com.thor.feature.home.couch.platform
 import com.thor.feature.home.dialog.FolderPickerDialog
 import com.thor.feature.home.dialog.FolderPickerState
 import com.thor.feature.home.dialog.SortDialog
+import com.thor.feature.home.dialog.WidgetPickerDialog
+import com.thor.feature.home.dialog.WidgetPickerState
 import com.thor.feature.home.grid.LauncherGrid
 import com.thor.feature.home.grid.PageIndicators
+import com.thor.feature.home.menu.CellAction
+import com.thor.feature.home.menu.CellMenuState
 import com.thor.feature.home.menu.ContextAction
+import com.thor.feature.home.menu.EmptyCellMenu
 import com.thor.feature.home.menu.EntryContextMenu
 import com.thor.feature.home.menu.SideMenu
 import com.thor.feature.home.menu.SideMenuAction
@@ -110,6 +119,16 @@ fun BottomScreen(
     onFolderPicked: (String) -> Unit,
     onFolderCreated: () -> Unit,
     onFolderPickerDismissed: () -> Unit,
+    /** The menu a long press on an *empty* cell raises. */
+    cellMenu: CellMenuState = CellMenuState(),
+    onCellAction: (CellAction) -> Unit = {},
+    onCellMenuDismissed: () -> Unit = {},
+    widgetPicker: WidgetPickerState = WidgetPickerState(),
+    onWidgetPicked: (WidgetOption) -> Unit = {},
+    onWidgetPickerDismissed: () -> Unit = {},
+    /** Inflates a placed widget; see [com.thor.feature.home.grid.WidgetLayer]. */
+    createWidgetView: (Context, Int) -> View? = { _, _ -> null },
+    onWidgetMeasured: (appWidgetId: Int, widthDp: Int, heightDp: Int) -> Unit = { _, _, _ -> },
     /** Whether any non-smart folder exists, so filing can be offered. */
     foldersExist: Boolean,
     /** Whether the context-menu entry currently sits inside a folder. */
@@ -322,6 +341,8 @@ fun BottomScreen(
                     onCellLongPressed = onCellLongPressed,
                     onPageChanged = onPageChanged,
                     onPinch = onPinch,
+                    createWidgetView = createWidgetView,
+                    onWidgetMeasured = onWidgetMeasured,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
@@ -387,11 +408,33 @@ fun BottomScreen(
         // what the buttons now do, and grab-and-drop is not guessable.
         if (state.editMode.isActive) {
             EditModeBanner(
-                holding = state.editMode is EditMode.Holding,
+                mode = state.editMode,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(dimens.spacingSmall),
             )
+        }
+
+        /*
+         * The size, in words, while it is being changed.
+         *
+         * A widget being resized changes shape under the user's hands, and on a
+         * grid whose cells are already small the difference between two and three
+         * columns is not obvious from the outline alone. Saying the number is
+         * also the only thing that makes the ceiling explicable when the widget
+         * stops growing.
+         */
+        (state.editMode as? EditMode.Resizing)?.let { resizing ->
+            val widget = state.entriesById[resizing.entryId] as? WidgetEntry
+            if (widget != null) {
+                ResizeBanner(
+                    columns = widget.spanColumns,
+                    rows = widget.spanRows,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = bottomClearance + dimens.spacing),
+                )
+            }
         }
 
         // The first time only, and over the banner rather than instead of it:
@@ -520,6 +563,22 @@ fun BottomScreen(
             onDismiss = onFolderPickerDismissed,
         )
 
+        EmptyCellMenu(
+            visible = cellMenu.visible && !couchMode,
+            page = cellMenu.page,
+            row = cellMenu.row,
+            column = cellMenu.column,
+            focusedIndex = cellMenu.focusedIndex,
+            onAction = onCellAction,
+            onDismiss = onCellMenuDismissed,
+        )
+
+        WidgetPickerDialog(
+            state = widgetPicker,
+            onPick = onWidgetPicked,
+            onDismiss = onWidgetPickerDismissed,
+        )
+
         EntryContextMenu(
             /*
              * Never raised from a sofa.
@@ -634,17 +693,36 @@ private const val TUTORIAL_WIDTH_FRACTION = 0.86f
 private const val TUTORIAL_MAX_WIDTH = 420
 private const val TUTORIAL_GESTURE_WIDTH = 52
 
-/** Tells the user edit mode is active and what the buttons do. */
+/** Says what the size is now, while the D-pad is changing it. */
 @Composable
-private fun EditModeBanner(holding: Boolean, modifier: Modifier = Modifier) {
+private fun ResizeBanner(columns: Int, rows: Int, modifier: Modifier = Modifier) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
     GlassSurface(modifier = modifier) {
         Text(
-            text = if (holding) {
-                "Moving — D-pad to position, A to drop, B to cancel"
-            } else {
-                "Edit mode — A to pick up, pinch to resize, B to finish"
+            // The multiplication sign, not the letter: this is a size.
+            text = "$columns × $rows",
+            style = MaterialTheme.typography.titleMedium,
+            color = colors.cursor,
+            modifier = Modifier.padding(
+                horizontal = dimens.spacing,
+                vertical = dimens.spacingSmall,
+            ),
+        )
+    }
+}
+
+/** Tells the user edit mode is active and what the buttons do. */
+@Composable
+private fun EditModeBanner(mode: EditMode, modifier: Modifier = Modifier) {
+    val colors = ThorTheme.colors
+    val dimens = ThorTheme.dimens
+    GlassSurface(modifier = modifier) {
+        Text(
+            text = when (mode) {
+                is EditMode.Holding -> "Moving — D-pad to position, A to drop, B to cancel"
+                is EditMode.Resizing -> "Resizing — D-pad to change the size, A when done, B to undo"
+                else -> "Edit mode — A to pick up, pinch to resize, B to finish"
             },
             style = MaterialTheme.typography.labelMedium,
             color = colors.cursor,

@@ -6,9 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,8 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -39,6 +35,7 @@ import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Monitor
+import androidx.compose.material.icons.rounded.OpenWith
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Star
@@ -47,16 +44,14 @@ import androidx.compose.material.icons.rounded.Tablet
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.Wallpaper
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
@@ -64,16 +59,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import com.thor.core.designsystem.component.GlassSurface
-import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AppEntry
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
 import com.thor.core.model.PlatformFolders
+import com.thor.core.model.WidgetEntry
 import com.thor.core.ui.component.ArtworkImage
-import com.thor.core.ui.pointer.pointerHover
-import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.feature.home.couch.platform
 import com.thor.feature.home.grid.AppIcon
 import com.thor.feature.home.shell.icon
@@ -246,6 +239,35 @@ enum class ContextAction(
         Icons.Rounded.Delete,
         "Delete folder",
     ),
+
+    /**
+     * A widget's size, which nothing else on the grid has.
+     *
+     * Every other entry is one cell and always will be, so "resize" is not an
+     * action the menu has ever needed. A widget is the first thing here whose
+     * size is a property of the entry rather than of the grid.
+     */
+    RESIZE_WIDGET(
+        "Resize",
+        "D-pad to change its size, A when it looks right",
+        Icons.Rounded.OpenWith,
+        "Resize",
+    ),
+
+    /**
+     * Takes a widget off the grid for good.
+     *
+     * Destructive in a way [REMOVE_FROM_GRID] is not, and worded to say so: an
+     * app removed from the grid is still installed and still in the drawer,
+     * whereas a widget has nowhere else to be. Its id goes back to the platform
+     * and adding it again is a new widget with new settings.
+     */
+    REMOVE_WIDGET(
+        "Remove widget",
+        "Takes it off the grid and forgets its settings",
+        Icons.Rounded.DeleteForever,
+        "Remove",
+    ),
 }
 
 /**
@@ -269,6 +291,20 @@ fun contextActionsFor(
     /** Whether this platform folder already wears hand-picked artwork. */
     hasCustomArtwork: Boolean = false,
 ): List<ContextAction> = buildList {
+    /*
+     * A widget answers almost none of the questions this menu asks.
+     *
+     * It cannot be launched, favourited, hidden, filed into a folder, edited or
+     * uninstalled — it is not an entry the library found, it is a view another
+     * app draws in a box the user positioned. Offering the full list greyed out
+     * would be eleven rows of "no" around the two that work.
+     */
+    if (entry is WidgetEntry) {
+        add(ContextAction.RESIZE_WIDGET)
+        add(ContextAction.REMOVE_WIDGET)
+        return@buildList
+    }
+
     add(ContextAction.LAUNCH)
     if (entry !is FolderEntry) {
         add(ContextAction.LAUNCH_MAIN_SCREEN)
@@ -588,6 +624,16 @@ private fun ContextEntryIcon(entry: GridEntry) {
             modifier = Modifier.size(HEADER_GLYPH.dp),
         )
 
+        // A glyph rather than the widget itself: the live view is on the grid
+        // behind this card, and a second copy of it in the header would be an
+        // inter-process inflate for a thumbnail.
+        is WidgetEntry -> Icon(
+            imageVector = Icons.Rounded.Widgets,
+            contentDescription = entry.title,
+            tint = ThorTheme.colors.primary,
+            modifier = Modifier.size(HEADER_GLYPH.dp),
+        )
+
         else -> ArtworkImage(
             model = null,
             contentDescription = entry.title,
@@ -633,7 +679,6 @@ private fun ContextHint(action: ContextAction?, entry: GridEntry) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ContextTile(
     action: ContextAction,
@@ -643,79 +688,15 @@ private fun ContextTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = ThorTheme.colors
-    // The user's corner choice, not a number of my own. A literal radius here
-    // is exactly how a launcher set to square corners ends up with rounded
-    // buttons on one card.
-    val shape = ThorTheme.shapes.small
-    val hover = rememberPointerHover()
-    val lit = focused || hover.isHovered
-
-    // A destructive tile reads in the error colour throughout, focused or not.
-    // The cursor tint would otherwise make "Uninstall" the one tile that stops
-    // looking dangerous at the moment it is about to be pressed.
-    val accent = if (action.isDestructive) colors.error else colors.cursor
-
-    val requester = remember { BringIntoViewRequester() }
-    LaunchedEffect(focused) {
-        if (focused) {
-            withFrameNanos { }
-            runCatching { requester.bringIntoView() }
-        }
-    }
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .height(height)
-            .clip(shape)
-            /*
-             * Exactly what a side-menu row does: the cursor's tint when lit,
-             * nothing at all when it is not.
-             *
-             * Filling a resting tile with any surface colour was the mistake
-             * behind them reading as dark blocks. A row in the side menu is
-             * transparent until the cursor arrives, so the card shows through
-             * and the only thing carrying colour is the one the user is on —
-             * which is also what makes the highlight legible rather than one
-             * shade among twelve.
-             */
-            .background(if (lit) accent.copy(alpha = TILE_LIT_ALPHA) else Color.Transparent)
-            // A hairline the side menu has no use for: its rows are stacked and
-            // separated by their own spacing, whereas these are a grid and need
-            // an edge to sit in columns rather than float.
-            .border(1.dp, colors.outline.copy(alpha = TILE_EDGE_ALPHA), shape)
-            .thorCursor(focused = lit, shape = shape)
-            .pointerHover(hover)
-            .bringIntoViewRequester(requester)
-            .clickable(onClick = onClick)
-            .padding(horizontal = TILE_INSET.dp),
-    ) {
-        // Both follow the side menu's rule: the tint when lit, the variant when
-        // resting, and the error colour throughout for anything destructive.
-        Icon(
-            imageVector = action.iconFor(entry),
-            contentDescription = null,
-            tint = when {
-                action.isDestructive -> colors.error
-                lit -> accent
-                else -> colors.onSurfaceVariant
-            },
-            modifier = Modifier.size(TILE_GLYPH.dp),
-        )
-        Text(
-            text = action.shortFor(entry),
-            style = MaterialTheme.typography.labelLarge,
-            color = when {
-                action.isDestructive -> colors.error
-                lit -> colors.onSurface
-                else -> colors.onSurfaceVariant
-            },
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = TILE_GAP.dp),
-        )
-    }
+    MenuTile(
+        icon = action.iconFor(entry),
+        caption = action.shortFor(entry),
+        focused = focused,
+        height = height,
+        destructive = action.isDestructive,
+        onClick = onClick,
+        modifier = modifier,
+    )
 }
 
 /**
@@ -744,7 +725,8 @@ private fun ContextAction.iconFor(entry: GridEntry): ImageVector =
 private val ContextAction.isDestructive: Boolean
     get() = this == ContextAction.UNINSTALL ||
         this == ContextAction.DELETE ||
-        this == ContextAction.DELETE_FOLDER
+        this == ContextAction.DELETE_FOLDER ||
+        this == ContextAction.REMOVE_WIDGET
 
 /** One-line description shown under the entry's title. */
 private fun GridEntry.subtitle(): String = when (this) {
@@ -756,6 +738,8 @@ private fun GridEntry.subtitle(): String = when (this) {
 
     is AppEntry -> if (isEmulator) "Emulator · $packageName" else packageName
     is FolderEntry -> "Folder · ${childIds.size} items"
+    // The multiplication sign, not the letter: this is a size.
+    is WidgetEntry -> "Widget · ${spanColumns}×$spanRows"
     else -> ""
 }
 
@@ -852,23 +836,7 @@ private const val HEADER_GAP = 10
 private const val HINT_HEIGHT = 26
 private const val HINT_GAP = 8
 
-private const val TILE_GAP = 6
-private const val TILE_INSET = 10
-private const val TILE_GLYPH = 18
-
-/** How visible a resting tile's edge is; the fill itself is transparent. */
-private const val TILE_EDGE_ALPHA = 0.45f
-
-/**
- * The range a tile is allowed to be squeezed into.
- *
- * The floor is set by the label: below about this the caption is smaller than
- * the subtitle above it and the card stops reading as a deliberate object. The
- * ceiling is set by the television, where the leftover is large enough to give
- * eleven actions the proportions of a billboard if nothing said otherwise.
- */
-private const val TILE_MIN = 34
-private const val TILE_MAX = 52
-
-/** Tint under a tile the cursor or the pointer is on; the side menu's own value. */
-private const val TILE_LIT_ALPHA = 0.14f
+/** The gap between tiles; the same number that sets the gap inside one. */
+private const val TILE_GAP = MENU_TILE_GAP
+private const val TILE_MIN = MENU_TILE_MIN
+private const val TILE_MAX = MENU_TILE_MAX

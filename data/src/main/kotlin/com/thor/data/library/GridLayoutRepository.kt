@@ -5,16 +5,21 @@ import com.thor.core.common.dispatchers.ThorDispatcher
 import com.thor.core.common.text.TitleNormalizer
 import com.thor.core.database.dao.FolderDao
 import com.thor.core.database.dao.GridDao
+import com.thor.core.database.dao.WidgetDao
 import com.thor.core.database.model.FolderEntity
 import com.thor.core.database.model.PageEntity
 import com.thor.core.database.model.PlacementEntity
 import com.thor.core.datastore.SettingsRepository
+import com.thor.core.model.CellSpan
 import com.thor.core.model.FolderIcons
+import com.thor.core.model.GridFootprint
 import com.thor.core.model.GridPage
 import com.thor.core.model.GridPlacement
+import com.thor.core.model.GridSlot
 import com.thor.core.model.PlatformFolders
 import com.thor.core.model.GridSpec
 import com.thor.core.model.SmartQuery
+import com.thor.core.model.WidgetEntry
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -24,6 +29,25 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * What happened to a move.
+ *
+ * Three outcomes rather than a nullable displaced id, because "nothing was
+ * displaced" and "the move did not happen" are different things and used to
+ * arrive as the same `null` — which is why a widget dropped somewhere it did
+ * not fit put the cursor down and looked as though it had worked.
+ */
+sealed interface MoveResult {
+    /** The entry is in its new cell and nothing else moved. */
+    data object Moved : MoveResult
+
+    /** The entry is in its new cell; [entryId] was turned out and is now unplaced. */
+    data class Displaced(val entryId: String) : MoveResult
+
+    /** Nothing changed: off the page, or too much in the way. */
+    data object Blocked : MoveResult
+}
 
 /**
  * Owns the arrangement of the bottom-screen grid.
@@ -37,6 +61,14 @@ import javax.inject.Singleton
 class GridLayoutRepository @Inject constructor(
     private val gridDao: GridDao,
     private val folderDao: FolderDao,
+    /**
+     * Widget sizes, because a widget occupies cells its placement does not name.
+     *
+     * The DAO rather than `WidgetRepository`: that one already needs this class
+     * to give a new widget a cell, and repositories that need each other in both
+     * directions do not construct.
+     */
+    private val widgetDao: WidgetDao,
     private val settings: SettingsRepository,
     @Dispatcher(ThorDispatcher.Default) private val defaultDispatcher: CoroutineDispatcher,
 ) {
@@ -79,10 +111,19 @@ class GridLayoutRepository @Inject constructor(
 
             // Occupancy is tracked in memory while assigning, so a batch of 300
             // new entries costs one read rather than one query per entry.
+            //
+            // Expanded through the footprint rather than read straight off the
+            // placements: a widget stores one cell and stands on up to sixteen,
+            // and filling this from the stored cell alone is how a scan puts
+            // three hundred games underneath the clock.
+            val spans = spans()
             val occupied = existing
                 .filterNot { it.isDock || it.parentFolderId != null }
-                .groupBy(PlacementEntity::pageIndex) { it.cellIndex(spec.columns) }
-                .mapValues { it.value.toMutableSet() }
+                .map(PlacementEntity::toDomain)
+                .groupBy(GridPlacement::pageIndex)
+                .mapValues { (pageIndex, onPage) ->
+                    GridFootprint.occupants(onPage, spans, pageIndex, spec).keys.toMutableSet()
+                }
                 .toMutableMap()
 
             val additions = mutableListOf<PlacementEntity>()
@@ -120,44 +161,55 @@ class GridLayoutRepository @Inject constructor(
     /**
      * Moves an entry to a specific cell.
      *
-     * Returns the id of whatever already occupied that cell, whose placement is
-     * removed — it is now off the grid and in the caller's hands.
+     * A move onto an occupied cell hands the occupant back rather than swapping
+     * the two. Swapping sends the occupant to the cell the dragged icon came
+     * from, which is a position the user never chose — on a hand-arranged grid
+     * one deliberate move silently relocates a second icon across the page.
+     * Handing it back lets the caller keep it held so the user places it.
      *
-     * This used to swap the two, sending the occupant back to the cell the
-     * dragged icon came from. That is a position the user never chose, and on a
-     * hand-arranged grid it means one deliberate move silently relocates a second
-     * icon somewhere across the page. Handing the occupant back instead lets the
-     * caller keep it held so the user places it themselves.
-     *
-     * @return the displaced entry's id, or null if the cell was empty
+     * Displacement is only ever offered between single cells. A widget covers
+     * several, so a move involving one can uncover several occupants at once,
+     * and "here, now place these four" is not something a held cursor can
+     * express — those moves are refused instead. See [MoveResult.Blocked].
      */
     suspend fun moveEntry(
         entryId: String,
         pageIndex: Int,
         row: Int,
         column: Int,
-    ): String? = withContext(defaultDispatcher) {
+    ): MoveResult = withContext(defaultDispatcher) {
         val spec = settings.grid.first()
-        if (row !in 0 until spec.rows || column !in 0 until spec.columns) return@withContext null
+        val spans = spans()
+        val span = spans[entryId] ?: CellSpan.SINGLE
+        if (!GridFootprint.fits(row, column, span, spec)) return@withContext MoveResult.Blocked
 
-        val source = gridDao.getPlacement(entryId) ?: return@withContext null
-        val occupant = gridDao.getAllPlacements().firstOrNull {
-            !it.isDock && it.parentFolderId == null &&
-                it.pageIndex == pageIndex && it.row == row && it.column == column
-        }
+        val source = gridDao.getPlacement(entryId) ?: return@withContext MoveResult.Blocked
+        val onPage = pagePlacements(pageIndex)
+        val occupants = GridFootprint.occupants(onPage, spans, pageIndex, spec)
+        val blockers = GridFootprint.cells(row, column, span, spec)
+            .mapNotNull(occupants::get)
+            .filterNot { it == entryId }
+            .distinct()
+
+        // One single-cell occupant is the case the held cursor can carry on with;
+        // anything else — a widget in the way, or several entries under one — has
+        // no sensible hand-back and is left alone.
+        val displaceable = blockers.size <= 1 &&
+            span.isSingle &&
+            blockers.all { (spans[it] ?: CellSpan.SINGLE).isSingle }
+        if (!displaceable) return@withContext MoveResult.Blocked
 
         ensurePageExists(pageIndex)
-
         gridDao.upsert(
             source.copy(pageIndex = pageIndex, row = row, column = column, parentFolderId = null),
         )
 
-        val displaced = occupant?.takeIf { it.entryId != entryId } ?: return@withContext null
+        val displaced = blockers.firstOrNull() ?: return@withContext MoveResult.Moved
         // Removed rather than parked somewhere: the caller picks it straight back
         // up, and leaving it on the grid meanwhile would put two icons in one
         // cell for as long as the user took to decide.
-        gridDao.deleteByEntryId(displaced.entryId)
-        displaced.entryId
+        gridDao.deleteByEntryId(displaced)
+        MoveResult.Displaced(displaced)
     }
 
     /**
@@ -176,16 +228,22 @@ class GridLayoutRepository @Inject constructor(
         column: Int,
     ): Boolean = withContext(defaultDispatcher) {
         val spec = settings.grid.first()
-        if (row !in 0 until spec.rows || column !in 0 until spec.columns) return@withContext false
+        val spans = spans()
 
         // The entry's own placement does not count as an occupant, so returning
         // an icon to the cell it was picked up from — which it still nominally
         // holds until it is dropped — succeeds rather than being refused.
-        val occupied = gridDao.getAllPlacements().any {
-            !it.isDock && it.parentFolderId == null && it.entryId != entryId &&
-                it.pageIndex == pageIndex && it.row == row && it.column == column
-        }
-        if (occupied) return@withContext false
+        val free = GridFootprint.isFree(
+            row = row,
+            column = column,
+            span = spans[entryId] ?: CellSpan.SINGLE,
+            placements = pagePlacements(pageIndex),
+            spans = spans,
+            pageIndex = pageIndex,
+            spec = spec,
+            ignoring = entryId,
+        )
+        if (!free) return@withContext false
 
         ensurePageExists(pageIndex)
         gridDao.upsert(
@@ -663,17 +721,7 @@ class GridLayoutRepository @Inject constructor(
      */
     suspend fun applyOrder(orderedEntryIds: List<String>, spec: GridSpec) =
         withContext(defaultDispatcher) {
-            val placements = orderedEntryIds.mapIndexed { index, entryId ->
-                val page = index / spec.cellsPerPage
-                val cell = index % spec.cellsPerPage
-                PlacementEntity(
-                    entryId = entryId,
-                    pageIndex = page,
-                    row = cell / spec.columns,
-                    column = cell % spec.columns,
-                )
-            }
-
+            val placements = packInOrder(orderedEntryIds, spec, spans())
             val pageCount = (placements.maxOfOrNull(PlacementEntity::pageIndex) ?: 0) + 1
             (0 until pageCount).forEach { ensurePageExists(it) }
             gridDao.upsertAll(placements)
@@ -707,28 +755,117 @@ class GridLayoutRepository @Inject constructor(
      * longer fit, and by "reset layout". Order is preserved; positions are not.
      */
     suspend fun reflow(spec: GridSpec) = withContext(defaultDispatcher) {
-        val all = gridDao.getAllPlacements()
+        val ordered = gridDao.getAllPlacements()
             .filter { !it.isDock && it.parentFolderId == null }
             .sortedWith(
                 compareBy<PlacementEntity> { it.pageIndex }
                     .thenBy { it.row }
                     .thenBy { it.column },
             )
+            .map(PlacementEntity::entryId)
 
-        val reflowed = all.mapIndexed { index, placement ->
-            val page = index / spec.cellsPerPage
-            val cell = index % spec.cellsPerPage
-            placement.copy(
-                pageIndex = page,
+        val reflowed = packInOrder(ordered, spec, spans())
+        val pageCount = (reflowed.maxOfOrNull(PlacementEntity::pageIndex) ?: 0) + 1
+        (0 until pageCount).forEach { ensurePageExists(it) }
+        gridDao.upsertAll(reflowed)
+    }
+
+    /**
+     * Lays a list of entries out in reading order, honouring their footprints.
+     *
+     * Not `index / cellsPerPage`, which is what this was while everything took
+     * one cell. A widget takes several, so filling by index puts the next few
+     * icons inside it; each entry is given the first cell where the *whole* of it
+     * fits instead, and a widget too wide for what is left of a row moves down
+     * rather than being sliced.
+     *
+     * Order is preserved in the sense that matters — earlier entries are placed
+     * first — but a wide widget can be passed over by a later single-cell icon
+     * that fits in the gap it could not. The alternative is leaving holes, which
+     * on a sorted grid reads as entries having gone missing.
+     */
+    private fun packInOrder(
+        orderedEntryIds: List<String>,
+        spec: GridSpec,
+        spans: Map<String, CellSpan>,
+    ): List<PlacementEntity> {
+        val placed = mutableListOf<GridPlacement>()
+        val byPage = mutableMapOf<Int, MutableList<GridPlacement>>()
+
+        orderedEntryIds.forEach { entryId ->
+            val span = (spans[entryId] ?: CellSpan.SINGLE).coercedTo(spec)
+            var pageIndex = 0
+            while (true) {
+                val onPage = byPage.getOrPut(pageIndex) { mutableListOf() }
+                val cell = GridFootprint.firstFreeCell(span, onPage, spans, pageIndex, spec)
+                if (cell != null) {
+                    val placement =
+                        GridPlacement.fromCellIndex(entryId, pageIndex, cell, spec.columns)
+                    onPage += placement
+                    placed += placement
+                    break
+                }
+                pageIndex++
+            }
+        }
+        return placed.map { it.toEntity() }
+    }
+
+    /**
+     * Where something of [span] can go, adding a page if no existing one has room.
+     *
+     * Used to land a widget the user has just chosen. Unlike an icon it cannot
+     * simply take the next free cell — a 2×2 needs four adjacent ones, and on a
+     * full page there may be four free cells and nowhere to put it.
+     */
+    suspend fun firstFreeCellFor(
+        span: CellSpan,
+        ignoring: String? = null,
+    ): GridSlot = withContext(defaultDispatcher) {
+        val spec = settings.grid.first()
+        val wanted = span.coercedTo(spec)
+        val spans = spans()
+        val pageCount = (gridDao.getPages().maxOfOrNull(PageEntity::pageIndex) ?: 0) + 1
+
+        for (pageIndex in 0 until pageCount) {
+            val cell = GridFootprint.firstFreeCell(
+                span = wanted,
+                placements = pagePlacements(pageIndex),
+                spans = spans,
+                pageIndex = pageIndex,
+                spec = spec,
+                ignoring = ignoring,
+            ) ?: continue
+            return@withContext GridSlot(
+                pageIndex = pageIndex,
                 row = cell / spec.columns,
                 column = cell % spec.columns,
             )
         }
 
-        val pageCount = (reflowed.maxOfOrNull(PlacementEntity::pageIndex) ?: 0) + 1
-        (0 until pageCount).forEach { ensurePageExists(it) }
-        gridDao.upsertAll(reflowed)
+        // Nothing had room, so it goes at the top of a page of its own.
+        ensurePageExists(pageCount)
+        GridSlot(pageIndex = pageCount, row = 0, column = 0)
     }
+
+    /** Page placements as domain objects; dock slots and folder contents excluded. */
+    private suspend fun pagePlacements(pageIndex: Int): List<GridPlacement> =
+        gridDao.getAllPlacements()
+            .filter { !it.isDock && it.parentFolderId == null && it.pageIndex == pageIndex }
+            .map(PlacementEntity::toDomain)
+
+    /**
+     * How many cells each widget takes, keyed by grid entry id.
+     *
+     * Read fresh each time rather than cached: these change when the user resizes
+     * one, and a stale map is a layout that places icons under a widget that has
+     * just grown.
+     */
+    private suspend fun spans(): Map<String, CellSpan> =
+        widgetDao.all().associate { widget ->
+            WidgetEntry.idFor(widget.appWidgetId) to
+                CellSpan(columns = widget.spanColumns, rows = widget.spanRows)
+        }
 
     private suspend fun ensurePageExists(pageIndex: Int) {
         val pages = gridDao.getPages()

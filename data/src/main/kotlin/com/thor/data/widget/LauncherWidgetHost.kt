@@ -1,6 +1,5 @@
-package com.thor.launcher.widget
+package com.thor.data.widget
 
-import android.app.Activity
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
@@ -10,6 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import com.thor.core.common.log.ThorLog
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * The launcher's window onto other applications' widgets.
@@ -25,9 +27,11 @@ import com.thor.core.common.log.ThorLog
  * thing that can find it again is [orphans], because the platform will happily
  * keep it forever.
  */
-class LauncherWidgetHost(context: Context) {
+@Singleton
+class LauncherWidgetHost @Inject constructor(
+    @ApplicationContext private val appContext: Context,
+) {
 
-    private val appContext = context.applicationContext
     private val manager = AppWidgetManager.getInstance(appContext)
     private val host = AppWidgetHost(appContext, HOST_ID)
     private var listening = false
@@ -109,10 +113,22 @@ class LauncherWidgetHost(context: Context) {
         }
     }
 
-    /** Inflates the provider's remote views for [appWidgetId]. */
-    fun createView(activity: Activity, appWidgetId: Int): AppWidgetHostView? {
-        val info = manager.getAppWidgetInfo(appWidgetId) ?: return null
-        return runCatching { host.createView(activity, appWidgetId, info) }
+    /** The provider bound to [appWidgetId], or null when nothing is. */
+    fun infoFor(appWidgetId: Int): AppWidgetProviderInfo? =
+        runCatching { manager.getAppWidgetInfo(appWidgetId) }.getOrNull()
+
+    /**
+     * Inflates the provider's remote views for [appWidgetId].
+     *
+     * Takes a plain [Context] rather than an Activity because the bottom panel is
+     * not one: the grid is drawn inside a `Presentation` on the second display,
+     * and a host view inflated against the activity would resolve its
+     * configuration — density, size, and therefore the layout the provider picks
+     * — against the wrong screen.
+     */
+    fun createView(context: Context, appWidgetId: Int): AppWidgetHostView? {
+        val info = infoFor(appWidgetId) ?: return null
+        return runCatching { host.createView(context, appWidgetId, info) }
             .getOrElse {
                 ThorLog.w(TAG, "Could not inflate widget $appWidgetId", it)
                 null

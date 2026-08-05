@@ -1,13 +1,16 @@
 package com.thor.feature.home
 
 import androidx.compose.runtime.Immutable
+import com.thor.core.model.CellSpan
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.FolderStyle
 import com.thor.core.model.GridEntry
+import com.thor.core.model.GridFootprint
 import com.thor.core.model.GridPage
 import com.thor.core.model.GridPlacement
 import com.thor.core.model.GridSpec
 import com.thor.core.model.Platform
+import com.thor.core.model.WidgetEntry
 import com.thor.feature.home.couch.platform
 import com.thor.feature.home.shell.icon
 
@@ -90,11 +93,18 @@ data class LauncherUiState(
             pageCount
         }
 
-    /** Placements on the visible page, indexed by cell for O(1) lookup. */
-    fun placementsForPage(pageIndex: Int): Map<Int, GridPlacement> =
-        placements.asSequence()
-            .filter { it.pageIndex == pageIndex }
-            .associateBy { it.row * spec.columns + it.column }
+    /**
+     * How many cells each placed widget covers.
+     *
+     * Lazy because most states are never asked: this is read when a cell has to
+     * be resolved to what stands on it, which happens on a long press rather
+     * than on every frame.
+     */
+    val widgetSpans: Map<String, CellSpan> by lazy {
+        entriesById.values
+            .filterIsInstance<WidgetEntry>()
+            .associate { widget -> widget.id to CellSpan(widget.spanColumns, widget.spanRows) }
+    }
 
     /**
      * What occupies a cell — the open folder's contents when one is open, and the
@@ -103,14 +113,17 @@ data class LauncherUiState(
      * A folder's children are laid out in order and packed, because they have no
      * placements of their own: they are a *list* the grid is showing, not an
      * arrangement the user made.
+     *
+     * Resolved through the footprint, so a widget answers from every cell it
+     * stands on rather than only from the one its placement stores.
      */
     fun entryAt(pageIndex: Int, row: Int, column: Int): GridEntry? {
         val cell = row * spec.columns + column
         if (isFolderOpen) {
             return openFolderContents.getOrNull(pageIndex * spec.cellsPerPage + cell)
         }
-        val placement = placementsForPage(pageIndex)[cell] ?: return null
-        return entriesById[placement.entryId]
+        val occupant = GridFootprint.occupants(placements, widgetSpans, pageIndex, spec)[cell]
+        return occupant?.let(entriesById::get)
     }
 }
 
@@ -135,6 +148,24 @@ sealed interface EditMode {
         val originPage: Int,
         val originRow: Int,
         val originColumn: Int,
+    ) : EditMode
+
+    /**
+     * A widget is being given a new size.
+     *
+     * Its own mode rather than a flag on [Holding], because the buttons mean
+     * something different: while holding, the D-pad moves the cursor and takes
+     * the entry with it, and while resizing it grows and shrinks an edge without
+     * the cursor going anywhere. One mode doing both would need a modifier
+     * button, on a device whose face buttons are already spoken for.
+     *
+     * [originColumns] and [originRows] are what Back restores, so a resize can be
+     * abandoned rather than merely stopped at whatever size it had reached.
+     */
+    data class Resizing(
+        val entryId: String,
+        val originColumns: Int,
+        val originRows: Int,
     ) : EditMode
 
     val isActive: Boolean get() = this !is None
@@ -218,4 +249,23 @@ sealed interface LauncherEffect {
         /** True for the wide backdrop, false for the square icon. */
         val hero: Boolean,
     ) : LauncherEffect
+
+    /**
+     * Ask the user to let this launcher bind a widget.
+     *
+     * `BIND_APPWIDGET` is signature-level, so an ordinary install cannot bind
+     * one silently and has to raise the platform's consent dialog. That is an
+     * activity result, which belongs to the activity — the view model can only
+     * ask for it and wait to be told what happened.
+     */
+    data object RequestWidgetBind : LauncherEffect
+
+    /**
+     * Run the provider's own setup screen before the widget is placed.
+     *
+     * Also an activity result, and also not optional: a provider that declares a
+     * configuration activity and never gets to run it draws an empty box for as
+     * long as it stays on the grid.
+     */
+    data object ConfigureWidget : LauncherEffect
 }

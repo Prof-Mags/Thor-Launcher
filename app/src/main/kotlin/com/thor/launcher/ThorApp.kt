@@ -53,6 +53,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
+import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
@@ -365,7 +366,22 @@ fun ThorApp(
         settingsViewModel.refreshPointerService()
         onPauseOrDispose { }
     }
+
+    /*
+     * The widget host listens only while the launcher is in front.
+     *
+     * Tied to resume rather than to the process: a host that goes on listening
+     * behind a game is paying for every clock tick and weather refresh nobody
+     * can see, and widgets are the one thing on this grid that keep working when
+     * nothing is looking at them.
+     */
+    LifecycleResumeEffect(viewModel) {
+        viewModel.startWidgetHost()
+        onPauseOrDispose { viewModel.stopWidgetHost() }
+    }
     val recording by viewModel.recording.collectAsState()
+    val cellMenu by viewModel.cellMenu.collectAsState()
+    val widgetPicker by viewModel.widgetPicker.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val navCursor by viewModel.navCursor.collectAsState()
     val couchFocus by viewModel.couchFocus.collectAsState()
@@ -734,6 +750,26 @@ fun ThorApp(
 
             else -> Unit
         }
+    }
+
+    /*
+     * Adding a widget, which is up to two trips out of the launcher.
+     *
+     * Both are activity results and so belong here rather than in the view
+     * model, and both have to report back either way: an id is allocated before
+     * any of this and stays allocated until somebody says what happened to it.
+     * Cancelling is therefore not a no-op — it is the signal that releases it.
+     */
+    val widgetBindRequest = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        viewModel.onWidgetBindResult(result.resultCode == Activity.RESULT_OK)
+    }
+
+    val widgetConfigureRequest = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        viewModel.onWidgetConfigured(result.resultCode == Activity.RESULT_OK)
     }
 
     // Snapshots of the same derivations, for the things this composition draws.
@@ -1817,6 +1853,34 @@ fun ThorApp(
                         artworkPicker.launch(arrayOf("image/*"))
                     }
 
+                    /*
+                     * Told "no" rather than left waiting when the dialog cannot
+                     * be raised at all.
+                     *
+                     * The view model is holding an allocated widget id at this
+                     * point and only releases it on an answer, so a launch that
+                     * silently failed would leak one every time.
+                     */
+                    LauncherEffect.RequestWidgetBind -> {
+                        val intent = viewModel.widgetBindIntent()
+                        if (intent == null) {
+                            viewModel.onWidgetBindResult(granted = false)
+                        } else {
+                            runCatching { widgetBindRequest.launch(intent) }
+                                .onFailure { viewModel.onWidgetBindResult(granted = false) }
+                        }
+                    }
+
+                    LauncherEffect.ConfigureWidget -> {
+                        val intent = viewModel.widgetConfigureIntent()
+                        if (intent == null) {
+                            viewModel.onWidgetConfigured(completed = false)
+                        } else {
+                            runCatching { widgetConfigureRequest.launch(intent) }
+                                .onFailure { viewModel.onWidgetConfigured(completed = false) }
+                        }
+                    }
+
                     LauncherEffect.OpenPowerMenu ->
                         if (mouse.serviceConnected.value) {
                             mouse.requestPowerMenu()
@@ -2196,9 +2260,13 @@ fun ThorApp(
                     // context menu, which is where "move" now lives alongside
                     // everything else. Picking an icon straight up on long
                     // press made the other actions unreachable by touch.
+                    //
+                    // On an empty cell it raises the cell's own menu instead,
+                    // which is where widgets are added — the view model decides,
+                    // because telling the two apart means knowing which cells a
+                    // widget is standing on.
                     feedback.play(FeedbackCue.PICK_UP)
-                    viewModel.setCursor(row, column)
-                    viewModel.openContextMenu()
+                    viewModel.onCellLongPressed(row, column)
                 },
                 onPageChanged = viewModel::setPage,
                 onPinch = { zoom -> viewModel.updateGridSpec { it.pinched(zoom) } },
@@ -2228,6 +2296,14 @@ fun ThorApp(
                 onFolderPicked = viewModel::fileIntoFolder,
                 onFolderCreated = viewModel::fileIntoNewFolder,
                 onFolderPickerDismissed = viewModel::closeFolderPicker,
+                cellMenu = cellMenu,
+                onCellAction = viewModel::performCellAction,
+                onCellMenuDismissed = viewModel::closeCellMenu,
+                widgetPicker = widgetPicker,
+                onWidgetPicked = viewModel::chooseWidget,
+                onWidgetPickerDismissed = viewModel::closeWidgetPicker,
+                createWidgetView = viewModel::createWidgetView,
+                onWidgetMeasured = viewModel::onWidgetMeasured,
                 foldersExist = state.entriesById.values.any { it is FolderEntry && !it.isSmart },
                 entryInFolder = state.contextMenuEntry
                     ?.let { viewModel.folderContaining(it.id) != null } == true,

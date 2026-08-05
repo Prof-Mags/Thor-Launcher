@@ -1,5 +1,7 @@
 package com.thor.feature.home.grid
 
+import android.content.Context
+import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -7,6 +9,7 @@ import androidx.compose.ui.Modifier
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.PlatformFolders
+import com.thor.core.model.WidgetEntry
 import com.thor.feature.home.couch.platform
 import com.thor.feature.home.EditMode
 import com.thor.feature.home.LauncherUiState
@@ -24,6 +27,10 @@ fun LauncherGrid(
     onCellLongPressed: (row: Int, column: Int) -> Unit,
     onPageChanged: (Int) -> Unit,
     onPinch: (Float) -> Unit,
+    /** Inflates a placed widget; see [WidgetLayer]. */
+    createWidgetView: (Context, Int) -> View? = { _, _ -> null },
+    /** Tells a provider the size of the box it was given, in dp. */
+    onWidgetMeasured: (appWidgetId: Int, widthDp: Int, heightDp: Int) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val heldId = (state.editMode as? EditMode.Holding)?.entryId
@@ -39,12 +46,32 @@ fun LauncherGrid(
         val pages = mutableMapOf<Int, MutableMap<Int, com.thor.core.model.GridEntry>>()
         state.placements.forEach { placement ->
             state.entriesById[placement.entryId]?.let { entry ->
+                // A widget is not a cell. It is drawn over the matrix by
+                // [WidgetLayer], across however many cells it spans, and putting
+                // it here as well would leave an icon plate and a label showing
+                // through underneath it.
+                if (entry is WidgetEntry) return@let
                 pages.getOrPut(placement.pageIndex) { mutableMapOf() }[
                     placement.row * state.spec.columns + placement.column
                 ] = entry
             }
         }
         pages.mapValues { (_, entries) -> entries.toMap() }
+    }
+
+    /** The other half of that: what the overlay draws, keyed by page. */
+    val widgetsByPage = remember(state.placements, state.entriesById) {
+        state.placements
+            .mapNotNull { placement ->
+                (state.entriesById[placement.entryId] as? WidgetEntry)?.let { widget ->
+                    placement.pageIndex to PlacedWidget(
+                        entry = widget,
+                        row = placement.row,
+                        column = placement.column,
+                    )
+                }
+            }
+            .groupBy({ it.first }, { it.second })
     }
 
     // Folder preview artwork is also layout data; resolve it once per library
@@ -145,6 +172,27 @@ fun LauncherGrid(
                         ?.let { folder -> folderPreviews[folder.id] }
                         .orEmpty(),
                 )
+            },
+            pageOverlay = { page, metrics ->
+                // Never inside a folder: a folder shows a list of its children,
+                // and the widgets belong to the page behind it.
+                val onPage = if (state.isFolderOpen) emptyList() else widgetsByPage[page].orEmpty()
+                if (onPage.isNotEmpty()) {
+                    WidgetLayer(
+                        widgets = onPage,
+                        metrics = metrics,
+                        columns = state.spec.columns,
+                        rows = state.spec.rows,
+                        focusedCell = (state.cursor.row to state.cursor.column)
+                            .takeIf { page == state.currentPage },
+                        editing = state.editMode.isActive,
+                        heldId = heldId,
+                        createView = createWidgetView,
+                        onMeasured = onWidgetMeasured,
+                        onTapped = onCellTapped,
+                        onLongPressed = onCellLongPressed,
+                    )
+                }
             },
             modifier = modifier,
         )

@@ -1,5 +1,9 @@
 package com.thor.feature.home
 
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.view.View
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thor.core.common.coroutines.launchSafely
@@ -13,7 +17,10 @@ import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GameMetadata
 import com.thor.core.model.GridEntry
+import com.thor.core.model.CellSpan
+import com.thor.core.model.GridFootprint
 import com.thor.core.model.GridSpec
+import com.thor.core.model.WidgetEntry
 import com.thor.core.model.KeyboardKey
 import com.thor.core.model.KeyboardLayer
 import com.thor.core.model.LauncherAction
@@ -35,6 +42,9 @@ import com.thor.data.launcher.LaunchTarget
 import com.thor.data.launcher.SystemPanel
 import com.thor.data.library.GridLayoutRepository
 import com.thor.data.library.LibraryRepository
+import com.thor.data.library.MoveResult
+import com.thor.data.widget.WidgetOption
+import com.thor.data.widget.WidgetRepository
 import com.thor.data.sync.LibrarySyncManager
 import com.thor.data.sync.PlaytimeTracker
 import com.thor.data.sync.SyncState
@@ -51,6 +61,10 @@ import com.thor.feature.home.couch.platform
 import com.thor.feature.home.dialog.EmulatorOption
 import com.thor.feature.home.dialog.EntryEdits
 import com.thor.feature.home.dialog.FolderPickerState
+import com.thor.feature.home.dialog.WidgetPickerState
+import com.thor.feature.home.menu.CELL_ACTIONS
+import com.thor.feature.home.menu.CellAction
+import com.thor.feature.home.menu.CellMenuState
 import com.thor.feature.home.menu.CONTEXT_MENU_COLUMNS
 import com.thor.feature.home.menu.ContextAction
 import com.thor.feature.home.menu.stepContextMenuColumn
@@ -100,6 +114,7 @@ class LauncherViewModel @Inject constructor(
     private val playtimeTracker: PlaytimeTracker,
     private val screenRecorder: ScreenRecorder,
     private val clipboard: ThorClipboard,
+    private val widgetRepository: WidgetRepository,
 ) : ViewModel() {
 
     private val cursor = MutableStateFlow(CursorPosition(0, 0))
@@ -1132,7 +1147,14 @@ class LauncherViewModel @Inject constructor(
     ) { layout, gridConfig, interaction, overlays, sync ->
         val spec = gridConfig.spec
         val derived = layoutMemo.of(layout, interaction.openFolderId)
-        val selection = resolveSelection(layout, spec, interaction, derived.openFolderContents)
+        val selection =
+            resolveSelection(
+                layout,
+                spec,
+                interaction,
+                derived.openFolderContents,
+                derived.widgetSpans,
+            )
         LauncherUiState(
             enabledExtensions = gridConfig.enabledExtensions,
             pages = layout.pages,
@@ -1392,6 +1414,19 @@ class LauncherViewModel @Inject constructor(
             onFolderPickerCommand(command)
             return
         }
+        /*
+         * The picker is raised *from* the cell menu, so it is tested first — the
+         * menu closes as the picker opens, but ordering it the other way round
+         * would still be wrong the moment both are ever open together.
+         */
+        if (_widgetPicker.value.visible) {
+            onWidgetPickerCommand(command)
+            return
+        }
+        if (_cellMenu.value.visible) {
+            onCellMenuCommand(command)
+            return
+        }
         if (contextMenuEntryId.value != null) {
             onContextMenuCommand(command)
             return
@@ -1458,6 +1493,19 @@ class LauncherViewModel @Inject constructor(
 
         if (couchMode) {
             onCouchHomeCommand(command)
+            return
+        }
+
+        /*
+         * Resizing takes the D-pad from the cursor.
+         *
+         * Tested here rather than as a case in the grid's own `when` because it
+         * changes what four of its entries mean: while a widget is being sized,
+         * Left is "one cell narrower" and not "move the cursor left", and there
+         * is no cursor movement available at all until it is finished.
+         */
+        if (editMode.value is EditMode.Resizing) {
+            onResizeCommand(command)
             return
         }
 
@@ -2046,6 +2094,14 @@ class LauncherViewModel @Inject constructor(
                 return
             }
 
+            // Confirm settles the size, as it settles a move. Reached only from
+            // touch: the controller's presses are taken by [onResizeCommand]
+            // before they arrive here.
+            is EditMode.Resizing -> {
+                finishWidgetResize()
+                return
+            }
+
             EditMode.None -> Unit
         }
 
@@ -2297,25 +2353,40 @@ class LauncherViewModel @Inject constructor(
             // The held entry may have no placement, if it was itself displaced by
             // the previous drop.
             val hasPlacement = state.placements.any { it.entryId == holding.entryId }
-            val displaced = if (hasPlacement) {
+            val result = if (hasPlacement) {
                 gridRepository.moveEntry(holding.entryId, page, row, column)
+            } else if (gridRepository.placeEntryAt(holding.entryId, page, row, column)) {
+                MoveResult.Moved
             } else {
-                gridRepository.placeEntryAt(holding.entryId, page, row, column)
-                null
+                MoveResult.Blocked
             }
 
-            editMode.value = if (displaced != null) {
-                emit(LauncherEffect.ShowMessage("Now place the icon you moved"))
-                EditMode.Holding(
-                    entryId = displaced,
-                    // Its origin is the cell it just lost, which is where Back
-                    // should return it to.
-                    originPage = page,
-                    originRow = row,
-                    originColumn = column,
-                )
-            } else {
-                EditMode.Arranging
+            editMode.value = when (result) {
+                is MoveResult.Displaced -> {
+                    emit(LauncherEffect.ShowMessage("Now place the icon you moved"))
+                    EditMode.Holding(
+                        entryId = result.entryId,
+                        // Its origin is the cell it just lost, which is where Back
+                        // should return it to.
+                        originPage = page,
+                        originRow = row,
+                        originColumn = column,
+                    )
+                }
+
+                /*
+                 * Still held, and said so.
+                 *
+                 * A refused drop used to end the hold, so the entry stayed where
+                 * it was and the user was left believing they had moved it. Keeping
+                 * the hold means the next press lands it somewhere that works.
+                 */
+                MoveResult.Blocked -> {
+                    emit(LauncherEffect.ShowMessage("That does not fit here"))
+                    holding
+                }
+
+                MoveResult.Moved -> EditMode.Arranging
             }
         }
     }
@@ -2716,6 +2787,10 @@ class LauncherViewModel @Inject constructor(
             ContextAction.ADD_TO_GRID -> addToGrid(entry)
 
             ContextAction.REMOVE_FROM_GRID -> removeFromGrid(entry)
+
+            ContextAction.RESIZE_WIDGET -> beginWidgetResize(entry as? WidgetEntry)
+
+            ContextAction.REMOVE_WIDGET -> (entry as? WidgetEntry)?.let(::removeWidget)
 
             ContextAction.MOVE_TO_FOLDER -> openFolderPicker(entry)
 
@@ -3350,6 +3425,393 @@ class LauncherViewModel @Inject constructor(
         viewModelScope.launchSafely(TAG) { settingsRepository.updateGrid(transform) }
     }
 
+    // --------------------------------------------------------------- widgets
+
+    private val _cellMenu = MutableStateFlow(CellMenuState())
+    val cellMenu: StateFlow<CellMenuState> = _cellMenu.asStateFlow()
+
+    private val _widgetPicker = MutableStateFlow(WidgetPickerState())
+    val widgetPicker: StateFlow<WidgetPickerState> = _widgetPicker.asStateFlow()
+
+    /**
+     * A widget between being chosen and being placed.
+     *
+     * Held outside the picker's state because it outlives it: the picker closes
+     * the moment something is chosen, and what follows is a consent dialog and
+     * possibly the provider's own setup screen, each of which leaves the launcher
+     * and comes back. The id in here is allocated and unstored for that whole
+     * stretch, so every path out of it has to either finish or discard.
+     */
+    private var pendingWidget: PendingWidget? = null
+
+    private data class PendingWidget(
+        val appWidgetId: Int,
+        val option: WidgetOption,
+        val page: Int,
+        val row: Int,
+        val column: Int,
+    )
+
+    /**
+     * A long press on the grid, which now has two answers.
+     *
+     * On something, the entry's menu, as before. On nothing, the cell's own menu
+     * — which is new, and is the whole reason this is a method rather than the
+     * shell calling [openContextMenu] directly: the shell cannot tell an empty
+     * cell from a full one without knowing about widget footprints.
+     */
+    fun onCellLongPressed(row: Int, column: Int) {
+        setCursor(row, column)
+        val state = uiState.value
+
+        // The cursor flow has moved but `uiState` has not caught up — it is a
+        // combine, so it settles a frame later — which is why the cell is
+        // resolved from the coordinates rather than read off `selection`.
+        val entry = state.entryAt(state.currentPage, row, column)
+        when {
+            entry != null -> openContextMenu(entry)
+            // A folder shows a list rather than an arrangement, so there is no
+            // "this cell" to act on, and couch mode has no long press at all.
+            state.isFolderOpen || couchMode.value -> Unit
+            else -> openCellMenu(row, column)
+        }
+    }
+
+    fun openCellMenu(row: Int, column: Int) {
+        _cellMenu.value = CellMenuState(
+            visible = true,
+            page = uiState.value.currentPage,
+            row = row,
+            column = column,
+            focusedIndex = 0,
+        )
+    }
+
+    fun closeCellMenu() {
+        _cellMenu.update { it.copy(visible = false, focusedIndex = 0) }
+    }
+
+    fun focusCellMenuRow(index: Int) {
+        _cellMenu.update { it.copy(focusedIndex = index.coerceIn(CELL_ACTIONS.indices)) }
+    }
+
+    fun performCellAction(action: CellAction) {
+        val cell = _cellMenu.value
+        closeCellMenu()
+        when (action) {
+            CellAction.ADD_WIDGET -> openWidgetPicker()
+            CellAction.ADD_APP -> openAppDrawer()
+            CellAction.NEW_FOLDER -> viewModelScope.launchSafely(TAG) {
+                val folderId = gridRepository.createEmptyFolder("New folder")
+                // Into the cell the user pressed. The folder is created placed
+                // somewhere already, so this moves it rather than adding it.
+                gridRepository.moveEntry(folderId, cell.page, cell.row, cell.column)
+            }
+
+            CellAction.ARRANGE -> enterArrangeMode()
+            CellAction.ADD_PAGE -> addPage()
+        }
+    }
+
+    private fun onCellMenuCommand(command: ControllerCommand) {
+        val count = CELL_ACTIONS.size
+        val index = _cellMenu.value.focusedIndex
+        when (command) {
+            ControllerCommand.NAVIGATE_LEFT ->
+                focusCellMenuRow(stepContextMenuColumn(index, -1, count))
+
+            ControllerCommand.NAVIGATE_RIGHT ->
+                focusCellMenuRow(stepContextMenuColumn(index, 1, count))
+
+            ControllerCommand.NAVIGATE_UP -> focusCellMenuRow(stepContextMenuRow(index, -1, count))
+            ControllerCommand.NAVIGATE_DOWN -> focusCellMenuRow(stepContextMenuRow(index, 1, count))
+            ControllerCommand.CONFIRM ->
+                CELL_ACTIONS.getOrNull(index)?.let(::performCellAction)
+
+            ControllerCommand.BACK, ControllerCommand.CONTEXT_MENU -> closeCellMenu()
+            else -> Unit
+        }
+    }
+
+    // ------------------------------------------------------ the widget picker
+
+    fun openWidgetPicker() {
+        _widgetPicker.value = WidgetPickerState(visible = true, options = null)
+        viewModelScope.launchSafely(TAG) {
+            val options = widgetRepository.options()
+            // Only if the picker is still the thing on screen: listing providers
+            // is package-manager work across a binder, and the user is free to
+            // dismiss it while that runs.
+            if (_widgetPicker.value.visible) {
+                _widgetPicker.update { it.copy(options = options, focusedIndex = 0) }
+            }
+        }
+    }
+
+    fun closeWidgetPicker() {
+        _widgetPicker.value = WidgetPickerState()
+    }
+
+    fun focusWidgetPickerRow(index: Int) {
+        _widgetPicker.update { picker ->
+            picker.copy(focusedIndex = index.coerceIn(0, (picker.rowCount - 1).coerceAtLeast(0)))
+        }
+    }
+
+    /**
+     * Takes an id for the chosen provider and starts down whichever path it needs.
+     *
+     * Three of them, and the widget is not stored until the end of any: bind
+     * silently then configure, ask to bind and then configure, or place directly.
+     * See [PendingWidget] for why the middle of that is the dangerous part.
+     */
+    fun chooseWidget(option: WidgetOption) {
+        val cell = _cellMenu.value
+        val component = ComponentName.unflattenFromString(option.component) ?: return
+        closeWidgetPicker()
+
+        viewModelScope.launchSafely(TAG) {
+            val request = widgetRepository.beginPlacement(component)
+            pendingWidget = PendingWidget(
+                appWidgetId = request.appWidgetId,
+                option = option,
+                page = cell.page,
+                row = cell.row,
+                column = cell.column,
+            )
+            if (request.bound) continueWidgetPlacement() else emit(LauncherEffect.RequestWidgetBind)
+        }
+    }
+
+    /** The consent dialog for the widget waiting to be placed. */
+    fun widgetBindIntent(): Intent? = pendingWidget?.let { pending ->
+        ComponentName.unflattenFromString(pending.option.component)?.let { component ->
+            widgetRepository.bindIntent(pending.appWidgetId, component)
+        }
+    }
+
+    fun widgetConfigureIntent(): Intent? =
+        pendingWidget?.let { widgetRepository.configureIntent(it.appWidgetId) }
+
+    fun onWidgetBindResult(granted: Boolean) {
+        if (granted) {
+            viewModelScope.launchSafely(TAG) { continueWidgetPlacement() }
+        } else {
+            discardPendingWidget("Loki was not allowed to add that widget")
+        }
+    }
+
+    fun onWidgetConfigured(completed: Boolean) {
+        if (completed) {
+            viewModelScope.launchSafely(TAG) { finishWidgetPlacement() }
+        } else {
+            // Cancelled at the provider's own screen, which is a decision not to
+            // add it — placing it anyway would leave a widget nobody set up.
+            discardPendingWidget(null)
+        }
+    }
+
+    /** Runs the provider's setup screen if it has one, and places it if not. */
+    private suspend fun continueWidgetPlacement() {
+        val pending = pendingWidget ?: return
+        if (widgetRepository.configureIntent(pending.appWidgetId) != null) {
+            emit(LauncherEffect.ConfigureWidget)
+        } else {
+            finishWidgetPlacement()
+        }
+    }
+
+    /**
+     * Stores the widget and gives it its cell.
+     *
+     * The cell the menu was raised on when it fits there, and the first place it
+     * does otherwise. Refusing outright would be the wrong answer to a widget
+     * three cells wide chosen from the last column — the user asked for the
+     * widget, and the position is the part they could not have known about.
+     */
+    private suspend fun finishWidgetPlacement() {
+        val pending = pendingWidget ?: return
+        pendingWidget = null
+
+        val component = ComponentName.unflattenFromString(pending.option.component) ?: return
+        val span = CellSpan(pending.option.spanColumns, pending.option.spanRows)
+        val entryId = widgetRepository.place(
+            appWidgetId = pending.appWidgetId,
+            provider = component,
+            label = pending.option.label,
+            span = span,
+            nowEpochMs = System.currentTimeMillis(),
+        )
+
+        val placed = gridRepository.placeEntryAt(entryId, pending.page, pending.row, pending.column)
+        if (!placed) {
+            val slot = gridRepository.firstFreeCellFor(span)
+            gridRepository.placeEntryAt(entryId, slot.pageIndex, slot.row, slot.column)
+            emit(LauncherEffect.ShowMessage("No room there, so it went to the first space"))
+        }
+    }
+
+    private fun discardPendingWidget(message: String?) {
+        val pending = pendingWidget ?: return
+        pendingWidget = null
+        widgetRepository.discard(pending.appWidgetId)
+        message?.let { emit(LauncherEffect.ShowMessage(it)) }
+    }
+
+    private fun onWidgetPickerCommand(command: ControllerCommand) {
+        val picker = _widgetPicker.value
+        val count = picker.rowCount
+        when (command) {
+            ControllerCommand.NAVIGATE_UP -> if (count > 0) {
+                focusWidgetPickerRow((picker.focusedIndex - 1 + count) % count)
+            }
+
+            ControllerCommand.NAVIGATE_DOWN -> if (count > 0) {
+                focusWidgetPickerRow((picker.focusedIndex + 1) % count)
+            }
+
+            ControllerCommand.CONFIRM ->
+                picker.options?.getOrNull(picker.focusedIndex)?.let(::chooseWidget)
+
+            ControllerCommand.BACK, ControllerCommand.CONTEXT_MENU -> closeWidgetPicker()
+            else -> Unit
+        }
+    }
+
+    // -------------------------------------------------------- placed widgets
+
+    /**
+     * Inflates a placed widget for whichever panel is drawing it.
+     *
+     * The context is the caller's rather than the application's: the grid is
+     * drawn inside a `Presentation` on the second display, and a view built
+     * against the wrong context resolves its size and density against the wrong
+     * screen.
+     */
+    fun createWidgetView(context: Context, appWidgetId: Int): View? =
+        widgetRepository.createView(context, appWidgetId)
+
+    fun onWidgetMeasured(appWidgetId: Int, widthDp: Int, heightDp: Int) =
+        widgetRepository.notifySize(appWidgetId, widthDp, heightDp)
+
+    /**
+     * Starts and stops the host with the launcher's visibility.
+     *
+     * Not with its process: a host that goes on listening while a game is on the
+     * panel pays for every clock tick and weather refresh nobody can see.
+     */
+    fun startWidgetHost() {
+        widgetRepository.startListening()
+        // Every abandoned picker and refused consent leaves an id allocated and
+        // invisible; this is the only thing that ever finds them again.
+        viewModelScope.launchSafely(TAG) { widgetRepository.reconcile() }
+    }
+
+    fun stopWidgetHost() = widgetRepository.stopListening()
+
+    /** Forgets a widget: its cell, its row and its id, in that order. */
+    fun removeWidget(entry: WidgetEntry) {
+        viewModelScope.launchSafely(TAG) {
+            gridRepository.removePlacement(entry.id)
+            widgetRepository.remove(entry.appWidgetId)
+            closeContextMenu()
+            editMode.value = EditMode.None
+        }
+    }
+
+    // ------------------------------------------------------------- resizing
+
+    /**
+     * Starts resizing a widget, which is a mode of its own.
+     *
+     * See [EditMode.Resizing]: the D-pad grows and shrinks an edge here rather
+     * than moving the cursor, so the two cannot be the same mode.
+     */
+    fun beginWidgetResize(entry: WidgetEntry? = uiState.value.selection as? WidgetEntry) {
+        val widget = entry ?: return
+        closeContextMenu()
+        closeFolder()
+        editMode.value = EditMode.Resizing(
+            entryId = widget.id,
+            originColumns = widget.spanColumns,
+            originRows = widget.spanRows,
+        )
+    }
+
+    /**
+     * Grows or shrinks the widget being resized by one cell in one direction.
+     *
+     * Refused rather than clamped when the new size would run off the page or
+     * cover something else — the widget stays exactly as it was, and nothing is
+     * silently displaced to make room for it.
+     */
+    fun stepWidgetResize(columns: Int, rows: Int) {
+        val resizing = editMode.value as? EditMode.Resizing ?: return
+        val state = uiState.value
+        val widget = state.entriesById[resizing.entryId] as? WidgetEntry ?: return
+        val placement = state.placements.firstOrNull { it.entryId == widget.id } ?: return
+
+        val wanted = CellSpan(
+            columns = (widget.spanColumns + columns)
+                .coerceIn(WidgetEntry.MIN_SPAN, WidgetEntry.MAX_SPAN),
+            rows = (widget.spanRows + rows).coerceIn(WidgetEntry.MIN_SPAN, WidgetEntry.MAX_SPAN),
+        )
+        if (wanted.columns == widget.spanColumns && wanted.rows == widget.spanRows) return
+
+        val fits = GridFootprint.isFree(
+            row = placement.row,
+            column = placement.column,
+            span = wanted,
+            placements = state.placements,
+            spans = state.widgetSpans,
+            pageIndex = placement.pageIndex,
+            spec = state.spec,
+            ignoring = widget.id,
+        )
+        if (!fits) return
+
+        viewModelScope.launchSafely(TAG) {
+            widgetRepository.resize(widget.appWidgetId, wanted)
+        }
+    }
+
+    /** Leaves resize mode, keeping the size the widget has reached. */
+    fun finishWidgetResize() {
+        if (editMode.value !is EditMode.Resizing) return
+        editMode.value = EditMode.Arranging
+    }
+
+    /** Leaves resize mode and puts the widget back to the size it started at. */
+    fun cancelWidgetResize() {
+        val resizing = editMode.value as? EditMode.Resizing ?: return
+        val widget = uiState.value.entriesById[resizing.entryId] as? WidgetEntry
+        editMode.value = EditMode.Arranging
+        if (widget == null) return
+        if (widget.spanColumns == resizing.originColumns &&
+            widget.spanRows == resizing.originRows
+        ) {
+            return
+        }
+        viewModelScope.launchSafely(TAG) {
+            widgetRepository.resize(
+                widget.appWidgetId,
+                CellSpan(resizing.originColumns, resizing.originRows),
+            )
+        }
+    }
+
+    private fun onResizeCommand(command: ControllerCommand) {
+        when (command) {
+            ControllerCommand.NAVIGATE_LEFT -> stepWidgetResize(columns = -1, rows = 0)
+            ControllerCommand.NAVIGATE_RIGHT -> stepWidgetResize(columns = 1, rows = 0)
+            ControllerCommand.NAVIGATE_UP -> stepWidgetResize(columns = 0, rows = -1)
+            ControllerCommand.NAVIGATE_DOWN -> stepWidgetResize(columns = 0, rows = 1)
+            ControllerCommand.CONFIRM, ControllerCommand.PICK_UP -> finishWidgetResize()
+            ControllerCommand.BACK, ControllerCommand.CANCEL_EDIT -> cancelWidgetResize()
+            else -> Unit
+        }
+    }
+
     // ------------------------------------------------------------- internal
 
     private fun resolveSelection(
@@ -3358,6 +3820,8 @@ class LauncherViewModel @Inject constructor(
         interaction: InteractionSnapshot,
         /** Already resolved by the caller's memo; see [LayoutMemo]. */
         openFolderContents: List<GridEntry>,
+        /** Also from the memo, for the same reason. */
+        widgetSpans: Map<String, CellSpan>,
     ): GridEntry? {
         /*
          * Inside an open folder the cursor indexes the folder's contents rather than
@@ -3371,11 +3835,22 @@ class LauncherViewModel @Inject constructor(
             return openFolderContents.getOrNull(index)
         }
 
+        /*
+         * Through the footprint, not by matching the stored cell.
+         *
+         * A widget's placement names its top-left cell and it stands on up to
+         * sixteen. Matching the stored cell selected it from that one corner and
+         * reported nothing from the rest of it, so the cursor crossed a 2x2 clock
+         * and the top screen went blank for three of the four cells it covered.
+         */
         val cell = interaction.cursor.cellIndex(spec.columns)
-        val placement = layout.placements.firstOrNull {
-            it.pageIndex == interaction.page && it.row * spec.columns + it.column == cell
-        } ?: return null
-        return layout.entries[placement.entryId]
+        val occupant = GridFootprint.occupants(
+            placements = layout.placements,
+            spans = widgetSpans,
+            pageIndex = interaction.page,
+            spec = spec,
+        )[cell] ?: return null
+        return layout.entries[occupant]
     }
 
     /**
@@ -3398,6 +3873,15 @@ class LauncherViewModel @Inject constructor(
         val platformsById: Map<String, com.thor.core.model.Platform>,
         val dockEntryIds: List<String?>,
         val openFolderContents: List<GridEntry>,
+        /**
+         * How many cells each placed widget covers.
+         *
+         * Derived here rather than read on demand because the cursor needs it on
+         * every move — a widget is selectable from any cell it stands on, not
+         * only from the one its placement names — and that is the hottest path
+         * in the launcher.
+         */
+        val widgetSpans: Map<String, CellSpan>,
     )
 
     private class LayoutMemo {
@@ -3416,6 +3900,11 @@ class LauncherViewModel @Inject constructor(
                 platformsById = layout.platforms.associateBy { it.id },
                 dockEntryIds = resolveDock(layout),
                 openFolderContents = resolveFolderContents(layout, folderId),
+                widgetSpans = layout.entries.values
+                    .filterIsInstance<WidgetEntry>()
+                    .associate { widget ->
+                        widget.id to CellSpan(widget.spanColumns, widget.spanRows)
+                    },
             )
             this.layout = layout
             this.folderId = folderId

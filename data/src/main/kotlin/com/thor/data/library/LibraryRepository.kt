@@ -10,6 +10,7 @@ import com.thor.core.database.dao.GameDao
 import com.thor.core.database.dao.GridDao
 import com.thor.core.database.dao.PlatformDao
 import com.thor.core.database.dao.PlayHistoryDao
+import com.thor.core.database.dao.WidgetDao
 import com.thor.core.database.model.AppEntity
 import com.thor.core.database.model.FolderEntity
 import com.thor.core.database.model.GameEntity
@@ -30,6 +31,8 @@ import com.thor.core.model.PlatformArtwork
 import com.thor.core.model.PlatformFolders
 import com.thor.core.model.SmartQuery
 import com.thor.core.model.SortOrder
+import com.thor.core.model.WidgetEntry
+import com.thor.data.widget.toDomain
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
@@ -58,6 +61,8 @@ class LibraryRepository @Inject constructor(
     private val gridDao: GridDao,
     private val platformDao: PlatformDao,
     private val playHistoryDao: PlayHistoryDao,
+    /** Placed widgets, which share the grid with everything else here. */
+    private val widgetDao: WidgetDao,
     private val achievementDao: AchievementDao,
     private val settings: SettingsRepository,
     @Dispatcher(ThorDispatcher.Default) private val defaultDispatcher: CoroutineDispatcher,
@@ -86,12 +91,22 @@ class LibraryRepository @Inject constructor(
         appDao.observeAll(),
         gameDao.observeAll(),
         folderDao.observeAll(),
+        widgetDao.observeAll(),
         showHidden,
-    ) { apps, games, folders, revealHidden ->
+    ) { apps, games, folders, widgets, revealHidden ->
         buildMap<String, GridEntry> {
             apps.filter { revealHidden || !it.isHidden }.forEach { put(it.id, it.toDomain()) }
             games.filter { revealHidden || !it.isHidden }.forEach { put(it.id, it.toDomain()) }
             folders.filter { revealHidden || !it.isHidden }.forEach { put(it.id, it.toDomain()) }
+            /*
+             * Widgets are never hidden.
+             *
+             * "Hidden" means an entry the library found and the user does not
+             * want listed — it is a property of something that was discovered.
+             * A widget is only here because the user placed it by hand, so the
+             * gesture that would hide one is the gesture that removes it.
+             */
+            widgets.forEach { put(WidgetEntry.idFor(it.appWidgetId), it.toDomain()) }
         }
     }.flowOn(defaultDispatcher).distinctUntilChanged()
 

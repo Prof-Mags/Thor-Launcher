@@ -91,6 +91,15 @@ fun GridPager(
     onPageChanged: (Int) -> Unit,
     onPinch: (Float) -> Unit,
     cellAt: (page: Int, row: Int, column: Int) -> GridCellData,
+    /**
+     * Drawn over one page's cells, given the geometry they were laid out on.
+     *
+     * A slot rather than a parameter list because only the home grid has
+     * anything to put here — the app drawer supplies nothing and pays nothing.
+     * See [WidgetLayer] for why widgets are drawn above the matrix instead of in
+     * it.
+     */
+    pageOverlay: @Composable (page: Int, metrics: GridMetrics) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     /*
@@ -147,6 +156,7 @@ fun GridPager(
                 onCellTapped = stableTap,
                 onCellLongPressed = stableLongPress,
                 cellAt = pageCellAt,
+                overlay = { metrics -> pageOverlay(pageIndex, metrics) },
             )
         }
     }
@@ -171,18 +181,34 @@ private fun GridMatrix(
     onCellTapped: (row: Int, column: Int) -> Unit,
     onCellLongPressed: (row: Int, column: Int) -> Unit,
     cellAt: (row: Int, column: Int) -> GridCellData,
+    overlay: @Composable (GridMetrics) -> Unit = {},
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         // Solving gap and margin against the cell size they themselves affect
         // would be circular, so the cell size is estimated from the raw viewport
         // first. The estimate is only used to pick proportions, and a few
         // percent of error there is invisible.
-        val nominalCell = minOf(
-            maxWidth / spec.columns.coerceAtLeast(1),
-            maxHeight / spec.rows.coerceAtLeast(1),
-        )
+        val columns = spec.columns.coerceAtLeast(1)
+        val rows = spec.rows.coerceAtLeast(1)
+        val nominalCell = minOf(maxWidth / columns, maxHeight / rows)
         val gap = (nominalCell * spec.spacingFraction).coerceIn(MIN_GAP.dp, MAX_GAP.dp)
         val margin = (nominalCell * spec.paddingFraction).coerceIn(MIN_MARGIN.dp, MAX_MARGIN.dp)
+
+        /*
+         * The same size the weighted cells below will end up at.
+         *
+         * Derived rather than measured, because anything drawn over the matrix
+         * has to be positioned before the matrix has laid itself out. `weight`
+         * splits what is left after the arrangement's spacing, which is exactly
+         * this arithmetic — so the two agree as long as neither is changed
+         * without the other.
+         */
+        val metrics = GridMetrics(
+            cellWidth = (maxWidth - margin * 2 - gap * (columns - 1)) / columns,
+            cellHeight = (maxHeight - margin * 2 - gap * (rows - 1)) / rows,
+            gap = gap,
+            margin = margin,
+        )
 
         Column(
             modifier = Modifier.fillMaxSize().padding(margin),
@@ -236,6 +262,10 @@ private fun GridMatrix(
                 }
             }
         }
+
+        // Last, so a widget draws above the empty cells it stands on rather than
+        // being covered by them.
+        overlay(metrics)
     }
 }
 
