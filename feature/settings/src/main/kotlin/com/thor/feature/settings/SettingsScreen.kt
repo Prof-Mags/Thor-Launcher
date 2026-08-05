@@ -436,13 +436,24 @@ fun SettingsScreen(
             )
         }
 
-        EmulatorPickerDialog(
-            state = emulatorPicker.copy(focusedIndex = focusedRow.coerceAtLeast(0)),
-            onToggle = { packageName ->
-                viewModel.toggleEmulatorFor(emulatorPicker.platformId, packageName)
-            },
-            onDismiss = viewModel::closeEmulatorPicker,
-        )
+        /*
+         * Inside the provider, because Confirm arrives through it.
+         *
+         * A press does not reach a composable here as an event: the shell bumps
+         * `LocalRowActivation` and whichever row is focused reacts. A dialog
+         * composed outside that provider reads the default value, which never
+         * changes — so its rows were unreachable by the controller while
+         * answering touch perfectly, which is exactly how this was reported.
+         */
+        CompositionLocalProvider(LocalRowActivation provides activationTick) {
+            EmulatorPickerDialog(
+                state = emulatorPicker.copy(focusedIndex = focusedRow.coerceAtLeast(0)),
+                onToggle = { packageName ->
+                    viewModel.toggleEmulatorFor(emulatorPicker.platformId, packageName)
+                },
+                onDismiss = viewModel::closeEmulatorPicker,
+            )
+        }
 
         // Above everything so it is not clipped by the detail scroll container.
         pendingPlatform?.let { platform ->

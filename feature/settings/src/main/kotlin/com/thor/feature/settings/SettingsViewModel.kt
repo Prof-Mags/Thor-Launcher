@@ -889,6 +889,10 @@ class SettingsViewModel @Inject constructor(
                 // left means "the previous one of these" — a gallery is browsed, not
                 // stepped out of.
                 focusedRowTakesHorizontal() -> _horizontalStep.value -= 1
+                // A dialog owns the cursor while it is open, so Left must not
+                // close the page underneath it — the dialog would be left over a
+                // screen that had already moved on.
+                isChoosingEmulator -> Unit
                 isAddingPlatform -> Unit
                 _openPage.value != null -> closePage()
                 !_focusOnRail.value -> {
@@ -902,6 +906,7 @@ class SettingsViewModel @Inject constructor(
         ControllerCommand.NAVIGATE_RIGHT -> {
             when {
                 focusedRowTakesHorizontal() -> _horizontalStep.value += 1
+                isChoosingEmulator -> Unit
                 isAddingPlatform -> Unit
                 _focusOnRail.value && rowCount > 0 -> {
                     _focusOnRail.value = false
@@ -1413,6 +1418,19 @@ class SettingsViewModel @Inject constructor(
                     )
                 }
 
+            /*
+             * The cursor starts at the top of the dialog and goes back where it
+             * was on the way out.
+             *
+             * One focused row is shared by the page and anything raised over it,
+             * so without this the dialog opens on whichever row the platform
+             * happened to be — the fourth console opens the list on its fourth
+             * emulator — and closing it leaves the cursor wherever the dialog
+             * finished rather than on the console it was opened from.
+             */
+            rowBeforePicker = _focusedRow.value
+            _focusedRow.value = 0
+
             _emulatorPicker.value = EmulatorPickerState(
                 visible = true,
                 platformId = platformId,
@@ -1428,8 +1446,13 @@ class SettingsViewModel @Inject constructor(
     val isChoosingEmulator: Boolean get() = _emulatorPicker.value.visible
 
     fun closeEmulatorPicker() {
+        if (!_emulatorPicker.value.visible) return
         _emulatorPicker.value = EmulatorPickerState()
+        _focusedRow.value = rowBeforePicker
     }
+
+    /** Where the cursor was on the page that opened the picker. */
+    private var rowBeforePicker = 0
 
     fun focusEmulatorRow(index: Int) {
         _emulatorPicker.update { picker ->
