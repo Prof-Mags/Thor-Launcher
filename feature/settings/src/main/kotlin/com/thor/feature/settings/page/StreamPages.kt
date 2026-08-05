@@ -1,4 +1,4 @@
-package com.thor.feature.settings.pane
+package com.thor.feature.settings.page
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -8,14 +8,14 @@ import com.thor.core.model.StreamAudio
 import com.thor.core.model.StreamCodec
 import com.thor.core.model.StreamNetwork
 import com.thor.core.model.ThorSettings
-import com.thor.feature.settings.SettingsViewModel
-import com.thor.feature.settings.component.ChoiceRow
-import com.thor.feature.settings.component.InfoRow
-import com.thor.feature.settings.component.IntSliderRow
-import com.thor.feature.settings.component.SliderRow
+import com.thor.feature.settings.component.row.ChoiceRow
+import com.thor.feature.settings.component.row.InfoRow
+import com.thor.feature.settings.component.row.IntSliderRow
 import com.thor.feature.settings.component.RowDivider
-import com.thor.feature.settings.component.SwitchRow
-import com.thor.feature.settings.component.TextFieldRow
+import com.thor.feature.settings.component.row.SliderRow
+import com.thor.feature.settings.component.row.SwitchRow
+import com.thor.feature.settings.component.row.TextFieldRow
+import com.thor.feature.settings.SettingsViewModel
 
 /** How many rows [StreamQualityPage] draws. */
 internal const val STREAM_QUALITY_ROWS = 9

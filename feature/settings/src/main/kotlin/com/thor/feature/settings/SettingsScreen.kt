@@ -45,15 +45,15 @@ import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.data.sync.ScrapeState
 import com.thor.feature.settings.component.AddPlatformDialog
-import com.thor.feature.settings.component.LocalRowActivation
-import com.thor.feature.settings.component.LocalHorizontalRowRegistration
-import com.thor.feature.settings.component.LocalRowStep
+import com.thor.feature.settings.component.row.LocalRowActivation
+import com.thor.feature.settings.component.row.LocalHorizontalRowRegistration
+import com.thor.feature.settings.component.row.LocalRowStep
 import com.thor.feature.settings.component.SettingsTextButton
 import com.thor.feature.settings.component.revealWhenFocused
-import com.thor.feature.settings.pane.ABOUT_ROWS
-import com.thor.feature.settings.pane.AboutPane
-import com.thor.feature.settings.pane.SettingsPageContent
-import com.thor.feature.settings.pane.rowCountFor
+import com.thor.feature.settings.page.ABOUT_ROWS
+import com.thor.feature.settings.page.AboutPane
+import com.thor.feature.settings.page.SettingsPageContent
+import com.thor.feature.settings.page.rowCountFor
 
 /**
  * The settings overlay.

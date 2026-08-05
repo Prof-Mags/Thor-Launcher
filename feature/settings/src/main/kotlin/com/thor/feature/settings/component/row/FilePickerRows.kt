@@ -1,12 +1,14 @@
-package com.thor.feature.settings.component
+package com.thor.feature.settings.component.row
 
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import com.thor.core.common.log.ThorLog
+import com.thor.feature.settings.component.RowDivider
 
 /**
  * A row that opens the system image picker and reports the chosen wallpaper.

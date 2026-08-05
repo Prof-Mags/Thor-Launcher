@@ -10,10 +10,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -24,17 +24,22 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.thor.core.common.log.ThorLog
 import com.thor.core.designsystem.component.GlassSurface
-import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.designsystem.theme.contrastingContentColor
+import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.Platform
+import com.thor.feature.settings.component.row.ActionRow
+import com.thor.feature.settings.component.row.ActivateOnConfirm
+import com.thor.feature.settings.component.row.ChoiceRow
+import com.thor.feature.settings.component.row.InfoRow
+import com.thor.feature.settings.component.row.SwitchRow
 
 /** The configuration collected when a platform is added. */
 data class PlatformSetup(

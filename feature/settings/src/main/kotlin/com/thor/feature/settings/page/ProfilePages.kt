@@ -1,8 +1,8 @@
-package com.thor.feature.settings.pane
+package com.thor.feature.settings.page
 
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,12 +11,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import com.thor.core.model.LauncherProfile
 import com.thor.core.model.ProfileRegistry
-import com.thor.feature.settings.SettingsViewModel
-import com.thor.feature.settings.component.ActionRow
-import com.thor.feature.settings.component.ColorRow
-import com.thor.feature.settings.component.InfoRow
+import com.thor.feature.settings.component.row.ActionRow
+import com.thor.feature.settings.component.row.ColorRow
+import com.thor.feature.settings.component.row.InfoRow
 import com.thor.feature.settings.component.RowDivider
-import com.thor.feature.settings.component.TextFieldRow
+import com.thor.feature.settings.component.row.TextFieldRow
+import com.thor.feature.settings.SettingsViewModel
 
 /**
  * Who uses this device, and which of them is using it now.

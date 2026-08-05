@@ -1,13 +1,13 @@
-package com.thor.feature.settings.pane
+package com.thor.feature.settings.page
 
 import androidx.compose.runtime.Composable
 import com.thor.core.model.LauncherExtension
 import com.thor.core.model.ThorSettings
-import com.thor.feature.settings.SettingsViewModel
-import com.thor.feature.settings.component.ActionRow
-import com.thor.feature.settings.component.FilePickerRow
-import com.thor.feature.settings.component.InfoRow
+import com.thor.feature.settings.component.row.ActionRow
+import com.thor.feature.settings.component.row.FilePickerRow
+import com.thor.feature.settings.component.row.InfoRow
 import com.thor.feature.settings.component.RowDivider
+import com.thor.feature.settings.SettingsViewModel
 
 /**
  * Adding and removing the optional parts of the launcher.
