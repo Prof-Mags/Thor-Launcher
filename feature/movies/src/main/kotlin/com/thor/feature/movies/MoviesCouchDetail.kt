@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -81,6 +83,19 @@ internal fun MoviesCouchTitlePage(
             return@Box
         }
 
+        /*
+         * Drawn at the same size as the catalogue it was opened from.
+         *
+         * The two are one screen a press apart, so a jump in scale between them
+         * reads as the television changing resolution - and this page had the
+         * further problem of being the one with a list on it. The sources are a
+         * ranked list in a short panel along the foot, and at the panel's own
+         * density that panel held two of them.
+         *
+         * The backdrop stays outside it: it fills the screen either way, and
+         * nothing about it is measured in dp.
+         */
+        CompositionLocalProvider(LocalDensity provides couchContentDensity()) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val panelHeight = couchActionPanelHeight(maxHeight, showSeriesSelector)
 
@@ -124,6 +139,7 @@ internal fun MoviesCouchTitlePage(
                     )
                 }
             }
+        }
         }
     }
 }

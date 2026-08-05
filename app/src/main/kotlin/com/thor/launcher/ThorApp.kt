@@ -88,6 +88,7 @@ import com.thor.core.model.KeyboardKey
 import com.thor.core.model.PlatformFolders
 import com.thor.core.model.ThorSettings
 import com.thor.core.ui.feedback.FeedbackCue
+import com.thor.core.ui.component.COUCH_STAGES
 import com.thor.core.ui.component.ThorKeyboard
 import com.thor.core.ui.component.ThorIntro
 import com.thor.core.ui.component.StackedPanels
@@ -487,6 +488,19 @@ fun ThorApp(
             DisplayTopology.hasExternalDisplay(displays),
     )
     val couchModeNow = rememberUpdatedState(mode == DualScreenMode.COUCH)
+
+    /*
+     * Couch mode's own opening.
+     *
+     * Declared here, well above the sequence that drives it, because the input
+     * collector sits between the two and has to be able to swallow presses while
+     * it plays — the couch screen is live underneath, and a press falling through
+     * would launch whatever the cursor happens to be on. The same reason the
+     * cold-start sequence swallows.
+     */
+    val couchIntroProgress = remember { Animatable(1f) }
+    val couchIntroRunning = remember { mutableStateOf(false) }
+    val lastDisplayMode = remember { mutableStateOf<DualScreenMode?>(null) }
 
     /*
      * Films and Shows are two tabs over one section, and either end can move
@@ -977,6 +991,9 @@ fun ThorApp(
                  */
                 if (viewModel.introVisible.value) return@collect
 
+                // Couch mode's opening, swallowing for the same reason.
+                if (couchIntroRunning.value) return@collect
+
                 /*
                  * The permission list, modal for the same reason the walkthrough
                  * is: it sits over a live grid, and any press that fell through
@@ -1392,6 +1409,101 @@ fun ThorApp(
                     progress = introProgress.value,
                     motion = introMotion,
                     showContent = showContent,
+                )
+            }
+        }
+
+        /*
+         * ---- Couch mode's opening --------------------------------------------
+         *
+         * Turning couch mode on replaces the screen outright: a different layout,
+         * at a different interface size, on a panel the viewer is across a room
+         * from. It arrives with nothing to say the launcher meant it, and the
+         * moment it lands is the moment nothing looks familiar. So the switch gets
+         * the sequence the launcher starts with — the same mark, the same rail,
+         * the same fade — because it is the same launcher, and an opening is how
+         * this one says it is changing what it is.
+         *
+         * Only on the switch. A cold start already in couch mode is a start-up and
+         * gets the start-up sequence; two openings back to back would be one too
+         * many, which is what the null and the introVisible check below are for.
+         */
+        LaunchedEffect(mode, settingsLoaded) {
+            if (!settingsLoaded) return@LaunchedEffect
+            val previous = lastDisplayMode.value
+            lastDisplayMode.value = mode
+
+            val entering = mode == DualScreenMode.COUCH &&
+                previous != null &&
+                previous != DualScreenMode.COUCH
+            if (!entering || viewModel.introVisible.value) return@LaunchedEffect
+
+            couchIntroRunning.value = true
+            try {
+                couchIntroProgress.snapTo(0f)
+                if (introMotion) {
+                    couchIntroProgress.animateTo(
+                        targetValue = INTRO_LOAD_START,
+                        animationSpec = tween(
+                            durationMillis = COUCH_INTRO_MARK_MS,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    )
+                    couchIntroProgress.animateTo(
+                        targetValue = INTRO_LOADED,
+                        animationSpec = tween(
+                            durationMillis = COUCH_INTRO_LOAD_MS,
+                            easing = LinearEasing,
+                        ),
+                    )
+                    feedback.play(FeedbackCue.SUCCESS)
+                    couchIntroProgress.animateTo(
+                        targetValue = INTRO_REVEAL_START,
+                        animationSpec = tween(
+                            durationMillis = INTRO_READY_SETTLE_MS,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    )
+                    feedback.play(FeedbackCue.HOME)
+                    couchIntroProgress.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(
+                            durationMillis = INTRO_REVEAL_MS,
+                            easing = LinearOutSlowInEasing,
+                        ),
+                    )
+                } else {
+                    couchIntroProgress.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(
+                            durationMillis = INTRO_REDUCED_MS,
+                            easing = LinearOutSlowInEasing,
+                        ),
+                    )
+                }
+            } finally {
+                /*
+                 * In a finally, and that is not tidiness.
+                 *
+                 * This coroutine is cancelled by its own keys — a display change
+                 * while the sequence is playing is exactly the thing that would
+                 * cancel it — and the flag left standing would swallow every press
+                 * from then on. A launcher that stops answering the controller is
+                 * the worst failure this file has, so the flag comes down whatever
+                 * happened to the animation.
+                 */
+                couchIntroRunning.value = false
+            }
+        }
+
+        /** The couch opening, for the one screen that mode has. */
+        val couchIntroOverlay: @Composable () -> Unit = {
+            if (couchIntroRunning.value) {
+                ThorIntro(
+                    progress = couchIntroProgress.value,
+                    motion = introMotion,
+                    subtitle = "COUCH MODE",
+                    stages = COUCH_STAGES,
                 )
             }
         }
@@ -2672,6 +2784,15 @@ fun ThorApp(
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
                     }
+
+                    // Over everything, including the overlays: this mode has one
+                    // screen, and the opening covers the screen.
+                    couchIntroOverlay()
+
+                    // The start-up sequence, which couch mode was never given.
+                    // A cold start into couch mode had the launcher simply appear
+                    // where every other mode fades it in.
+                    introOverlay(true)
                 }
 
                 /*
@@ -2950,6 +3071,16 @@ private const val INTRO_REVEAL_START = 0.94f
 
 /** Reduced motion uses a short fade and the short success cue. */
 private const val INTRO_REDUCED_MS = 300
+
+/**
+ * The same shape, briskly.
+ *
+ * A start-up has a device booting behind it and can take its time; a mode switch
+ * is a setting being answered, and anything much longer than this reads as the
+ * launcher having to think about it.
+ */
+private const val COUCH_INTRO_MARK_MS = 460
+private const val COUCH_INTRO_LOAD_MS = 1_200
 
 /** The shape a panel is assumed to be before the displays have reported in. */
 private const val DEFAULT_PANEL_ASPECT = 16f / 10f

@@ -137,27 +137,7 @@ internal fun MoviesCouchBrowse(
         }
     }
 
-    val baseDensity = LocalDensity.current
-    /*
-     * The catalogue is drawn slightly smaller than the furniture around it.
-     *
-     * Not a stylistic preference - it is what makes two shelves fit. The featured
-     * card and one shelf were filling the panel between them, so the only way to
-     * see what was on the shelf below was to walk down to it, on a screen whose
-     * whole purpose is to be read from across a room without pressing anything.
-     *
-     * Applied as a density rather than by shrinking the numbers, so text, padding
-     * and artwork all come down together and the layout keeps its proportions. The
-     * rail and the shell's bar above it are outside this and keep the interface
-     * size the viewer chose, because they are how the launcher is navigated and
-     * they are the same size in every section.
-     */
-    val contentDensity = remember(baseDensity.density, baseDensity.fontScale) {
-        Density(
-            density = baseDensity.density * CONTENT_SCALE,
-            fontScale = baseDensity.fontScale,
-        )
-    }
+    val contentDensity = couchContentDensity()
 
     Box(
         modifier = modifier.fillMaxSize().background(
@@ -443,9 +423,13 @@ private fun RailCategory(
             tint = if (selected) colors.cursor else colors.onSurfaceVariant,
             modifier = Modifier.size(RAIL_CATEGORY_ICON.dp),
         )
+        // Set a size down from the rest of the rail. A catalogue shelf is named by
+        // whichever addon supplied it, and those names run long - "Continue
+        // watching", "Popular this week" - so the choice is a smaller face or a
+        // column of titles all ending in an ellipsis.
         Text(
             text = label,
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelMedium,
             color = if (selected) colors.cursor else colors.onSurface,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
             maxLines = 1,
@@ -484,11 +468,15 @@ private fun StatLine(icon: ImageVector, value: String, label: String) {
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
             )
+            // Wrapped rather than clipped. The rail is a fixed narrow column and
+            // "Continue watching" does not fit across it at any interface size, so
+            // holding this to one line meant the label was always cut short - and a
+            // figure whose caption reads "Continue watchin" says nothing at all.
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
                 color = colors.onSurfaceVariant,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -1073,6 +1061,33 @@ private fun CouchLegend() {
     }
 }
 
+/**
+ * The size the section's own content is drawn at, wherever it is drawn.
+ *
+ * Smaller than the furniture around it, and not as a stylistic preference: it is
+ * what makes two shelves fit. The featured card and one shelf were filling the
+ * panel between them, so the only way to see what was on the shelf below was to
+ * walk down to it - on a screen whose whole purpose is to be read from across a
+ * room without pressing anything.
+ *
+ * Applied as a density rather than by shrinking the numbers, so text, padding and
+ * artwork all come down together and every layout keeps its proportions. The rail
+ * and the shell's bar are outside it and keep the interface size the viewer chose,
+ * because they are how the launcher is navigated and they are the same size in
+ * every section.
+ *
+ * Shared by the catalogue and the title page so the two are one size. They are
+ * the same screen a press apart, and a jump in scale between them reads as the
+ * television changing resolution.
+ */
+@Composable
+internal fun couchContentDensity(): Density {
+    val base = LocalDensity.current
+    return remember(base.density, base.fontScale) {
+        Density(density = base.density * CONTENT_SCALE, fontScale = base.fontScale)
+    }
+}
+
 // ---- Layout, as arithmetic rather than fixed panels --------------------------
 
 /*
@@ -1295,13 +1310,7 @@ private val LEGEND = listOf(
     "B" to "Back",
 )
 
-/**
- * How much smaller the catalogue is drawn than the rail beside it.
- *
- * See the note at the call site: this is what makes two shelves fit, and the rail
- * and the shell's bar stay outside it so navigation keeps the interface size the
- * viewer chose.
- */
+/** How much smaller the section's content is drawn than the rail beside it. */
 private const val CONTENT_SCALE = 0.88f
 
 /** The fewest categories that should be on screen together. */
@@ -1356,8 +1365,8 @@ private const val RAIL_ICON_GAP = 10
 private const val RAIL_ICON = 20
 private const val RAIL_SECTION_GAP = 8
 private const val RAIL_CATEGORY_GAP = 2
-private const val RAIL_CATEGORY_PADDING_V = 7
-private const val RAIL_CATEGORY_ICON = 16
+private const val RAIL_CATEGORY_PADDING_V = 5
+private const val RAIL_CATEGORY_ICON = 15
 private const val WORDMARK_TRACKING = 3
 /** The wide setting a film's name is given on a poster, when it has no wordmark. */
 private const val TITLE_TRACKING = 2

@@ -46,6 +46,11 @@ import kotlin.math.roundToInt
  *   rather than as one launcher starting. The bottom panel takes the plate
  *   alone — same colour, same fade, driven by the same progress, so it clears at
  *   the same instant without competing for the eye.
+ * @param subtitle the line under the wordmark, saying which launcher is starting.
+ * @param stages what the rail reports as it fills. Four of them, in order; the
+ *   last quarter is the launcher's own, and reaching the end says READY. They are
+ *   a parameter because the sequence is reused for entering couch mode, where
+ *   "INITIALIZING CORE" would be describing something that happened minutes ago.
  */
 @Composable
 fun ThorIntro(
@@ -53,6 +58,8 @@ fun ThorIntro(
     motion: Boolean,
     modifier: Modifier = Modifier,
     showContent: Boolean = true,
+    subtitle: String = "DUAL-SCREEN LAUNCHER",
+    stages: List<String> = COLD_START_STAGES,
 ) {
     val colors = ThorTheme.colors
     val value = progress.coerceIn(0f, 1f)
@@ -201,7 +208,7 @@ fun ThorIntro(
                 modifier = Modifier.graphicsLayer { alpha = wordProgress },
             )
             Text(
-                text = "DUAL-SCREEN LAUNCHER",
+                text = subtitle,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Medium,
                 letterSpacing = 2.4.sp,
@@ -235,7 +242,7 @@ fun ThorIntro(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = loadingLabel(loadingProgress),
+                        text = loadingLabel(loadingProgress, stages),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.3.sp,
@@ -282,12 +289,26 @@ fun ThorIntro(
     }
 }
 
-private fun loadingLabel(progress: Float): String = when {
-    progress < 0.18f -> "INITIALIZING CORE"
-    progress < 0.48f -> "SYNCING DISPLAYS"
-    progress < 0.76f -> "RESTORING LIBRARY"
-    progress < 1f -> "PREPARING HOME"
-    else -> "READY"
+/** What the launcher says it is doing while the rail fills. */
+val COLD_START_STAGES = listOf(
+    "INITIALIZING CORE",
+    "SYNCING DISPLAYS",
+    "RESTORING LIBRARY",
+    "PREPARING HOME",
+)
+
+/** The same sequence, for the switch into couch mode. */
+val COUCH_STAGES = listOf(
+    "SWITCHING DISPLAY",
+    "SCALING INTERFACE",
+    "RESTORING LIBRARY",
+    "PREPARING COUCH",
+)
+
+private fun loadingLabel(progress: Float, stages: List<String>): String {
+    if (stages.isEmpty() || progress >= 1f) return "READY"
+    val index = (progress * stages.size).toInt().coerceIn(0, stages.lastIndex)
+    return stages[index]
 }
 
 /** The THOR bolt, in the same 108-unit space as the launcher icon. */
