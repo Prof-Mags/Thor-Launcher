@@ -29,6 +29,52 @@ sealed interface GridEntry {
 }
 
 /**
+ * A home-screen widget belonging to another application.
+ *
+ * The only entry that is not a thing to launch. It occupies cells and draws
+ * itself, and nearly everything the grid does to an entry — open it, favourite
+ * it, file it in a folder, put it on the dock — is meaningless here. It is a
+ * [GridEntry] regardless because placement is the one thing it does share, and
+ * a parallel list of widget positions would be a second grid to keep in step
+ * with the first.
+ *
+ * [appWidgetId] is allocated by the host and is the only durable handle to a
+ * live widget; the provider alone is not enough, because the same provider can
+ * be placed more than once. It is meaningless to any other install, which is
+ * why widgets are not part of a profile export.
+ */
+@Serializable
+data class WidgetEntry(
+    override val id: String,
+    override val title: String,
+    override val sortTitle: String,
+    /** The host's handle, from `AppWidgetHost.allocateAppWidgetId`. */
+    val appWidgetId: Int,
+    /** Flattened `ComponentName` of the provider, for rebinding after a restart. */
+    val providerComponent: String,
+    /** How many grid cells wide and tall, at the spec the widget was placed under. */
+    val spanColumns: Int = 1,
+    val spanRows: Int = 1,
+    override val isFavorite: Boolean = false,
+    override val isHidden: Boolean = false,
+) : GridEntry {
+
+    /** Cells occupied, which is what the grid has to reserve. */
+    val cellCount: Int get() = spanColumns * spanRows
+
+    companion object {
+        /** Ids are prefixed so a widget is recognisable without a lookup. */
+        const val ID_PREFIX = "widget:"
+
+        fun idFor(appWidgetId: Int): String = "$ID_PREFIX$appWidgetId"
+
+        /** The smallest and largest a widget may be made in edit mode. */
+        const val MIN_SPAN = 1
+        const val MAX_SPAN = 4
+    }
+}
+
+/**
  * An installed Android application or emulator front-end.
  */
 @Serializable

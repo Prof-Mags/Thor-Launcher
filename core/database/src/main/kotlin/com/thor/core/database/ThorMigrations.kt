@@ -150,5 +150,35 @@ object ThorMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    /**
+     * Adds the widget table.
+     *
+     * Purely additive: a widget's *placement* already has somewhere to live, in
+     * the `placements` table every other entry uses, so nothing existing is
+     * touched and an install with no widgets is indistinguishable from one that
+     * never had the table.
+     */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `widgets` (
+                    `app_widget_id` INTEGER NOT NULL,
+                    `provider` TEXT NOT NULL,
+                    `label` TEXT NOT NULL,
+                    `span_columns` INTEGER NOT NULL,
+                    `span_rows` INTEGER NOT NULL,
+                    `added_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`app_widget_id`)
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_widgets_provider` ON `widgets` (`provider`)",
+            )
+        }
+    }
+
+    val ALL: Array<Migration> =
+        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

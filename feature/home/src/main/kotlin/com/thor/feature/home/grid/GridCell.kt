@@ -53,6 +53,7 @@ import com.thor.core.model.GridSpec
 import com.thor.core.model.IconShape
 import com.thor.core.model.Platform
 import com.thor.core.model.ShortcutEntry
+import com.thor.core.model.WidgetEntry
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.icon.PlatformIcons
 import com.thor.core.ui.pointer.pointerHover
@@ -290,6 +291,20 @@ fun GridCell(
                             .padding(ARTWORK_INSET.dp)
                             .clip(shape),
                     )
+
+                    /*
+                     * Nothing, deliberately: a widget is not an icon.
+                     *
+                     * It draws its own contents through the widget host, across
+                     * however many cells it spans, so it is composed above this
+                     * layer rather than inside a single cell's artwork slot.
+                     * Nothing constructs a [WidgetEntry] yet — the host that
+                     * does is the next piece — and this branch exists so the
+                     * sealed `when` stays honest in the meantime rather than
+                     * being closed with an `else` that would silently swallow
+                     * whatever entry type comes after it.
+                     */
+                    is WidgetEntry -> Unit
                 }
 
                 if (entry?.isFavorite == true) {

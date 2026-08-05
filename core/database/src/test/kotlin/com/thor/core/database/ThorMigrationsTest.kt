@@ -50,6 +50,43 @@ class ThorMigrationsTest {
         }
     }
 
+    /**
+     * 4 → 5 creates a table, so the check is the same one version 2 gets: the
+     * DDL the migration runs against the DDL Room will expect afterwards.
+     *
+     * Worth having for exactly the reason the class comment gives — a fresh
+     * install builds this table from the entity and is fine either way, so a
+     * mismatch here only ever breaks people who already had a library.
+     */
+    @Test
+    fun `widgets DDL matches the exported version 5 schema`() {
+        val exported = normalise(exportedDdl(version = 5, table = "widgets"))
+
+        assertThat(columnNames(exported)).containsExactly(
+            "app_widget_id",
+            "provider",
+            "label",
+            "span_columns",
+            "span_rows",
+            "added_at",
+        ).inOrder()
+        // Every column carries a value; a widget with no size is not drawable.
+        assertThat(exported).doesNotContain("INTEGER,")
+        assertThat(exported).doesNotContain("TEXT,")
+    }
+
+    @Test
+    fun `the widget table arrives without touching anything else`() {
+        val v4 = File(SCHEMA_DIR, "4.json").readText()
+        val v5 = File(SCHEMA_DIR, "5.json").readText()
+
+        val tables = { json: String ->
+            Regex("\"tableName\": \"(\\w+)\"").findAll(json).map { it.groupValues[1] }.toSet()
+        }
+        assertThat(tables(v5) - tables(v4)).containsExactly("widgets")
+        assertThat(tables(v4) - tables(v5)).isEmpty()
+    }
+
     @Test
     fun `migrations declare the expected version ranges`() {
         assertThat(ThorMigrations.MIGRATION_1_2.startVersion).isEqualTo(1)
@@ -72,12 +109,14 @@ class ThorMigrationsTest {
      * Pulls the column list out of the exported schema's `CREATE TABLE` for
      * `platforms`, which Room writes with a `${'$'}{TABLE_NAME}` placeholder.
      */
-    private fun exportedPlatformsDdl(version: Int): String {
+    private fun exportedPlatformsDdl(version: Int): String = exportedDdl(version, "platforms")
+
+    private fun exportedDdl(version: Int, table: String): String {
         val schema = File(SCHEMA_DIR, "$version.json")
         assertThat(schema.exists()).isTrue()
 
         val json = schema.readText()
-        val marker = "\"tableName\": \"platforms\""
+        val marker = "\"tableName\": \"$table\""
         val tableStart = json.indexOf(marker)
         assertThat(tableStart).isGreaterThan(-1)
 
