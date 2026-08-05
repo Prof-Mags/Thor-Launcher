@@ -1130,13 +1130,15 @@ fun ThorApp(
 
                 // Offered the same way, and declines the same way: Up and Down
                 // walk the list of PCs, everything else falls through to the
-                // shell so the nav bar and Home keep working.
+                // shell so the nav bar and Home keep working. Told which layout
+                // is on screen, because the television draws the machines as a
+                // grid and a grid is a different set of directions.
                 if (
                     selectedTabNow() == LauncherTab.STREAM &&
                     viewModel.navCursor.value == null &&
                     !overlayIsOpenNow()
                 ) {
-                    if (streamViewModel.handleCommand(event.command)) {
+                    if (streamViewModel.handleCommand(event.command, couchModeNow.value)) {
                         feedback.play(event.command.toCue())
                         return@collect
                     }
@@ -1687,6 +1689,19 @@ fun ThorApp(
             }
         }
 
+        /*
+         * Leaving the section closes its form.
+         *
+         * The section's state outlives the screen — it is a view model, and it
+         * has to be, because discovery runs for as long as anyone is subscribed.
+         * So a half-typed address left behind on the way to Home would still be
+         * on screen on the way back, and the PCs it was hiding would look like
+         * PCs that had gone away.
+         */
+        LaunchedEffect(selectedTab) {
+            if (selectedTab != LauncherTab.STREAM) streamViewModel.closeAddHost()
+        }
+
         // ---- One-shot effects ------------------------------------------------
         LaunchedEffect(viewModel) {
             viewModel.effectFlow.collect { effect ->
@@ -2089,8 +2104,13 @@ fun ThorApp(
                                 clientName = clientName,
                                 onHostSelected = streamViewModel::selectHost,
                                 onAddressChanged = streamViewModel::onAddressChanged,
+                                onNameChanged = streamViewModel::onNameChanged,
                                 onAddHost = streamViewModel::addTypedHost,
+                                onOpenAddHost = streamViewModel::openAddHost,
+                                onCloseAddHost = streamViewModel::closeAddHost,
+                                onAddFieldFocused = streamViewModel::focusAddField,
                                 onRefreshHost = streamViewModel::refresh,
+                                onRefreshAll = streamViewModel::refreshAll,
                                 onStartStream = streamViewModel::shareScreen,
                                 onPairHost = streamViewModel::pair,
                                 onCancelPairing = streamViewModel::cancelPairing,

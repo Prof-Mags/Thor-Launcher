@@ -13,8 +13,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.display.DisplayTopology
 import com.thor.core.display.SecondaryDisplay
 import com.thor.core.model.AccessibilitySettings
+import com.thor.core.model.DisplaySettings
+import com.thor.core.model.DualScreenMode
 import com.thor.core.model.PerformanceSettings
 import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.SessionQuality
@@ -44,6 +47,7 @@ fun StreamPadHost(
 ) {
     val context = LocalContext.current
     var displayId by remember { mutableStateOf(secondaryDisplayId(context)) }
+    var monitorAttached by remember { mutableStateOf(hasMonitor(context)) }
 
     /*
      * Followed rather than read once.
@@ -55,26 +59,45 @@ fun StreamPadHost(
      */
     DisposableEffect(context) {
         val manager = context.getSystemService(DisplayManager::class.java)
+        fun resample() {
+            displayId = secondaryDisplayId(context)
+            monitorAttached = hasMonitor(context)
+        }
         val listener = object : DisplayManager.DisplayListener {
-            override fun onDisplayAdded(id: Int) {
-                displayId = secondaryDisplayId(context)
-            }
+            override fun onDisplayAdded(id: Int) = resample()
 
-            override fun onDisplayRemoved(id: Int) {
-                displayId = secondaryDisplayId(context)
-            }
+            override fun onDisplayRemoved(id: Int) = resample()
 
-            override fun onDisplayChanged(id: Int) {
-                displayId = secondaryDisplayId(context)
-            }
+            override fun onDisplayChanged(id: Int) = resample()
         }
         manager?.registerDisplayListener(listener, null)
         onDispose { manager?.unregisterDisplayListener(listener) }
     }
 
+    /*
+     * Couch Mode has no second screen to put a trackpad on.
+     *
+     * Everything else about this window assumes the device is in the user's
+     * hands: the pad is reached with a thumb, and it is drawn on the panel
+     * directly below the one being watched. Docked to a television none of that
+     * holds — the user is across the room from both panels, and the window
+     * landed on whichever display Android listed first, which is how a trackpad
+     * ended up drawn over the stream on the monitor.
+     *
+     * Nothing is lost by standing it down. The controller is already forwarded
+     * to the PC whole, and a pointer nobody can reach is not a pointer.
+     */
+    val display by settings.display.collectAsState(initial = DisplaySettings())
+    val couchMode = display.mode == DualScreenMode.COUCH ||
+        (
+            display.mode == DualScreenMode.AUTO &&
+                display.couchOnExternalDisplay &&
+                monitorAttached
+            )
+
     SecondaryDisplay(
         displayId = displayId,
-        enabled = { quality.bottomPanel && displayId != null },
+        enabled = { quality.bottomPanel && !couchMode && displayId != null },
         /*
          * Never takes focus, and this is the important line in the file.
          *
@@ -145,3 +168,25 @@ private fun secondaryDisplayId(context: Context): Int? {
         .firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
         ?.displayId
 }
+
+/**
+ * Whether a screen is attached beyond the two the device was built with.
+ *
+ * Counted rather than named, exactly as [DisplayTopology.hasExternalDisplay]
+ * counts it: the public API cannot be asked whether a display is built in, and a
+ * monitor's name is whatever its EDID happens to say. The Thor has two panels of
+ * its own, so a second presentation display is one the user plugged in.
+ *
+ * Asked here rather than read from the launcher, because this window is a
+ * separate task with none of the launcher's state — and the same reasoning that
+ * put the display lookup in this file puts this beside it.
+ */
+private fun hasMonitor(context: Context): Boolean {
+    val manager = context.getSystemService(DisplayManager::class.java) ?: return false
+    return manager.displays
+        .distinctBy { it.displayId }
+        .count(DisplayTopology::isUsableSecondary) >= EXTERNAL_THRESHOLD
+}
+
+/** The device's own second panel, and then another one. */
+private const val EXTERNAL_THRESHOLD = 2

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -32,13 +31,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -51,7 +48,6 @@ import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.model.HostStatus
 import com.thor.core.model.StreamHost
 import com.thor.core.ui.input.ThorInputField
-import com.thor.core.ui.input.LocalThorTextInput
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.data.stream.LaunchStage
@@ -504,217 +500,6 @@ fun StreamBottomPanel(
                 onAddressChanged = onAddressChanged,
                 onAddHost = onAddHost,
                 modifier = Modifier.weight(1f - SELECTED_PANEL_WEIGHT).fillMaxHeight(),
-            )
-        }
-    }
-}
-
-/**
- * Remote play laid out for one television instead of two handheld panels.
- *
- * The host list sits beside the selected PC and every visible action is the same
- * controller-driven action exposed by [StreamUiState.hostActions].
- *
- * The list is the point of this screen and it was not being drawn. The panel
- * built a `LazyListState`, ran a `LaunchedEffect` to keep the cursor scrolled
- * into view, and then rendered only a header and an empty-state block — so the
- * one branch that mattered, the one where the user has PCs, produced an empty
- * bordered rectangle. Every paired machine was invisible from the sofa while the
- * handheld screen listed them all, which is why it looked like discovery was
- * broken rather than like the view was.
- */
-@Composable
-fun StreamCouchScreen(
-    state: StreamUiState,
-    clientName: String,
-    onHostSelected: (Int) -> Unit,
-    onAddressChanged: (String) -> Unit,
-    onAddHost: () -> Unit,
-    onRefreshHost: (StreamHost) -> Unit,
-    onStartStream: () -> Unit,
-    onPairHost: () -> Unit,
-    onCancelPairing: () -> Unit,
-    onStopStream: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = ThorTheme.colors
-    val dimens = ThorTheme.dimens
-
-    val listState = rememberLazyListState()
-    LaunchedEffect(state.cursor, state.hosts.size) {
-        if (state.hosts.isNotEmpty()) {
-            listState.animateScrollToItem(state.cursor.coerceIn(0, state.hosts.lastIndex))
-        }
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(
-                Brush.horizontalGradient(
-                    listOf(colors.background, colors.surfaceElevated.copy(alpha = 0.56f)),
-                ),
-            )
-            .padding(dimens.spacingSmall),
-        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-    ) {
-        /*
-         * The header runs the width of the screen rather than sitting inside the
-         * left column.
-         *
-         * Boxed into the column it was a title for the host list, which is not
-         * what it says: "PC streaming" and the host/online/ready counts describe
-         * the whole screen, and a heading for a screen that stops a third of the
-         * way across reads as a heading for the wrong thing.
-         */
-        StreamHeader(state)
-
-        Row(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-        ) {
-            Column(
-                modifier = Modifier.weight(0.88f).fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-            ) {
-                if (state.hosts.isEmpty()) {
-                    /*
-                     * The same panel the handheld shows, not a shorter one.
-                     *
-                     * This said "No PCs available" under an icon and stopped
-                     * there, which on a television is a dead end: the user is
-                     * across the room from the machine, and what they need to
-                     * know is that Sunshine has to be running on it.
-                     * `EmptyDiscovery` says that, and the two other things that
-                     * fix it.
-                     */
-                    EmptyDiscovery(modifier = Modifier.fillMaxWidth().weight(1f))
-                } else {
-                    StreamListLabel()
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        contentPadding = PaddingValues(vertical = 2.dp),
-                        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-                    ) {
-                        itemsIndexed(
-                            items = state.hosts,
-                            key = { _, host -> host.address },
-                        ) { index, host ->
-                            HostCard(
-                                host = host,
-                                status = state.statusOf(host),
-                                selected = index == state.cursor,
-                                connecting = state.connecting && index == state.cursor,
-                                onClick = { onHostSelected(index) },
-                            )
-                        }
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier.weight(1.12f).fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-            ) {
-                SelectedHostPanel(
-                    state = state,
-                    clientName = clientName,
-                    onRefreshHost = onRefreshHost,
-                    onStartStream = onStartStream,
-                    onPairHost = onPairHost,
-                    onCancelPairing = onCancelPairing,
-                    onStopStream = onStopStream,
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                )
-                CouchManualHostBar(
-                    address = state.newAddress,
-                    focusRequest = state.addressFocusRequest,
-                    onAddressChanged = onAddressChanged,
-                    onAddHost = onAddHost,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-}
-
-/**
- * Says what the column under it is, the way every other couch shelf does.
- *
- * No count of its own. The obvious one to put here would be how many are
- * paired, and that is not the same number as how many are listed — a host can
- * be saved and unpaired, or paired and offline. The header above already
- * separates hosts, online and ready, and each card carries its own badge.
- */
-@Composable
-private fun StreamListLabel() {
-    Text(
-        text = "YOUR PCS",
-        style = MaterialTheme.typography.labelMedium,
-        color = ThorTheme.colors.onSurfaceVariant,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(start = 2.dp, top = 2.dp),
-    )
-}
-
-@Composable
-private fun CouchManualHostBar(
-    address: String,
-    focusRequest: Long,
-    onAddressChanged: (String) -> Unit,
-    onAddHost: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = ThorTheme.colors
-    val textInput = LocalThorTextInput.current
-    val currentOnAddressChanged = rememberUpdatedState(onAddressChanged)
-
-    LaunchedEffect(focusRequest) {
-        if (focusRequest > 0L) {
-            textInput.focus(
-                id = COUCH_ADDRESS_FIELD_ID,
-                label = "PC address",
-                initial = address,
-            ) { edited -> currentOnAddressChanged.value(edited) }
-        }
-    }
-
-    GlassSurface(modifier = modifier, shape = ThorTheme.shapes.panel) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(ThorTheme.shapes.small)
-                    .background(colors.cursor.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = null,
-                    tint = colors.cursor,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-            ThorInputField(
-                id = COUCH_ADDRESS_FIELD_ID,
-                label = "Add PC",
-                value = address,
-                onValueChange = onAddressChanged,
-                placeholder = "PC address",
-                modifier = Modifier.weight(1f),
-            )
-            StreamActionButton(
-                label = "ADD",
-                icon = Icons.Rounded.Add,
-                enabled = address.isNotBlank(),
-                primary = true,
-                onClick = onAddHost,
-                modifier = Modifier.width(94.dp),
             )
         }
     }
@@ -1213,7 +998,7 @@ private fun StreamProfileRow(label: String, value: String) {
 }
 
 @Composable
-private fun StreamActionButton(
+internal fun StreamActionButton(
     label: String,
     icon: ImageVector,
     onClick: () -> Unit,
@@ -1283,7 +1068,7 @@ private fun StreamActionButton(
     }
 }
 
-private fun selectedHostMessage(
+internal fun selectedHostMessage(
     state: StreamUiState,
     status: HostStatus,
     clientName: String,
@@ -1308,7 +1093,7 @@ private fun selectedHostMessage(
     else -> "The PC's current status is unavailable."
 }
 
-private fun HostStatus.badgeLabel(): String = when (this) {
+internal fun HostStatus.badgeLabel(): String = when (this) {
     HostStatus.Unknown -> "WAITING"
     HostStatus.Checking -> "CHECKING"
     is HostStatus.Offline -> "OFFLINE"
@@ -1319,16 +1104,15 @@ private fun HostStatus.badgeLabel(): String = when (this) {
     }
 }
 
-private fun HostStatus.tint(error: Color, unknown: Color): Color = when (this) {
+internal fun HostStatus.tint(error: Color, unknown: Color): Color = when (this) {
     is HostStatus.Online -> if (currentGame != null) BUSY else ONLINE
     is HostStatus.Offline -> error
     HostStatus.Checking -> unknown
     HostStatus.Unknown -> unknown
 }
 
-private val ONLINE = Color(0xFF4CAF50)
-private val BUSY = Color(0xFFFFB300)
+internal val ONLINE = Color(0xFF4CAF50)
+internal val BUSY = Color(0xFFFFB300)
 
 private const val SELECTED_PANEL_WEIGHT = 0.61f
 private const val ADDRESS_FIELD_ID = "stream-host-address"
-private const val COUCH_ADDRESS_FIELD_ID = "stream-couch-host-address"

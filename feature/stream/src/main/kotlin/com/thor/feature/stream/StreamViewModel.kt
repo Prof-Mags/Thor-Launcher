@@ -45,6 +45,73 @@ enum class StreamHostAction {
     CANCEL_PAIRING,
 }
 
+/**
+ * Which page Couch Mode's Stream section is showing.
+ *
+ * Only the television layout has pages. The handheld arrangement shows both
+ * things at once — the PCs on the top panel, the address field on the bottom —
+ * because it has two panels to put them on. One screen does not, and a form
+ * squeezed into the corner of a dashboard is a form nobody can read from a sofa.
+ */
+enum class StreamCouchPage {
+    COMPUTERS,
+    ADD_HOST,
+}
+
+/** Where the controller is on Couch Mode's computers page. */
+enum class StreamCouchZone {
+    /** The wall of PCs. */
+    GRID,
+
+    /**
+     * The tile at the end of the wall that adds one.
+     *
+     * A place on the wall rather than a button somewhere, because that is what
+     * makes it reachable: the cursor walks into it after the last machine, which
+     * is exactly where somebody notices one is missing. It is not a host, so it
+     * cannot be [GRID] with a cursor value — [StreamUiState.cursor] indexes the
+     * list of PCs and there is no PC here.
+     */
+    ADD,
+
+    /** The selected PC's buttons, along the foot. */
+    ACTIONS,
+}
+
+/**
+ * Which control on Couch Mode's add-a-PC form the controller is on.
+ *
+ * A short list rather than a cursor over a generated one: this form has two
+ * fields and a button, and it will not grow — the protocol takes an address, the
+ * name is the user's own label for it, and the pairing PIN travels the other way
+ * (Loki shows one, Sunshine is told it), so there is nothing here to type it in.
+ */
+enum class StreamAddField {
+    NAME,
+    ADDRESS,
+    SUBMIT,
+}
+
+/**
+ * Where a row move lands on a grid [columns] wide holding [count] cards.
+ *
+ * Null means the move leaves the grid, which is the answer the caller acts on:
+ * upward it hands the press back to the shell so the navigation bar is still
+ * reachable from the top row, downward it moves to the selected PC's buttons.
+ *
+ * A move onto a short final row lands on its last card rather than nowhere. The
+ * alternative — refusing because the cell directly below happens to be empty —
+ * makes the last PC in a ragged grid reachable from one column only, which from
+ * a sofa reads as the cursor being stuck.
+ */
+internal fun streamGridTarget(cursor: Int, count: Int, columns: Int, rows: Int): Int? {
+    if (count <= 0 || columns <= 0) return null
+    val target = cursor + rows * columns
+    if (target in 0 until count) return target
+    if (rows > 0 && cursor / columns < (count - 1) / columns) return count - 1
+    return null
+}
+
 /** What the Stream section is showing, as one value both panels read. */
 data class StreamUiState(
     val hosts: List<StreamHost> = emptyList(),
@@ -57,8 +124,22 @@ data class StreamUiState(
     val pairing: PairingState = PairingState.Idle,
     /** What is in the "add a PC by address" field. */
     val newAddress: String = "",
-    /** Monotonic request consumed by Couch Mode's controller-focusable address field. */
-    val addressFocusRequest: Long = 0L,
+    /** The label the user is giving the PC being added, if any. */
+    val newName: String = "",
+    /** Which page the television layout is on; ignored by the handheld panels. */
+    val page: StreamCouchPage = StreamCouchPage.COMPUTERS,
+    /** Where the controller is on the television's computers page. */
+    val zone: StreamCouchZone = StreamCouchZone.GRID,
+    /** Which control on the television's add-a-PC form the controller is on. */
+    val addField: StreamAddField = StreamAddField.ADDRESS,
+    /**
+     * Monotonic request to raise the keyboard for [addField].
+     *
+     * A counter rather than a flag, because the same field can be asked for
+     * twice in a row — open the form, type nothing, press A again — and a
+     * boolean that is already true says nothing the second time.
+     */
+    val keyboardRequest: Long = 0L,
     /**
      * Set while the PC is being asked to share its screen.
      *
@@ -231,8 +312,16 @@ class StreamViewModel @Inject constructor(
                     actionCursor = 0,
                     pairing = PairingState.Idle,
                     error = null,
+                    // Choosing a PC is a statement about where the cursor is, so
+                    // the television's cursor comes back to the wall of machines
+                    // from wherever it was. Tapping a card while the controller
+                    // sat on the button row below would otherwise select a
+                    // machine and light none of them.
+                    zone = StreamCouchZone.GRID,
                 )
             }
+        } else if (state.zone != StreamCouchZone.GRID) {
+            _uiState.update { it.copy(zone = StreamCouchZone.GRID) }
         }
     }
 
@@ -260,15 +349,60 @@ class StreamViewModel @Inject constructor(
         _uiState.update { it.copy(newAddress = value) }
     }
 
+    fun onNameChanged(value: String) {
+        _uiState.update { it.copy(newName = value) }
+    }
+
+    /**
+     * Opens the television's add-a-PC form, already typing.
+     *
+     * The keyboard comes up on the address rather than waiting to be asked for.
+     * Somebody who has just chosen "add a PC" is there to type an address; the
+     * name above it is a label they may not want at all, and is one press up.
+     */
+    fun openAddHost() {
+        _uiState.update {
+            it.copy(
+                page = StreamCouchPage.ADD_HOST,
+                zone = StreamCouchZone.GRID,
+                addField = StreamAddField.ADDRESS,
+                keyboardRequest = it.keyboardRequest + 1L,
+            )
+        }
+    }
+
+    fun closeAddHost() {
+        _uiState.update { it.copy(page = StreamCouchPage.COMPUTERS) }
+    }
+
+    /** Moves through the form's fields, and asks for the keyboard on one. */
+    fun focusAddField(field: StreamAddField) {
+        _uiState.update { it.copy(addField = field) }
+    }
+
+    fun requestKeyboard() {
+        _uiState.update { it.copy(keyboardRequest = it.keyboardRequest + 1L) }
+    }
+
     /** Saves the typed address, for a PC the network never announced. */
     fun addTypedHost() {
         val address = _uiState.value.newAddress.trim()
         if (address.isBlank()) return
+        val name = _uiState.value.newName.trim()
 
         viewModelScope.launchSafely(TAG) {
-            repository.addHost(address)
-            _uiState.update { it.copy(newAddress = "") }
-            refresh(StreamHost(address = address))
+            repository.addHost(address, name)
+            // Back to the list, because that is where the PC now is. Leaving the
+            // form up with its fields cleared reads as the address having been
+            // rejected.
+            _uiState.update {
+                it.copy(
+                    newAddress = "",
+                    newName = "",
+                    page = StreamCouchPage.COMPUTERS,
+                )
+            }
+            refresh(StreamHost(address = address, name = name))
         }
     }
 
@@ -406,11 +540,19 @@ class StreamViewModel @Inject constructor(
     /**
      * Routes one controller command into the section.
      *
+     * @param couch whether the television layout is on screen, which is a
+     *   different set of controls rather than the same one rearranged: the PCs
+     *   are a grid there instead of a column, so Left and Right move between
+     *   machines rather than between the selected machine's buttons, and adding
+     *   one is a page rather than a field that is always visible.
      * @return true when the section consumed it. Everything else is left for the
      *   shell, so the nav bar, Home and the overlays keep working — a section
      *   that swallowed every press would be a room with no door.
      */
-    fun handleCommand(command: ControllerCommand): Boolean = when (command) {
+    fun handleCommand(command: ControllerCommand, couch: Boolean = false): Boolean =
+        if (couch) handleCouchCommand(command) else handleHandheldCommand(command)
+
+    private fun handleHandheldCommand(command: ControllerCommand): Boolean = when (command) {
         ControllerCommand.NAVIGATE_UP -> { move(-1); true }
         ControllerCommand.NAVIGATE_DOWN -> { move(1); true }
         ControllerCommand.NAVIGATE_LEFT -> {
@@ -469,11 +611,208 @@ class StreamViewModel @Inject constructor(
         }
 
         ControllerCommand.SEARCH -> {
-            _uiState.update { it.copy(addressFocusRequest = it.addressFocusRequest + 1L) }
+            requestKeyboard()
             true
         }
 
         else -> false
+    }
+
+    // ---- Couch Mode ---------------------------------------------------------
+
+    private fun handleCouchCommand(command: ControllerCommand): Boolean {
+        if (_uiState.value.page == StreamCouchPage.ADD_HOST) return handleAddHostCommand(command)
+
+        val state = _uiState.value
+        val onActions = state.zone == StreamCouchZone.ACTIONS
+        // The machines, and then the tile that adds one.
+        val cells = state.hosts.size + 1
+        val cell = if (state.zone == StreamCouchZone.ADD) state.hosts.size else state.cursor
+
+        return when (command) {
+            /*
+             * Sideways is between machines, and only between buttons once the
+             * cursor is on them.
+             *
+             * Always consumed while there are PCs on screen, including at the
+             * ends of a row. There is nothing to the left of the first card but
+             * the rail, which is a map rather than a destination, and handing
+             * the press to the shell from there moves something the user cannot
+             * see.
+             */
+            ControllerCommand.NAVIGATE_LEFT -> when {
+                onActions -> { moveAction(-1); true }
+                state.hosts.isEmpty() -> false
+                else -> moveToCell(cell - 1, cells)
+            }
+
+            ControllerCommand.NAVIGATE_RIGHT -> when {
+                onActions -> { moveAction(1); true }
+                state.hosts.isEmpty() -> false
+                else -> moveToCell(cell + 1, cells)
+            }
+
+            ControllerCommand.NAVIGATE_UP -> when {
+                onActions -> { setZone(StreamCouchZone.GRID); true }
+                else -> streamGridTarget(cell, cells, STREAM_COUCH_COLUMNS, rows = -1)
+                    ?.let { moveToCell(it, cells) }
+                    ?: false
+            }
+
+            ControllerCommand.NAVIGATE_DOWN -> when {
+                // Down from the buttons is the bottom of the screen. Declined
+                // rather than consumed, so whatever the shell does with it is
+                // the same thing it does everywhere else.
+                onActions -> false
+                else -> {
+                    val target = streamGridTarget(cell, cells, STREAM_COUCH_COLUMNS, rows = 1)
+                    when {
+                        target != null -> moveToCell(target, cells)
+                        state.hostActions.isNotEmpty() -> {
+                            setZone(StreamCouchZone.ACTIONS)
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            }
+
+            /*
+             * A on a PC does the obvious thing to it, which depends on the PC.
+             *
+             * "Select a computer to start streaming" is what the screen says, so
+             * a ready machine streams. One that has never been paired pairs,
+             * because that is the step between it and streaming, and one that is
+             * not answering is asked again — the question this screen exists for.
+             */
+            ControllerCommand.CONFIRM -> {
+                when {
+                    state.hosts.isEmpty() -> openAddHost()
+                    state.zone == StreamCouchZone.ADD -> openAddHost()
+                    onActions -> state.focusedHostAction?.let(::performHostAction)
+                    else -> confirmSelectedHost()
+                }
+                true
+            }
+
+            /*
+             * Y is the highlighted PC's second action, exactly as it is on the
+             * handheld, and this screen does not get to redefine it.
+             *
+             * It briefly did — adding a PC needed a way in, and Y was the button
+             * going spare. It was not going spare. An unpaired host needs pairing
+             * before it can be streamed at all, Y is how that is done everywhere
+             * else in the launcher, and a viewer whose machines had come unpaired
+             * pressed it and got a form for a PC they already had. Adding one is
+             * reached from the tile at the end of the wall instead, which is
+             * where the cursor already ends up.
+             */
+            ControllerCommand.CONTEXT_MENU -> {
+                if (state.canStream) stopHostSession() else pair()
+                true
+            }
+
+            // The search key is the launcher's "type something", and the only
+            // thing there is to type here is an address.
+            ControllerCommand.SEARCH -> {
+                openAddHost()
+                true
+            }
+
+            ControllerCommand.BACK -> {
+                if (state.pairing != PairingState.Idle) {
+                    cancelPairing()
+                    true
+                } else {
+                    false
+                }
+            }
+
+            else -> false
+        }
+    }
+
+    private fun handleAddHostCommand(command: ControllerCommand): Boolean = when (command) {
+        ControllerCommand.NAVIGATE_UP -> {
+            moveAddField(-1)
+            true
+        }
+
+        ControllerCommand.NAVIGATE_DOWN -> {
+            moveAddField(1)
+            true
+        }
+
+        /*
+         * Consumed and ignored. The form is a column, so sideways means nothing
+         * here — and letting it through would scroll the grid this page is drawn
+         * over, which is the one thing on screen the user is not looking at.
+         */
+        ControllerCommand.NAVIGATE_LEFT, ControllerCommand.NAVIGATE_RIGHT -> true
+
+        ControllerCommand.CONFIRM -> {
+            when (_uiState.value.addField) {
+                StreamAddField.SUBMIT -> addTypedHost()
+                else -> requestKeyboard()
+            }
+            true
+        }
+
+        ControllerCommand.CONTEXT_MENU, ControllerCommand.SEARCH -> {
+            requestKeyboard()
+            true
+        }
+
+        ControllerCommand.BACK -> {
+            closeAddHost()
+            true
+        }
+
+        else -> false
+    }
+
+    private fun setZone(zone: StreamCouchZone) {
+        _uiState.update { it.copy(zone = zone) }
+    }
+
+    /**
+     * Puts the cursor on one cell of the wall, which may be the tile at the end.
+     *
+     * Always reports true when there is a wall at all, including at its edges: a
+     * press that stops at the end of a row has still been dealt with, and handing
+     * it back to the shell would move something off screen instead.
+     */
+    private fun moveToCell(cell: Int, cells: Int): Boolean {
+        if (cells <= 0) return false
+        val target = cell.coerceIn(0, cells - 1)
+        if (target >= _uiState.value.hosts.size) {
+            setZone(StreamCouchZone.ADD)
+        } else {
+            // Set here as well as inside the selection, because a selection can
+            // decline — it is held on the PC being paired until that finishes —
+            // and a declined move must not leave the add tile lit as though the
+            // cursor were still on it.
+            setZone(StreamCouchZone.GRID)
+            selectHost(target)
+        }
+        return true
+    }
+
+    private fun moveAddField(delta: Int) {
+        val fields = StreamAddField.entries
+        val current = fields.indexOf(_uiState.value.addField)
+        val next = (current + delta).coerceIn(0, fields.lastIndex)
+        _uiState.update { it.copy(addField = fields[next]) }
+    }
+
+    private fun confirmSelectedHost() {
+        val actions = _uiState.value.hostActions
+        when {
+            StreamHostAction.START_STREAM in actions -> shareScreen()
+            StreamHostAction.PAIR in actions -> pair()
+            StreamHostAction.REFRESH in actions -> _uiState.value.selected?.let(::refresh)
+            else -> Unit
+        }
     }
 
     private companion object {

@@ -1141,12 +1141,12 @@ internal fun couchShelfHeightFor(artHeight: Dp): Dp = artHeight + SHELF_FURNITUR
  * the screen is. Working back from the width pins it at [target] however wide the
  * panel turns out to be.
  *
- * Always shorter than the posters, and by a margin rather than by a hair. A still
- * is two and a half times as wide as a poster of the same height, so one drawn to
- * the posters' own height is the largest thing in the catalogue by a wide margin
- * and the shelf with the fewest titles on it dominates the screen. This ceiling is
- * what binds on a television - the width is only the constraint on a narrow panel -
- * so it is the number that decides how big a resume card looks.
+ * The ceiling is a guard and not the size. It keeps a still under the posters
+ * beside it, because a still is two and a half times as wide as a poster of the
+ * same height and one drawn taller would make the shelf with the fewest titles on
+ * it the largest thing in the catalogue. Held any lower than that it stops being
+ * a guard and starts being the answer, which is how a shelf with room for six
+ * resume cards ended up drawing four small ones.
  */
 internal fun couchStillHeight(
     posterHeight: Dp,
@@ -1322,16 +1322,30 @@ private const val MIN_HERO = 172
  * The featured card's ceiling, and with it the posters' floor.
  *
  * Everything the shelves get is what this leaves, so the two numbers are one
- * decision. Capping the card lower than the room it could take is what puts the
- * artwork back at a size worth reading from a sofa - and it costs the card
- * nothing now that the picture on it keeps its own shape rather than being
- * stretched to whatever height the card happens to have.
+ * decision, and this is the only one of them worth setting by hand: the shelf
+ * clamps below are guards for panels that are not televisions, and on a
+ * television it is this figure that decides how big the artwork is. Capping the
+ * card lower than the room it could take is what puts the posters back at a size
+ * worth reading from a sofa - and it costs the card nothing now that the picture
+ * on it keeps its own shape rather than being stretched to the card's height.
+ *
+ * It costs the synopsis a line, which is the right thing to spend. The whole of
+ * it is one press away on the title page, and a hero strip is for deciding
+ * whether to look.
  */
-private const val MAX_HERO = 260
+private const val MAX_HERO = 224
 private const val MIN_SHELF = 118
-private const val MAX_SHELF = 250
+/**
+ * High enough not to be the constraint on a television.
+ *
+ * The clamp exists to stop a shelf swallowing a panel that is the wrong shape,
+ * not to set the size of a card - and while it sat below what the arithmetic
+ * asked for it was quietly doing the second job, so lowering the featured card
+ * bought the shelves nothing.
+ */
+private const val MAX_SHELF = 262
 private const val MIN_POSTER = 68
-private const val MAX_POSTER = 190
+private const val MAX_POSTER = 205
 private const val MIN_CONTENT_HEIGHT = 240
 private const val MIN_ROW_WIDTH = 320
 
@@ -1343,11 +1357,14 @@ private const val MIN_STILL = 62
 /**
  * How tall a continue-watching still stands beside a poster.
  *
- * Under one, and not by much less: a still at the posters' own height is nearly
- * three times their width, which makes the resume shelf the loudest thing on the
- * screen whatever is on it. Shorter than this and it stops reading as artwork.
+ * Just under one, so it is a guard rather than a size. A still is two and a half
+ * times the width of a poster of the same height, so one allowed to stand taller
+ * than the posters would make the shelf with the fewest titles on it the loudest
+ * thing on the screen - but held well under, it was deciding the size itself, and
+ * four resume cards on a shelf that could hold six is a shelf of thumbnails.
+ * [RESUME_CARDS_ON_SCREEN] is the number that should decide, and now does.
  */
-private const val STILL_OF_POSTER = 0.7f
+private const val STILL_OF_POSTER = 0.95f
 
 private const val SCREEN_INSET = 22
 private const val LEGEND_HEIGHT = 24

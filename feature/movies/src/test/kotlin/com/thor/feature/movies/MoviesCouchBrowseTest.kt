@@ -124,8 +124,27 @@ class MoviesCouchBrowseTest {
     fun `a very tall panel stops either region swallowing the other`() {
         val hero = couchHeroHeight(2_000.dp)
 
-        assertThat(hero.value).isAtMost(260f)
-        assertThat(couchShelfHeight(2_000.dp, hero).value).isAtMost(250f)
+        assertThat(hero.value).isAtMost(224f)
+        assertThat(couchShelfHeight(2_000.dp, hero).value).isAtMost(262f)
+    }
+
+    /**
+     * The featured card is the only ceiling that should bind on a television.
+     *
+     * The shelf clamp is a guard for panels that are the wrong shape, and while
+     * it sat below what the arithmetic asked for, lowering the featured card
+     * bought the shelves nothing at all - the height came off one clamp and
+     * stopped at the next. This is the panel the launcher is actually looked at
+     * on, and on it the division is what decides.
+     */
+    @Test
+    fun `a television shelf is decided by the featured card and not by a clamp`() {
+        val available = 730.dp
+        val hero = couchHeroHeight(available)
+
+        val shelf = couchShelfHeight(available, hero)
+
+        assertThat(shelf.value).isWithin(1f).of((available - hero).value / 2f)
     }
 
     /**
@@ -186,13 +205,31 @@ class MoviesCouchBrowseTest {
     }
 
     /**
-     * A still stands shorter than the posters beside it, by a margin.
+     * Four fit, and a fifth does not.
+     *
+     * The whole of what should decide how big a resume card is on a television is
+     * that four of them fill the shelf. While the ceiling below sat well under
+     * that, it was quietly deciding instead - and a shelf with room for six cards
+     * drawing four small ones is a row of thumbnails with a gap after it.
+     */
+    @Test
+    fun `a television shelf is filled by exactly four resume cards`() {
+        val rowWidth = 1_243.dp
+
+        val still = couchStillHeight(posterHeight = 184.dp, rowWidth = rowWidth)
+        val width = couchCardWidth(still, landscape = true)
+
+        assertThat(width.value * 4).isAtMost(rowWidth.value)
+        assertThat(width.value * 5).isGreaterThan(rowWidth.value)
+    }
+
+    /**
+     * A still stands shorter than the posters beside it.
      *
      * It is two and a half times as wide as a poster of the same height, so one
      * drawn to the posters' own height makes the shelf with the fewest titles on
-     * it the loudest thing on the screen - and on a television it is this ceiling
-     * that binds, not the four-across width, so it is the number that decides how
-     * big a resume card looks.
+     * it the loudest thing on the screen. A guard against a shelf far wider than
+     * a television's, rather than the number that decides the size.
      */
     @Test
     fun `a very wide shelf stops the resume cards outgrowing the posters`() {
