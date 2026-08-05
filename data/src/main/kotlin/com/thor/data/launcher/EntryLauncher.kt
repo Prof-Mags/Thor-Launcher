@@ -638,23 +638,67 @@ class EntryLauncher @Inject constructor(
         if (cached != null && SystemClock.elapsedRealtime() - cachedAt < INSTALLED_CACHE_MS) {
             return cached
         }
-        val resolved = runCatching {
-            packageManager.getInstalledPackages(0).mapNotNull { info ->
-                EmulatorRegistry.resolve(info.packageName)?.let { spec ->
-                    InstalledEmulator(
-                        packageName = info.packageName,
-                        displayName = EmulatorRegistry.displayNameFor(info.packageName),
-                        spec = spec,
-                    )
-                }
+
+        /*
+         * Asked one id at a time, which cannot fail as a set.
+         *
+         * This is the whole list on most devices and it is checked this way on
+         * purpose: `getPackageInfo` answers about one package, so a failure is
+         * one emulator missing rather than all of them. Enumerating is the part
+         * that can go wrong wholesale — see [enumerateEmulators] — and it is
+         * additive below precisely so that when it does, this is still the
+         * answer instead of an empty screen.
+         */
+        val known = EmulatorRegistry.KNOWN
+            .filter { isInstalled(it.packageName) }
+            .map { spec ->
+                InstalledEmulator(
+                    packageName = spec.packageName,
+                    displayName = spec.displayName,
+                    spec = spec,
+                )
             }
-        }.getOrElse {
-            ThorLog.w("Launcher", "Could not list installed packages", it)
-            emptyList()
-        }
+
+        // Only the builds the table cannot name: nightlies, forks, store
+        // editions. Anything already found above is dropped rather than listed a
+        // second time under the same id.
+        val exact = known.mapTo(mutableSetOf(), InstalledEmulator::packageName)
+        val variants = enumerateEmulators().filterNot { it.packageName in exact }
+
+        val resolved = known + variants
         installedEmulatorCache = resolved
         cachedAt = SystemClock.elapsedRealtime()
         return resolved
+    }
+
+    /**
+     * Emulators found by listing what is installed, or nothing.
+     *
+     * The only way to find a build whose id this launcher has never seen, and
+     * the only call here that can fail for reasons having nothing to do with
+     * emulators: `getInstalledPackages` returns every package in one parcel, and
+     * on a device with enough of them that parcel exceeds the binder transaction
+     * limit and the call throws. Swallowing that and returning nothing was how a
+     * previous version of this reported every emulator on the device as missing
+     * — the failure is wholesale, so the damage was too.
+     *
+     * It stays because it is genuinely the only way to find a fork, but nothing
+     * depends on it: [installedEmulators] adds this to a list it has already
+     * built, so an empty answer costs the variants and nothing else.
+     */
+    private fun enumerateEmulators(): List<InstalledEmulator> = runCatching {
+        packageManager.getInstalledPackages(0).mapNotNull { info ->
+            EmulatorRegistry.resolve(info.packageName)?.let { spec ->
+                InstalledEmulator(
+                    packageName = info.packageName,
+                    displayName = EmulatorRegistry.displayNameFor(info.packageName),
+                    spec = spec,
+                )
+            }
+        }
+    }.getOrElse {
+        ThorLog.w("Launcher", "Could not list installed packages; known ids only", it)
+        emptyList()
     }
 
     /**

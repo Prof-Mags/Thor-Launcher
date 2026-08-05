@@ -8,6 +8,7 @@ import com.thor.core.input.MouseController
 import com.thor.core.input.RawKeyPress
 import com.thor.core.model.AccessibilitySettings
 import com.thor.core.model.ControllerCommand
+import com.thor.core.model.AppEntry
 import com.thor.core.model.AudioSettings
 import com.thor.core.model.ControlSettings
 import com.thor.core.model.DeveloperSettings
@@ -73,6 +74,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
@@ -612,7 +615,22 @@ class SettingsViewModel @Inject constructor(
      * them are listed, because "which emulator does this system need" is a
      * question the settings screen is uniquely able to answer.
      */
-    val platformOptions: StateFlow<List<PlatformEmulatorOption>> = libraryRepository.addedPlatforms
+    val platformOptions: StateFlow<List<PlatformEmulatorOption>> = combine(
+        libraryRepository.addedPlatforms,
+        /*
+         * Re-resolved whenever the installed applications change.
+         *
+         * Without this the answer is computed once, when the added platforms
+         * first arrive, and then held for as long as that list does not change —
+         * so installing an emulator and coming straight to this screen showed it
+         * as still missing, and no amount of leaving and returning helped. The
+         * package names rather than the count, because installing one app and
+         * removing another is a change this has to see.
+         */
+        libraryRepository.apps
+            .map { apps -> apps.mapTo(HashSet(), AppEntry::packageName) }
+            .distinctUntilChanged(),
+    ) { platforms, _ -> platforms }
         .map { platforms ->
             platforms.map { platform ->
                 /*
