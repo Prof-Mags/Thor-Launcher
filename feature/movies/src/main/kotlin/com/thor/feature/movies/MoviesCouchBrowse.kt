@@ -31,7 +31,6 @@ import androidx.compose.material.icons.rounded.LocalMovies
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.Tv
@@ -115,6 +114,13 @@ internal fun MoviesCouchBrowse(
     val listState = rememberLazyListState()
     val stats = remember(rows) { couchMediaStats(rows) }
 
+    CouchSearchBinding(
+        query = query,
+        onQueryChanged = onQueryChanged,
+        requestFocus = searchRequested,
+        onFocused = onSearchFocused,
+    )
+
     LaunchedEffect(rowIndex, rows.size) {
         if (rows.isNotEmpty()) {
             /*
@@ -139,6 +145,9 @@ internal fun MoviesCouchBrowse(
         val heroHeight = couchHeroHeight(available)
         val shelfHeight = couchShelfHeight(available)
         val posterHeight = couchPosterHeight(shelfHeight)
+        // What a shelf actually has to lay cards across, once the rail has taken
+        // its share. The resume stills are sized back from this.
+        val rowWidth = (maxWidth - RAIL_WIDTH.dp).coerceAtLeast(MIN_ROW_WIDTH.dp)
 
         Row(modifier = Modifier.fillMaxSize()) {
             CouchMediaRail(
@@ -146,10 +155,6 @@ internal fun MoviesCouchBrowse(
                 stats = stats,
                 rows = rows,
                 selectedRow = rowIndex,
-                query = query,
-                onQueryChanged = onQueryChanged,
-                searchRequested = searchRequested,
-                onSearchFocused = onSearchFocused,
                 onTypeSelected = onTypeSelected,
                 // The head of the shelf, not wherever its cursor was left. A
                 // category picked from a list is a request to start reading it.
@@ -200,13 +205,30 @@ internal fun MoviesCouchBrowse(
                     }
 
                     itemsIndexed(rows, key = { _, row -> row.id }) { index, row ->
+                        /*
+                         * A shelf is as tall as the cards on it.
+                         *
+                         * Every shelf used to be given the poster height whatever
+                         * it held, so the shorter continue-watching stills sat
+                         * centred in a box sized for something else and left the
+                         * slack under them - which reads as one enormous gap
+                         * between that shelf and the next rather than as a card
+                         * that does not fill its row.
+                         */
+                        val artHeight = if (row.landscape) {
+                            couchStillHeight(posterHeight, rowWidth)
+                        } else {
+                            posterHeight
+                        }
                         CouchShelf(
                             row = row,
                             focusedColumn = state.cursor.column.takeIf { index == rowIndex },
-                            posterHeight = posterHeight,
+                            artHeight = artHeight,
                             onItemFocused = { column -> onItemFocused(index, column) },
                             onItemSelected = { column -> onItemSelected(index, column) },
-                            modifier = Modifier.fillMaxWidth().height(shelfHeight),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(couchShelfHeightFor(artHeight)),
                         )
                     }
                 }
@@ -230,18 +252,19 @@ private fun browseMessage(state: MoviesUiState): String? = when {
 // ---- The rail ----------------------------------------------------------------
 
 /**
- * Films or shows, search, and what is behind them.
+ * Films or shows, the shelves, and what is behind them.
  *
  * The section's own navigation, down the side where a television expects to find
  * it. It deliberately does not repeat the shell's tabs above: Home, Stream and
  * Settings are one bar away, and a second copy of them here would be two places
  * to be in the same place.
  *
- * Search is a row here rather than a box in a strip along the top, because the
- * strip cost more than it was worth. This panel is about half the height in dp
- * that a television's pixel dimensions suggest - couch mode composes through a
- * scaled density - so forty-odd dp of chrome is the difference between two lines
- * of synopsis on the featured card and none.
+ * No search box. Y raises the keyboard from anywhere in the catalogue and the
+ * legend along the foot says so, which left the box standing in the rail as a
+ * control for something that was already one press away - and this panel is about
+ * half the height in dp that a television's pixel dimensions suggest, because
+ * couch mode composes through a scaled density, so a row of chrome is a row of
+ * categories not listed.
  */
 @Composable
 private fun CouchMediaRail(
@@ -249,10 +272,6 @@ private fun CouchMediaRail(
     stats: CouchMediaStats,
     rows: List<MediaRow>,
     selectedRow: Int,
-    query: String,
-    onQueryChanged: (String) -> Unit,
-    searchRequested: Boolean,
-    onSearchFocused: () -> Unit,
     onTypeSelected: (MediaType) -> Unit,
     onCategorySelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -298,14 +317,6 @@ private fun CouchMediaRail(
             hint = "RB",
             selected = type == MediaType.SERIES,
             onClick = { onTypeSelected(MediaType.SERIES) },
-        )
-
-        CouchSearchChip(
-            query = query,
-            onQueryChanged = onQueryChanged,
-            requestFocus = searchRequested,
-            onFocused = onSearchFocused,
-            modifier = Modifier.fillMaxWidth(),
         )
 
         if (rows.isNotEmpty()) {
@@ -789,15 +800,14 @@ internal fun CouchMediaButton(
 private fun CouchShelf(
     row: MediaRow,
     focusedColumn: Int?,
-    posterHeight: Dp,
+    artHeight: Dp,
     onItemFocused: (column: Int) -> Unit,
     onItemSelected: (column: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
     val listState = rememberLazyListState()
-    val artHeight = if (row.landscape) couchStillHeight(posterHeight) else posterHeight
-    val cardWidth = couchCardWidth(posterHeight, row.landscape)
+    val cardWidth = couchCardWidth(artHeight, row.landscape)
 
     /*
      * Nudged, not snapped.
@@ -1101,21 +1111,43 @@ internal fun couchShelfHeight(available: Dp): Dp =
     (available * SHELF_FRACTION).coerceIn(MIN_SHELF.dp, MAX_SHELF.dp)
 
 /** The artwork height left inside a shelf once its header and caption are spent. */
-internal fun couchPosterHeight(shelfHeight: Dp): Dp {
-    val spent = SHELF_HEADER_HEIGHT + SHELF_HEADER_GAP +
-        CARD_LABEL_HEIGHT + CARD_LABEL_GAP + CARD_GROWTH * 2
-    return (shelfHeight - spent.dp).coerceIn(MIN_POSTER.dp, MAX_POSTER.dp)
-}
+internal fun couchPosterHeight(shelfHeight: Dp): Dp =
+    (shelfHeight - SHELF_FURNITURE.dp).coerceIn(MIN_POSTER.dp, MAX_POSTER.dp)
 
 /**
- * How tall a continue-watching still is, given the posters beside it.
+ * The shelf a card of [artHeight] needs, header and caption included.
  *
- * Shorter than they are, on purpose. A still is nearly three times the width of a
- * poster at the same height, so matching heights made the resume shelf twice the
- * area of every other one - three cards filling a row that holds seven elsewhere,
- * for the shelf with the fewest things on it.
+ * The inverse of [couchPosterHeight], and it exists because not every shelf holds
+ * the same shape of card. Giving them all one height left the shorter
+ * continue-watching stills centred in a box sized for a poster, with the slack
+ * underneath reading as a gap between that shelf and the next.
  */
-internal fun couchStillHeight(posterHeight: Dp): Dp = posterHeight * STILL_HEIGHT_SCALE
+internal fun couchShelfHeightFor(artHeight: Dp): Dp = artHeight + SHELF_FURNITURE.dp
+
+/**
+ * How tall a continue-watching still is, given the row it has to fit across.
+ *
+ * Sized from the width rather than from the posters beside it, because that is
+ * the constraint anybody actually notices. A still is two and a half times the
+ * width of a poster at the same height, so a resume shelf that matched heights
+ * held three cards on a row that holds seven elsewhere - and how many it held
+ * changed with the interface scale, since that is what decides how many dp wide
+ * the screen is. Working back from the width pins it at [target] however wide the
+ * panel turns out to be.
+ *
+ * Never taller than the posters: on a wide screen the four would otherwise grow
+ * until the resume shelf was the tallest thing in the catalogue.
+ */
+internal fun couchStillHeight(
+    posterHeight: Dp,
+    rowWidth: Dp,
+    target: Int = RESUME_CARDS_ON_SCREEN,
+): Dp {
+    if (target <= 0) return posterHeight
+    val gaps = CARD_GAP.dp * (target - 1)
+    val usable = (rowWidth - SCREEN_INSET.dp * 2 - gaps).coerceAtLeast(0.dp)
+    return (usable / target / STILL_ASPECT).coerceIn(MIN_STILL.dp, posterHeight)
+}
 
 /**
  * The card's width, taken from its height rather than set on its own.
@@ -1126,8 +1158,8 @@ internal fun couchStillHeight(posterHeight: Dp): Dp = posterHeight * STILL_HEIGH
  * from the artwork also keeps every card the shape of the picture on it, so the
  * continue-watching stills stay stills instead of being cropped into portraits.
  */
-internal fun couchCardWidth(posterHeight: Dp, landscape: Boolean): Dp =
-    if (landscape) couchStillHeight(posterHeight) * STILL_ASPECT else posterHeight * POSTER_ASPECT
+internal fun couchCardWidth(artHeight: Dp, landscape: Boolean): Dp =
+    artHeight * if (landscape) STILL_ASPECT else POSTER_ASPECT
 
 /**
  * How much of the story fits inside the featured card, in lines.
@@ -1273,10 +1305,13 @@ private const val MAX_SHELF = 300
 private const val MIN_POSTER = 92
 private const val MAX_POSTER = 230
 private const val MIN_CONTENT_HEIGHT = 240
+private const val MIN_ROW_WIDTH = 320
 
 private const val POSTER_ASPECT = 2f / 3f
 private const val STILL_ASPECT = 16f / 9f
-private const val STILL_HEIGHT_SCALE = 0.78f
+/** How many resume cards should be reachable without scrolling the shelf. */
+private const val RESUME_CARDS_ON_SCREEN = 4
+private const val MIN_STILL = 62
 
 private const val SCREEN_INSET = 22
 private const val LEGEND_HEIGHT = 24
@@ -1314,6 +1349,9 @@ private const val CARD_LABEL_HEIGHT = 30
 private const val CARD_LABEL_GAP = 5
 /** Room around a card for the focused one to grow into without being clipped. */
 private const val CARD_GROWTH = 6
+/** Everything in a shelf that is not the artwork: header, caption and their gaps. */
+private const val SHELF_FURNITURE = SHELF_HEADER_HEIGHT + SHELF_HEADER_GAP +
+    CARD_LABEL_HEIGHT + CARD_LABEL_GAP + CARD_GROWTH * 2
 private const val CARD_FOCUS_SCALE = 1.06f
 private const val RESTING_ALPHA = 0.86f
 private const val FOCUS_MILLIS = 160
@@ -1346,100 +1384,49 @@ private const val HINT_ALPHA = 0.66f
 private const val GENRES_SHOWN = 3
 
 private const val COUCH_SEARCH_FIELD_ID = "movies-couch-search"
-private const val SEARCH_PADDING_H = 12
-private const val SEARCH_PADDING_V = 10
-private const val SEARCH_ICON_GAP = 10
 
 // ---- Search ------------------------------------------------------------------
 
 /**
- * The way in to the keyboard, and the record of what was asked.
+ * What connects Y to the keyboard. Draws nothing.
  *
- * Not a text field. The bottom panel's search box is one because it is composed
- * beside the keyboard that fills it in, where showing a caret in the box being
- * typed into is the whole point; here the keyboard is a full-screen overlay and
- * the box underneath it would be a wide empty rectangle for as long as nobody had
- * searched for anything. A chip states its shortcut when idle and becomes the
- * query when there is one, so the bar says what the shelves are answering.
+ * There is no search box on this screen and there does not need to be one: the
+ * keyboard is a full-screen overlay, the shortcut that raises it is in the legend
+ * along the foot, and the shelf that comes back is titled with what was asked. A
+ * box would have been a wide empty rectangle for as long as nobody had searched
+ * for anything, standing where a category could be listed.
  *
- * Focus is claimed directly rather than through a text field. The field is a
- * display of a value the keyboard is already editing through the sink below, and
- * this screen has somewhere better to show that value than a box of its own.
+ * But the connection still has to exist somewhere. Text focus in this launcher is
+ * claimed by a field, and the keyboard opens because something claimed it - so
+ * with the field gone this holds the claim instead. Without it Y sets a flag that
+ * nothing reads, and search stops working with no error anywhere.
  */
 @Composable
-private fun CouchSearchChip(
+private fun CouchSearchBinding(
     query: String,
     onQueryChanged: (String) -> Unit,
     requestFocus: Boolean,
     onFocused: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    val colors = ThorTheme.colors
     val textInput = LocalThorTextInput.current
     // Kept current so the sink registered on focus always writes to the latest
     // state holder, however many times this screen has recomposed since.
     val currentOnQueryChanged by rememberUpdatedState(onQueryChanged)
-    val hover = rememberPointerHover()
-    val typing = textInput.focusedId == COUCH_SEARCH_FIELD_ID
-    val lit = typing || hover.isHovered
-    val searching = query.isNotBlank()
-    val shape = ThorTheme.shapes.pill
+    val currentQuery by rememberUpdatedState(query)
 
-    val claim: () -> Unit = {
+    LaunchedEffect(requestFocus) {
+        if (!requestFocus) return@LaunchedEffect
         textInput.focus(
             id = COUCH_SEARCH_FIELD_ID,
             label = "Search",
-            initial = query,
+            initial = currentQuery,
         ) { edited -> currentOnQueryChanged(edited) }
-    }
-
-    LaunchedEffect(requestFocus) {
-        if (requestFocus) {
-            claim()
-            onFocused()
-        }
+        onFocused()
     }
 
     // Leaving the catalogue must not leave the keyboard pointed at it. A field
-    // does this for itself on disposal; a chip that stands in for one has to.
+    // does this for itself on disposal; whatever stands in for one has to.
     DisposableEffect(Unit) {
         onDispose { textInput.release(COUCH_SEARCH_FIELD_ID) }
-    }
-
-    Row(
-        modifier = modifier
-            .pointerHover(hover)
-            .thorCursor(focused = lit, shape = shape)
-            .clip(shape)
-            .background(if (lit) colors.surfaceHighest else colors.surfaceElevated)
-            .clickable(onClick = claim)
-            .padding(horizontal = SEARCH_PADDING_H.dp, vertical = SEARCH_PADDING_V.dp),
-        horizontalArrangement = Arrangement.spacedBy(SEARCH_ICON_GAP.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.Search,
-            contentDescription = null,
-            tint = if (searching || lit) colors.cursor else colors.onSurfaceVariant,
-            modifier = Modifier.size(RAIL_ICON.dp),
-        )
-        Text(
-            text = if (searching) query else "Search",
-            style = MaterialTheme.typography.labelLarge,
-            color = if (searching) colors.onSurface else colors.onSurfaceVariant,
-            fontWeight = if (searching) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        Text(
-            // B is what leaves a search, and it is the only way out that does not
-            // need the keyboard raised again to empty the box by hand.
-            text = if (searching) "B  CLEAR" else "Y",
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.onSurfaceVariant.copy(alpha = HINT_ALPHA),
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-        )
     }
 }

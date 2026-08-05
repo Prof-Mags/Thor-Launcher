@@ -121,7 +121,19 @@ data class MoviesUiState(
          * the instance is already replaced whenever any of this changes.
          */
         searchResults?.let { results ->
-            listOf(MediaRow(id = "results", title = "Results", items = results))
+            /*
+             * The shelf is titled with what was asked for.
+             *
+             * The couch catalogue has no search box - the keyboard is a
+             * full-screen overlay raised by a button, and a box standing empty
+             * underneath it earned no space on a television - so this heading is
+             * the only place the query is written down while the results are
+             * being read.
+             */
+            val heading = query.takeIf(String::isNotBlank)
+                ?.let { asked -> "Results for \"$asked\"" }
+                ?: "Results"
+            listOf(MediaRow(id = "results", title = heading, items = results))
         } ?: rows
     }
 

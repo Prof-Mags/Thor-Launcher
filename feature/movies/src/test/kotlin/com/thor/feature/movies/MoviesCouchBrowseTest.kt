@@ -142,23 +142,46 @@ class MoviesCouchBrowseTest {
     }
 
     /**
-     * A still is shorter than the posters beside it, so it is narrower too.
+     * Four resume cards, whatever the panel turns out to be.
      *
-     * At matching heights a 16:9 card is two and a half times the width of a 2:3
-     * one, which made the resume shelf by far the largest thing on the screen -
-     * three cards filling a row that holds seven elsewhere, for the shelf with
-     * the fewest things on it. Taking the height down takes the width with it.
+     * How many fitted used to depend on the interface scale, because that is what
+     * decides how many dp wide the screen is - the same shelf held four at one
+     * setting and under three at another. Working the height back from the width
+     * pins it.
      */
     @Test
-    fun `a resume card is smaller than one matching the posters beside it`() {
-        val atMatchingHeight = 150f * 16f / 9f
+    fun `four resume cards fit a shelf without scrolling`() {
+        val rowWidth = 700.dp
 
-        val still = couchCardWidth(150.dp, landscape = true)
+        val height = couchStillHeight(posterHeight = 130.dp, rowWidth = rowWidth)
+        val width = couchCardWidth(height, landscape = true)
 
-        assertThat(couchStillHeight(150.dp).value).isLessThan(150f)
-        assertThat(still.value).isLessThan(atMatchingHeight)
+        // The insets and the gaps come out of the function's own budget, so four
+        // fitting inside the raw width is the loose form of the same claim.
+        assertThat(width.value * 4).isAtMost(rowWidth.value)
+    }
+
+    @Test
+    fun `a narrower shelf gets smaller resume cards rather than fewer`() {
+        val narrow = couchStillHeight(posterHeight = 130.dp, rowWidth = 420.dp)
+        val wide = couchStillHeight(posterHeight = 130.dp, rowWidth = 900.dp)
+
+        assertThat(narrow.value).isLessThan(wide.value)
         // Shrunk, not shrunk away: it is still the shelf you resume from.
-        assertThat(still.value).isGreaterThan(atMatchingHeight * 0.6f)
+        assertThat(narrow.value).isAtLeast(62f)
+    }
+
+    /**
+     * A still never towers over the posters beside it.
+     *
+     * On a wide screen the four would otherwise grow until the shelf with the
+     * fewest things on it was the tallest thing in the catalogue.
+     */
+    @Test
+    fun `a very wide shelf stops the resume cards outgrowing the posters`() {
+        val poster = 130.dp
+
+        assertThat(couchStillHeight(poster, rowWidth = 4_000.dp).value).isAtMost(poster.value)
     }
 
     /**
