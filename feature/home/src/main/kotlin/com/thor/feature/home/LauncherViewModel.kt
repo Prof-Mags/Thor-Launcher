@@ -1995,19 +1995,32 @@ class LauncherViewModel @Inject constructor(
      * arrives. See [controlSettings] for what it used to do instead.
      */
     fun move(direction: NavDirection) {
-        val spec = uiState.value.spec
+        val state = uiState.value
+        val spec = state.spec
         val controls = controlSettings.value
         val position = cursor.value
         val page = currentPage.value
 
-        var row = position.row
-        var column = position.column
+        /*
+         * Stepped from the edge of whatever the cursor is standing on, not from
+         * the cell it is in.
+         *
+         * For everything but a widget those are the same cell. A widget covers
+         * several, and stepping from the cell meant the cursor walked *through*
+         * it — two presses to cross a 2-wide clock, resting in the middle of it
+         * on the way, which read as the grid still having its own cells behind
+         * the widget. Leaving from the far edge makes a widget one stop.
+         */
+        val box = state.cursorBox(page, position.row, position.column)
+
+        var row = box.row
+        var column = box.column
 
         when (direction) {
-            NavDirection.UP -> row--
-            NavDirection.DOWN -> row++
-            NavDirection.LEFT -> column--
-            NavDirection.RIGHT -> column++
+            NavDirection.UP -> row = box.row - 1
+            NavDirection.DOWN -> row = box.lastRow + 1
+            NavDirection.LEFT -> column = box.column - 1
+            NavDirection.RIGHT -> column = box.lastColumn + 1
         }
 
         // Vertical wrap is opt-in; vertical edges never change page,
@@ -2040,7 +2053,9 @@ class LauncherViewModel @Inject constructor(
             }
         }
 
-        cursor.value = CursorPosition(row, column)
+        // Landing on a widget parks the cursor on its anchor, so the highlight
+        // is the whole widget rather than one cell somewhere inside it.
+        cursor.value = state.snapCursor(page, row, column)
 
         /*
          * A held icon is deliberately *not* committed on every cursor step.
@@ -2054,7 +2069,10 @@ class LauncherViewModel @Inject constructor(
 
     /** Places the cursor directly, used by touch input. */
     fun setCursor(row: Int, column: Int) {
-        cursor.value = CursorPosition(row, column)
+        // Snapped for the same reason a move is: a tap anywhere on a widget is a
+        // tap on the widget, not on the cell under that part of it.
+        val state = uiState.value
+        cursor.value = state.snapCursor(currentPage.value, row, column)
     }
 
     fun setPage(pageIndex: Int) {

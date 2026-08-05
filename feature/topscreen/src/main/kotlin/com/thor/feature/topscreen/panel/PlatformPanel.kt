@@ -192,15 +192,33 @@ private fun PlatformProfileCard(
             // Divider and heading inside the null check: a platform with no
             // description was otherwise leaving a rule floating directly above
             // the highlights, separating nothing from nothing.
-            platform.description.takeIf(String::isNotBlank)?.let { description ->
+            val description = platform.description.takeIf(String::isNotBlank)
+            if (description != null) {
                 PlatformDivider()
                 PlatformSectionTitle("DESCRIPTION")
+                /*
+                 * The one part of this card that gives up its space.
+                 *
+                 * A Column measures its unweighted children first and its
+                 * weighted ones with what is left, so making the description the
+                 * weighted one inverts the priority that caused the bug: it used
+                 * to take four lines whatever the card could afford, and the
+                 * sections below it — the ones the user actually came to read —
+                 * were measured against nothing and clipped away. Everything
+                 * below is now guaranteed its height and the description
+                 * ellipsizes into whatever remains.
+                 *
+                 * It also absorbs the slack, which is why the spacer that used to
+                 * push the game rows to the bottom is gone: with the description
+                 * filling its slot, the sections under it are already there.
+                 */
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.onSurfaceVariant,
                     maxLines = PLATFORM_DESCRIPTION_LINES,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
             }
 
@@ -208,7 +226,10 @@ private fun PlatformProfileCard(
             PlatformHighlights(profile.highlights, accent)
 
             if (featuredGames.isNotEmpty()) {
-                Spacer(modifier = Modifier.weight(1f))
+                // Only when there is no description to hold the slack; two
+                // weighted children would split it and shrink the description for
+                // no reason.
+                if (description == null) Spacer(modifier = Modifier.weight(1f))
                 PlatformSectionTitle(
                     if (showingActivity) "CONTINUE PLAYING" else "LIBRARY HIGHLIGHTS",
                 )

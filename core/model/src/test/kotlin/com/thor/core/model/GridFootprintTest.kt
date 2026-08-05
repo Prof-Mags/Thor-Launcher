@@ -127,6 +127,44 @@ class GridFootprintTest {
     }
 
     @Test
+    fun `every cell of a widget reports the widget's whole box`() {
+        val placements = listOf(GridPlacement("widget:7", 0, row = 0, column = 1))
+        val spans = mapOf("widget:7" to CellSpan(2, 2))
+
+        // The anchor, and the far corner of the same widget, agree.
+        val fromAnchor = GridFootprint.boxAt(0, 1, placements, spans, 0, spec)
+        val fromCorner = GridFootprint.boxAt(1, 2, placements, spans, 0, spec)
+
+        assertThat(fromAnchor).isEqualTo(fromCorner)
+        assertThat(fromAnchor.row).isEqualTo(0)
+        assertThat(fromAnchor.column).isEqualTo(1)
+        assertThat(fromAnchor.lastRow).isEqualTo(1)
+        assertThat(fromAnchor.lastColumn).isEqualTo(2)
+    }
+
+    @Test
+    fun `a cell with nothing on it is its own box`() {
+        val box = GridFootprint.boxAt(2, 3, emptyList(), emptyMap(), 0, spec)
+        assertThat(box).isEqualTo(CellBox(2, 3, CellSpan.SINGLE))
+        assertThat(box.lastRow).isEqualTo(2)
+        assertThat(box.lastColumn).isEqualTo(3)
+    }
+
+    @Test
+    fun `stepping off a widget's edge clears it in one move`() {
+        // The rule the cursor uses: leave from lastColumn + 1, not column + 1.
+        val placements = listOf(GridPlacement("widget:7", 0, row = 0, column = 0))
+        val spans = mapOf("widget:7" to CellSpan(columns = 3, rows = 1))
+
+        val box = GridFootprint.boxAt(0, 0, placements, spans, 0, spec)
+
+        assertThat(box.lastColumn + 1).isEqualTo(3)
+        // And nothing inside it is a place the cursor could come to rest.
+        (0..2).forEach { column -> assertThat(box.contains(0, column)).isTrue() }
+        assertThat(box.contains(0, 3)).isFalse()
+    }
+
+    @Test
     fun `a span is shrunk to what the matrix can hold`() {
         val tiny = GridSpec(columns = 3, rows = 2)
         assertThat(CellSpan(columns = 4, rows = 4).coercedTo(tiny))

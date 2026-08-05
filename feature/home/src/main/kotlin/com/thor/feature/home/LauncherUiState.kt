@@ -1,6 +1,7 @@
 package com.thor.feature.home
 
 import androidx.compose.runtime.Immutable
+import com.thor.core.model.CellBox
 import com.thor.core.model.CellSpan
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.FolderStyle
@@ -104,6 +105,26 @@ data class LauncherUiState(
         entriesById.values
             .filterIsInstance<WidgetEntry>()
             .associate { widget -> widget.id to CellSpan(widget.spanColumns, widget.spanRows) }
+    }
+
+    /**
+     * The block of cells the cursor is standing on at ([row], [column]).
+     *
+     * One cell for everything but a widget. A folder is showing a packed list
+     * with no placements of its own, so nothing there spans anything and the
+     * home grid's placements would be the wrong question to ask.
+     */
+    fun cursorBox(pageIndex: Int, row: Int, column: Int): CellBox {
+        if (isFolderOpen || widgetSpans.isEmpty()) {
+            return CellBox(row, column, CellSpan.SINGLE)
+        }
+        return GridFootprint.boxAt(row, column, placements, widgetSpans, pageIndex, spec)
+    }
+
+    /** A cursor position moved onto the anchor of whatever covers it. */
+    fun snapCursor(pageIndex: Int, row: Int, column: Int): CursorPosition {
+        val box = cursorBox(pageIndex, row, column)
+        return CursorPosition(box.row, box.column)
     }
 
     /**

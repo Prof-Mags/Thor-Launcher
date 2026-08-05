@@ -38,6 +38,21 @@ data class CellSpan(val columns: Int = 1, val rows: Int = 1) {
 data class GridSlot(val pageIndex: Int, val row: Int, val column: Int)
 
 /**
+ * A rectangle of cells, anchored at its top-left.
+ *
+ * What the cursor actually moves between, once widgets exist: everything else on
+ * the grid happens to be a 1×1 box, and treating them all the same way is what
+ * keeps navigation one rule rather than a special case per entry type.
+ */
+data class CellBox(val row: Int, val column: Int, val span: CellSpan) {
+    val lastRow: Int get() = row + span.rows - 1
+    val lastColumn: Int get() = column + span.columns - 1
+
+    fun contains(row: Int, column: Int): Boolean =
+        row in this.row..lastRow && column in this.column..lastColumn
+}
+
+/**
  * Which cells a placement covers.
  *
  * A placement stores one cell — its top-left — and that was the whole truth
@@ -130,6 +145,34 @@ object GridFootprint {
             val owner = occupied[cell]
             owner != null && owner != ignoring
         }
+    }
+
+    /**
+     * The block of cells a cursor at ([row], [column]) is standing on.
+     *
+     * A widget's whole footprint, or the single cell itself when nothing spans
+     * it. This is what lets the cursor treat a widget as one thing: stepping
+     * from the *edge* of this box rather than from the cell means a 2×2 clock is
+     * crossed in one press instead of two, and the cursor never comes to rest on
+     * a cell the widget is covering — which looked like the grid still having
+     * cells behind it.
+     */
+    fun boxAt(
+        row: Int,
+        column: Int,
+        placements: Collection<GridPlacement>,
+        spans: Map<String, CellSpan>,
+        pageIndex: Int,
+        spec: GridSpec,
+    ): CellBox {
+        val single = CellBox(row, column, CellSpan.SINGLE)
+        val cell = row * spec.columns + column
+        val owner = occupants(placements, spans, pageIndex, spec)[cell] ?: return single
+        val span = spans[owner] ?: return single
+        val anchor = placements.firstOrNull {
+            it.pageIndex == pageIndex && it.entryId == owner
+        } ?: return single
+        return CellBox(anchor.row, anchor.column, span.coercedTo(spec))
     }
 
     /**
