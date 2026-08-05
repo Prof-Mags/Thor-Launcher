@@ -44,6 +44,7 @@ import com.thor.data.launcher.SystemPanel
 import com.thor.data.library.GridLayoutRepository
 import com.thor.data.library.LibraryRepository
 import com.thor.data.library.MoveResult
+import com.thor.data.achievements.AchievementRepository
 import com.thor.data.widget.WidgetOption
 import com.thor.data.widget.WidgetRepository
 import com.thor.data.sync.LibrarySyncManager
@@ -80,6 +81,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -117,6 +119,7 @@ class LauncherViewModel @Inject constructor(
     private val screenRecorder: ScreenRecorder,
     private val clipboard: ThorClipboard,
     private val widgetRepository: WidgetRepository,
+    private val achievementRepository: AchievementRepository,
 ) : ViewModel() {
 
     private val cursor = MutableStateFlow(CursorPosition(0, 0))
@@ -1043,6 +1046,42 @@ class LauncherViewModel @Inject constructor(
             .launchIn(viewModelScope)
 
         observeWithdrawnSections()
+        observeAchievementRefreshes()
+    }
+
+    /**
+     * Ids whose achievements have been fetched this run.
+     *
+     * A set rather than a timestamp per game: the point is one request per game
+     * per session, and progress only changes when the game is played — which
+     * ends this process on a handheld anyway, because the launcher does not
+     * survive an emulator taking the foreground.
+     */
+    private val refreshedAchievements = mutableSetOf<String>()
+
+    /**
+     * Fetches a game's achievements when the cursor settles on it.
+     *
+     * Debounced rather than fired per selection: crossing a page of games at
+     * auto-repeat is a dozen selections in a second, and each one that reached
+     * the network would be a request for a card the user never stopped on.
+     *
+     * The bulk sync stores counts for the whole library; this fills in the
+     * achievements themselves, which are a request per game and so are fetched
+     * for the one being looked at. A game with no stored match does nothing —
+     * the repository returns without a request.
+     */
+    private fun observeAchievementRefreshes() {
+        uiState
+            .map { (it.selection as? GameEntry)?.id }
+            .distinctUntilChanged()
+            .debounce(ACHIEVEMENT_REFRESH_DELAY_MS)
+            .onEach { entryId ->
+                if (entryId == null || !refreshedAchievements.add(entryId)) return@onEach
+                runCatching { achievementRepository.refresh(entryId) }
+                    .onFailure { ThorLog.w(TAG, "Could not refresh achievements", it) }
+            }
+            .launchIn(viewModelScope)
     }
 
     fun openAppDrawer() {
@@ -3998,6 +4037,12 @@ class LauncherViewModel @Inject constructor(
     private companion object {
         const val TAG = "Launcher"
         const val STOP_TIMEOUT_MS = 5_000L
+
+        /**
+         * How long the cursor has to rest before a game's achievements are
+         * fetched. Long enough to cross a page without asking about every cell.
+         */
+        const val ACHIEVEMENT_REFRESH_DELAY_MS = 700L
         const val DOCK_SLOTS = 5
         /*
          * Two, and both of them act on the game.

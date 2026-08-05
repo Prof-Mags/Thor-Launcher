@@ -13,6 +13,7 @@ import com.thor.core.model.GridSpec
 import com.thor.core.model.IconPack
 import com.thor.core.model.LibrarySettings
 import com.thor.core.model.MetadataSettings
+import com.thor.core.model.RetroAchievementsSettings
 import com.thor.core.model.MediaSettings
 import com.thor.core.model.StreamSettings
 import com.thor.core.model.MouseSettings
@@ -79,6 +80,8 @@ class SettingsRepository @Inject constructor(
     val media: Flow<MediaSettings> = settings.map { it.media }.distinctUntilChanged()
     val stream: Flow<StreamSettings> = settings.map { it.stream }.distinctUntilChanged()
     val metadata: Flow<MetadataSettings> = settings.map { it.metadata }.distinctUntilChanged()
+    val retroAchievements: Flow<RetroAchievementsSettings> =
+        settings.map { it.retroAchievements }.distinctUntilChanged()
     val controls: Flow<ControlSettings> = settings.map { it.controls }.distinctUntilChanged()
     val display: Flow<DisplaySettings> = settings.map { it.display }.distinctUntilChanged()
     val audio: Flow<AudioSettings> = settings.map { it.audio }.distinctUntilChanged()
@@ -126,6 +129,12 @@ class SettingsRepository @Inject constructor(
 
     suspend fun updateMetadata(transform: (MetadataSettings) -> MetadataSettings) {
         edit { it.copy(metadata = transform(it.metadata)) }
+    }
+
+    suspend fun updateRetroAchievements(
+        transform: (RetroAchievementsSettings) -> RetroAchievementsSettings,
+    ) {
+        edit { it.copy(retroAchievements = transform(it.retroAchievements)) }
     }
 
     suspend fun updateControls(transform: (ControlSettings) -> ControlSettings) {

@@ -80,6 +80,10 @@ fun SettingsScreen(
     val openPage by viewModel.openPage.collectAsStateWithLifecycle()
     val focusedRow by viewModel.focusedRow.collectAsStateWithLifecycle()
     val platformOptions by viewModel.platformOptions.collectAsStateWithLifecycle()
+    val achievementSync by viewModel.achievementSync.collectAsStateWithLifecycle()
+    val retroAchievementsStatus by viewModel.retroAchievementsStatus.collectAsStateWithLifecycle()
+    val checkingRetroAchievements by
+        viewModel.checkingRetroAchievements.collectAsStateWithLifecycle()
     val availablePlatforms by viewModel.availablePlatforms.collectAsStateWithLifecycle()
     val scanState by viewModel.scanState.collectAsStateWithLifecycle()
     val scrapeState by viewModel.scrapeState.collectAsStateWithLifecycle()
@@ -378,6 +382,9 @@ fun SettingsScreen(
                                 scrapeState = scrapeState,
                                 providerStatus = providerStatus,
                                 checkingProviders = checkingProviders,
+                                achievementSync = achievementSync,
+                                retroAchievementsStatus = retroAchievementsStatus,
+                                checkingRetroAchievements = checkingRetroAchievements,
                                 artworkOnlyProviders = artworkOnlyProviders,
                                 noScreenshotProvider = noScreenshotProvider,
                                 screenScraperKeyMissing = screenScraperKeyMissing,

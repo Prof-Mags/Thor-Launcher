@@ -28,6 +28,16 @@ data class ThorSettings(
     val media: MediaSettings = MediaSettings(),
     val stream: StreamSettings = StreamSettings(),
     /**
+     * The user's RetroAchievements account.
+     *
+     * Its own block rather than another entry in [MetadataSettings.apiKeys],
+     * which is a map of scraper credentials. This is not a scraper: it answers
+     * questions about *this user's* progress rather than about the game, it is
+     * keyed to an account rather than to an application, and nothing it returns
+     * belongs in a merge between providers.
+     */
+    val retroAchievements: RetroAchievementsSettings = RetroAchievementsSettings(),
+    /**
      * Installed platform icon packs, newest last.
      *
      * Top level rather than inside one of the settings groups because it is not a

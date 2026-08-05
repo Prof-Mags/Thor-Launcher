@@ -21,6 +21,7 @@ import com.thor.core.model.MetadataSettings
 import com.thor.core.model.PerformanceSettings
 import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.Platform
+import com.thor.core.model.RetroAchievementsSettings
 import com.thor.core.model.RomDirectory
 import com.thor.core.model.ThemeId
 import com.thor.core.model.ThemeRecipe
@@ -52,6 +53,11 @@ import com.thor.data.media.MediaRepository
 import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.ProviderStatus
 import com.thor.data.library.GridLayoutRepository
+import com.thor.data.achievements.AchievementRepository
+import com.thor.data.achievements.AchievementSyncManager
+import com.thor.data.achievements.AchievementSyncState
+import com.thor.data.achievements.RetroAchievementsClient
+import com.thor.data.achievements.RetroAchievementsStatus
 import com.thor.data.importer.CocoonImportResult
 import com.thor.data.importer.CocoonImporter
 import com.thor.data.profile.ProfileRepository
@@ -126,6 +132,9 @@ class SettingsViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val profileRepository: ProfileRepository,
     private val cocoonImporter: CocoonImporter,
+    private val achievementRepository: AchievementRepository,
+    private val achievementSyncManager: AchievementSyncManager,
+    private val retroAchievements: RetroAchievementsClient,
     mouse: MouseController,
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val appContext: Context,
@@ -1301,6 +1310,45 @@ class SettingsViewModel @Inject constructor(
         _capturedKeys.update { current ->
             (listOf(press) + current.filterNot { it.keyCode == press.keyCode })
                 .take(MAX_CAPTURED_KEYS)
+        }
+    }
+
+    // ------------------------------------------------------ RetroAchievements
+
+    val achievementSync: StateFlow<AchievementSyncState> = achievementSyncManager.state
+
+    private val _retroAchievementsStatus = MutableStateFlow<RetroAchievementsStatus?>(null)
+    val retroAchievementsStatus: StateFlow<RetroAchievementsStatus?> =
+        _retroAchievementsStatus.asStateFlow()
+
+    private val _checkingRetroAchievements = MutableStateFlow(false)
+    val checkingRetroAchievements: StateFlow<Boolean> = _checkingRetroAchievements.asStateFlow()
+
+    fun updateRetroAchievements(
+        transform: (RetroAchievementsSettings) -> RetroAchievementsSettings,
+    ) {
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateRetroAchievements(transform)
+        }
+    }
+
+    fun checkRetroAchievements() {
+        if (_checkingRetroAchievements.value) return
+        viewModelScope.launchSafely(TAG) {
+            _checkingRetroAchievements.value = true
+            _retroAchievementsStatus.value = retroAchievements.checkConnection()
+            _checkingRetroAchievements.value = false
+        }
+    }
+
+    fun syncAchievements() = achievementSyncManager.sync()
+
+    fun cancelAchievementSync() = achievementSyncManager.cancel()
+
+    fun forgetAchievementMatches() {
+        viewModelScope.launchSafely(TAG) {
+            achievementRepository.forgetMatches()
+            achievementSyncManager.acknowledge()
         }
     }
 

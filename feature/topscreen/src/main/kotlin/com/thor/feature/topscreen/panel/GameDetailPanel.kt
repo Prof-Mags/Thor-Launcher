@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.thor.core.common.text.splitSentences
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.model.AchievementSummary
 import com.thor.core.model.GameEntry
 import com.thor.core.model.Platform
 import com.thor.core.model.PlatformGlyph
@@ -176,6 +177,21 @@ private fun GameProfileCard(
                 )
             } else {
                 Spacer(modifier = Modifier.weight(1f))
+            }
+
+            /*
+             * Achievements, between the description and the media.
+             *
+             * Above the media because it is a fact about this player rather than
+             * about the game, and the two things on this card that are about them
+             * — the play statistics and this — belong on the same side of the
+             * pictures. Absent entirely when the game has no set: a row reading
+             * "0 of 0" is worse than silence.
+             */
+            game.metadata.achievements?.takeIf { it.total > 0 }?.let { summary ->
+                GameDivider()
+                GameSectionTitle(if (summary.isHardcore) "ACHIEVEMENTS · HARDCORE" else "ACHIEVEMENTS")
+                GameAchievements(summary = summary, accent = accent)
             }
 
             if (selectedMedia != null) {
@@ -618,6 +634,76 @@ private fun GameMedia(
     }
 }
 
+/**
+ * How far through a game's achievements the player is.
+ *
+ * A bar, a count and the badges of the last few earned. The badges are the part
+ * worth the space: a number says how many are left and a row of icons says what
+ * the game actually asked of you, which is the thing somebody deciding what to
+ * play next is looking at.
+ */
+@Composable
+private fun GameAchievements(summary: AchievementSummary, accent: Color) {
+    val colors = ThorTheme.colors
+
+    Column(verticalArrangement = Arrangement.spacedBy(ACHIEVEMENT_GAP.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "${summary.earned} of ${summary.total}",
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.onSurface,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = if (summary.isMastered) {
+                    "Mastered"
+                } else {
+                    "${summary.earnedPoints} of ${summary.totalPoints} points"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                // Mastery is the one state worth colouring: it is the end of the
+                // set, and it is what the whole progress bar was counting toward.
+                color = if (summary.isMastered) accent else colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ACHIEVEMENT_BAR_HEIGHT.dp)
+                .clip(ThorTheme.shapes.pill)
+                .background(colors.onSurfaceVariant.copy(alpha = 0.16f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(summary.completionFraction.coerceIn(0f, 1f))
+                    .fillMaxHeight()
+                    .clip(ThorTheme.shapes.pill)
+                    .background(accent),
+            )
+        }
+
+        if (summary.recentlyEarned.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(ACHIEVEMENT_BADGE_GAP.dp)) {
+                summary.recentlyEarned.take(ACHIEVEMENT_BADGES).forEach { achievement ->
+                    ArtworkImage(
+                        model = achievement.badgeUri,
+                        contentDescription = achievement.title,
+                        fallbackText = achievement.title,
+                        fallbackTint = accent,
+                        modifier = Modifier
+                            .size(ACHIEVEMENT_BADGE.dp)
+                            .clip(ThorTheme.shapes.small),
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun GameControllerHints(accent: Color, modifier: Modifier = Modifier) {
     Row(
@@ -906,3 +992,12 @@ private const val GAME_STAT_GAP = 7
 private const val GAME_STAT_ICON_SHELL = 28
 private const val GAME_STAT_ICON_SIZE = 19
 private const val GAME_FACT_ICON_SIZE = 27
+
+/** The progress bar, its badges, and the space between them. */
+private const val ACHIEVEMENT_GAP = 6
+private const val ACHIEVEMENT_BAR_HEIGHT = 6
+private const val ACHIEVEMENT_BADGE = 30
+private const val ACHIEVEMENT_BADGE_GAP = 5
+
+/** How many earned badges fit across the card without wrapping. */
+private const val ACHIEVEMENT_BADGES = 5

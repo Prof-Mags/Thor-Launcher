@@ -13,6 +13,8 @@ import com.thor.core.model.MouseButton
 import com.thor.core.model.Platform
 import com.thor.core.model.ProfileRegistry
 import com.thor.core.model.ThorSettings
+import com.thor.data.achievements.AchievementSyncState
+import com.thor.data.achievements.RetroAchievementsStatus
 import com.thor.data.metadata.ProviderStatus
 import com.thor.data.sync.ScrapeState
 import com.thor.data.sync.SyncState
@@ -45,6 +47,9 @@ fun SettingsPageContent(
     scrapeState: ScrapeState,
     providerStatus: Map<String, ProviderStatus>,
     checkingProviders: Boolean,
+    achievementSync: AchievementSyncState,
+    retroAchievementsStatus: RetroAchievementsStatus?,
+    checkingRetroAchievements: Boolean,
     artworkOnlyProviders: Boolean,
     /** Whether anything configured can supply a landscape image. */
     noScreenshotProvider: Boolean = false,
@@ -100,6 +105,10 @@ fun SettingsPageContent(
                 screenScraperKeyMissing,
             )
             SettingsPage.SORTING -> SortingPage(settings, focusedRow, viewModel)
+            SettingsPage.ACHIEVEMENTS -> AchievementsPage(
+                settings, focusedRow, viewModel, achievementSync, retroAchievementsStatus,
+                checkingRetroAchievements,
+            )
 
             SettingsPage.MOVIES_CATALOGUE ->
                 MoviesCataloguePage(
@@ -167,6 +176,7 @@ fun rowCountFor(
     // Four credential rows plus IGDB's pair.
     SettingsPage.METADATA -> PROVIDER_FIRST_ROW + PROVIDERS.size + 6
     SettingsPage.SORTING -> 2
+    SettingsPage.ACHIEVEMENTS -> ACHIEVEMENTS_ROWS
     // Two keys and the debrid status line, then one row per indexer, then the
     // add button and the summary.
     SettingsPage.MOVIES_CATALOGUE -> moviesCatalogueRows(mediaSettings)

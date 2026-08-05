@@ -164,6 +164,18 @@ enum class SettingsPage(
         SettingsCategory.SYSTEM, "Accessibility",
         "Contrast, motion, text and colour vision",
     ),
+
+    /**
+     * Under Library rather than under Metadata, which it is not.
+     *
+     * Metadata describes the game; this describes the player's progress through
+     * it. They come from different places, are keyed to different things, and
+     * one of them needs an account.
+     */
+    ACHIEVEMENTS(
+        SettingsCategory.LIBRARY, "Achievements",
+        "RetroAchievements account and matching",
+    ),
     ;
 
     companion object {
