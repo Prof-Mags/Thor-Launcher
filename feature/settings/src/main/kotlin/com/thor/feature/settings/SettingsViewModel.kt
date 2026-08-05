@@ -51,6 +51,7 @@ import com.thor.data.launcher.EntryLauncher
 import com.thor.data.media.DebridStatus
 import com.thor.data.media.AddonCheck
 import com.thor.data.media.MediaRepository
+import com.thor.data.metadata.MetadataCandidate
 import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.ProviderStatus
 import com.thor.data.library.GridLayoutRepository
@@ -66,6 +67,7 @@ import com.thor.data.library.LibraryRepository
 import com.thor.data.scanner.EmulatorRegistry
 import com.thor.data.sync.LibrarySyncManager
 import com.thor.data.sync.MetadataSyncManager
+import com.thor.data.sync.PendingMatch
 import com.thor.data.sync.ScrapeState
 import com.thor.data.sync.SyncState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -606,6 +608,15 @@ class SettingsViewModel @Inject constructor(
 
     val scanState: StateFlow<SyncState> = syncManager.state
     val scrapeState: StateFlow<ScrapeState> = metadataSyncManager.state
+
+    /** The game a scrape has paused on, or null; see [ScrapeMatchDialog]. */
+    val pendingMatch: StateFlow<PendingMatch?> = metadataSyncManager.pendingMatch
+
+    fun chooseScrapeMatch(candidate: MetadataCandidate) =
+        metadataSyncManager.chooseMatch(candidate)
+
+    /** Takes the automatic answer now rather than waiting for the countdown. */
+    fun keepAutomaticMatch() = metadataSyncManager.chooseMatch(null)
 
     /**
      * Platforms with their installable emulators resolved.

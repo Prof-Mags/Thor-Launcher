@@ -133,6 +133,7 @@ import com.thor.feature.search.SearchScreen
 import com.thor.feature.search.SearchViewModel
 import com.thor.feature.settings.SettingsCategory
 import com.thor.feature.settings.SettingsScreen
+import com.thor.feature.settings.component.ScrapeMatchDialog
 import com.thor.feature.settings.tutorial.PermissionsScreen
 import com.thor.feature.settings.tutorial.ThorTutorial
 import com.thor.feature.settings.tutorial.TutorialPanel
@@ -384,6 +385,7 @@ fun ThorApp(
     val recording by viewModel.recording.collectAsState()
     val cellMenu by viewModel.cellMenu.collectAsState()
     val widgetPicker by viewModel.widgetPicker.collectAsState()
+    val pendingMatch by settingsViewModel.pendingMatch.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val navCursor by viewModel.navCursor.collectAsState()
     val couchFocus by viewModel.couchFocus.collectAsState()
@@ -1946,6 +1948,21 @@ fun ThorApp(
              * the Smallest Width setting.
              */
             DesignScale(referenceShortSide = PANEL_SHORT_SIDE) {
+                /*
+                 * The scrape's own question, raised over whatever is on screen.
+                 *
+                 * Here rather than inside the settings screen because a scrape
+                 * outlives the page that started it — it runs on the application
+                 * scope — and a prompt that only appeared while Settings was open
+                 * would be a scrape silently waiting three seconds per game for an
+                 * answer nobody could give.
+                 */
+                ScrapeMatchDialog(
+                    pending = pendingMatch,
+                    onChoose = settingsViewModel::chooseScrapeMatch,
+                    onUseAutomatic = settingsViewModel::keepAutomaticMatch,
+                )
+
                 /*
                  * The entry editor belongs to this surface, not to the grid's.
                  *

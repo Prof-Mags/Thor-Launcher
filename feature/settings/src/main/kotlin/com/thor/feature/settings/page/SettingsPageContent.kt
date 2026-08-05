@@ -172,7 +172,8 @@ fun rowCountFor(
     // The bundled switch, two pack imports and the artwork import, then one row
     // per installed pack.
     SettingsPage.ICON_PACKS -> IMPORT_ROWS + iconPackCount
-    // Scrape, only-missing, trailers, check, one per provider, then four credentials.
+    // Scrape, only-missing, ask-me, trailers, check, one per provider, then
+    // the credentials.
     // Four credential rows plus IGDB's pair.
     SettingsPage.METADATA -> PROVIDER_FIRST_ROW + PROVIDERS.size + 6
     SettingsPage.SORTING -> 2

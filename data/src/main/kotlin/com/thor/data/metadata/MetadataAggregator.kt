@@ -69,13 +69,32 @@ class MetadataAggregator @Inject constructor(
                 return@withContext existing
             }
 
-            val candidates = queryProviders(active, query, config)
-                .filter { it.confidence >= MIN_CONFIDENCE }
-
-            if (candidates.isEmpty()) return@withContext existing
-
-            merge(existing, candidates, config, replaceArtwork)
+            mergeCandidates(
+                candidates = queryProviders(active, query, config),
+                existing = existing,
+                replaceArtwork = replaceArtwork,
+            )
         }
+
+    /**
+     * The second half of [scrape], for a caller that already has the candidates.
+     *
+     * Split out so asking the user which game this is does not cost a second
+     * round of provider requests: the interactive path searches once, shows what
+     * came back, and then merges either the answer or — if nobody answered — this
+     * same automatic result. Filtering by [MIN_CONFIDENCE] belongs here rather
+     * than at the search, because a person can recognise a match a score cannot
+     * and the picker is shown the unfiltered set.
+     */
+    suspend fun mergeCandidates(
+        candidates: List<MetadataCandidate>,
+        existing: GameMetadata,
+        replaceArtwork: Boolean = false,
+    ): GameMetadata = withContext(ioDispatcher) {
+        val usable = candidates.filter { it.confidence >= MIN_CONFIDENCE }
+        if (usable.isEmpty()) return@withContext existing
+        merge(existing, usable, settings.metadata.first(), replaceArtwork)
+    }
 
     /**
      * Every candidate the providers offer, for the user to choose between.

@@ -1,6 +1,7 @@
 package com.thor.feature.settings.page
 
 import androidx.compose.runtime.Composable
+import com.thor.core.model.MetadataSettings
 import com.thor.core.model.ThorSettings
 import com.thor.data.metadata.ProviderStatus
 import com.thor.data.sync.ScrapeState
@@ -57,6 +58,16 @@ internal fun MetadataPage(
         onCheckedChange = { on -> viewModel.updateMetadata { it.copy(scrapeOnlyMissing = on) } },
     )
     RowDivider()
+    SwitchRow(
+        title = "Choose matches myself",
+        subtitle = "Shows the candidates when providers disagree, and takes the " +
+            "best guess after ${MetadataSettings.SCRAPE_CHOICE_SECONDS} seconds " +
+            "if nobody answers",
+        checked = metadata.askForMatches,
+        focused = focusedRow == 2,
+        onCheckedChange = { on -> viewModel.updateMetadata { it.copy(askForMatches = on) } },
+    )
+    RowDivider()
     /*
      * Trailers, for libraries scraped before THOR could fetch them.
      *
@@ -69,7 +80,7 @@ internal fun MetadataPage(
         title = "Fetch missing trailers",
         subtitle = "Look up trailers for games that have none, without re-scraping " +
             "everything else",
-        focused = focusedRow == 2,
+        focused = focusedRow == 3,
         trailingLabel = "Fetch",
         onClick = viewModel::refreshTrailers,
     )
@@ -78,7 +89,7 @@ internal fun MetadataPage(
     ActionRow(
         title = "Check connections",
         subtitle = "Verify each provider's credentials actually work",
-        focused = focusedRow == 3,
+        focused = focusedRow == 4,
         trailingLabel = if (checking) "Checking…" else "Check",
         onClick = viewModel::checkProviderConnections,
     )
@@ -211,7 +222,7 @@ internal fun MetadataPage(
  * after them silently stopped matching the cursor. An index expressed as
  * arithmetic cannot drift from the list it is indexing.
  */
-internal const val PROVIDER_FIRST_ROW = 4
+internal const val PROVIDER_FIRST_ROW = 5
 
 private const val PROVIDER_STEAMGRIDDB = "steamgriddb"
 private const val PROVIDER_RAWG = "rawg"

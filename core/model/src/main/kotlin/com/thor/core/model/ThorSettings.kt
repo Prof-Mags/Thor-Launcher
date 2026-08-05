@@ -531,7 +531,31 @@ data class MetadataSettings(
     val igdbClientId: String = "",
     val igdbClientSecret: String = "",
     val scrapeOnlyMissing: Boolean = true,
-)
+    /**
+     * Show the candidates and let the user say which game a file is.
+     *
+     * Only where there is a decision to make: one candidate is not a choice, and
+     * a prompt offering a single answer is a press charged for nothing. Most
+     * files match one thing, so this asks far less often than "every game" makes
+     * it sound.
+     *
+     * It never blocks indefinitely — see [SCRAPE_CHOICE_SECONDS]. A scrape is a
+     * long unattended job, and one left waiting on a dialog nobody is in the room
+     * for has simply stopped.
+     */
+    val askForMatches: Boolean = true,
+) {
+    companion object {
+        /**
+         * How long the match prompt waits before answering itself.
+         *
+         * Short on purpose. It is long enough to stop a scrape you are watching
+         * and take the choice, and short enough that walking away still gets you
+         * a finished library rather than a dialog on a dark screen.
+         */
+        const val SCRAPE_CHOICE_SECONDS = 3
+    }
+}
 
 @Serializable
 data class ControlSettings(

@@ -12,10 +12,13 @@ import com.thor.core.database.model.GameEntity
 import com.thor.core.datastore.SettingsRepository
 import com.thor.data.scanner.RomHasher
 import com.thor.core.model.GameMetadata
+import com.thor.core.model.MetadataSettings
 import com.thor.core.model.PlatformFlagships
 import com.thor.core.model.PlatformFolders
 import com.thor.data.metadata.MetadataAggregator
+import com.thor.data.metadata.MetadataCandidate
 import com.thor.data.metadata.MetadataQuery
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -25,9 +28,24 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * A game a scrape has paused on, waiting to be told which match is right.
+ *
+ * Carries the deadline rather than a remaining count so the dialog can render a
+ * countdown without the manager having to tick one — and so a dialog that is
+ * recomposed, or drawn a frame late, still shows the truth.
+ */
+data class PendingMatch(
+    val entryId: String,
+    val title: String,
+    val candidates: List<MetadataCandidate>,
+    val deadlineEpochMs: Long,
+)
 
 /** Progress of a metadata scrape. */
 sealed interface ScrapeState {
@@ -68,6 +86,35 @@ class MetadataSyncManager @Inject constructor(
 
     private val _state = MutableStateFlow<ScrapeState>(ScrapeState.Idle)
     val state: StateFlow<ScrapeState> = _state.asStateFlow()
+
+    /**
+     * The game the scrape is currently asking about, or null.
+     *
+     * Null is the normal state: the prompt is only raised where more than one
+     * provider answered with something different, which on most files is not the
+     * case.
+     */
+    private val _pendingMatch = MutableStateFlow<PendingMatch?>(null)
+    val pendingMatch: StateFlow<PendingMatch?> = _pendingMatch.asStateFlow()
+
+    /**
+     * Completed by whichever comes first: the user, or the timeout.
+     *
+     * A deferred rather than a channel because exactly one answer is wanted and
+     * a second press must not queue an answer for the *next* game — which is
+     * what a buffered channel would do, and it would be invisible until the
+     * scrape put the wrong metadata on a game nobody was looking at.
+     */
+    private var matchChoice: CompletableDeferred<MetadataCandidate?>? = null
+
+    /**
+     * Takes the user's answer to the current prompt.
+     *
+     * @param candidate the match to apply, or null to take the automatic one.
+     */
+    fun chooseMatch(candidate: MetadataCandidate?) {
+        matchChoice?.complete(candidate)
+    }
 
     private var runningJob: Job? = null
 
@@ -156,6 +203,7 @@ class MetadataSyncManager @Inject constructor(
             return@withContext
         }
         val canFetchDescriptions = !trailersOnly && aggregator.hasDescriptionProvider()
+        val askForMatches = settings.metadata.first().askForMatches
 
         val platforms = platformDao.getAll().associateBy { it.id }
 
@@ -223,8 +271,7 @@ class MetadataSyncManager @Inject constructor(
              * answer as "not hashed" and takes the same path: match by name.
              */
             val hashed = ensureHashed(game)
-            val merged = aggregator.scrape(
-                query = MetadataQuery(
+            val query = MetadataQuery(
                     title = game.title,
                     sortTitle = game.sortTitle,
                     platformId = game.platformId,
@@ -236,13 +283,34 @@ class MetadataSyncManager @Inject constructor(
                     crc32 = hashed.romCrc32,
                     md5 = hashed.romMd5,
                     sha1 = hashed.romSha1,
-                ),
-                existing = game.metadata,
-                // A full re-scrape is a request to replace; only-missing is a
-                // request to fill gaps. Anything else makes the full pass unable
-                // to change the artwork it was run to change.
-                replaceArtwork = !onlyMissing,
             )
+
+            /*
+             * Searched once, whichever way this goes.
+             *
+             * The prompt shows what came back and the automatic path merges the
+             * same list, so asking costs a dialog rather than a second round of
+             * provider requests.
+             */
+            val candidates = aggregator.candidates(query)
+            // A full re-scrape is a request to replace; only-missing is a request
+            // to fill gaps. Anything else makes the full pass unable to change
+            // the artwork it was run to change.
+            val replaceArtwork = !onlyMissing
+
+            // Only where there is something to decide. One candidate is not a
+            // choice, and none is not either.
+            val chosen = if (askForMatches && candidates.size > 1) {
+                askForMatch(game, candidates)
+            } else {
+                null
+            }
+
+            val merged = if (chosen != null) {
+                aggregator.applyChosen(game.metadata, chosen)
+            } else {
+                aggregator.mergeCandidates(candidates, game.metadata, replaceArtwork)
+            }
 
             /*
              * A trailer pass counts trailers, not rows written.
@@ -322,6 +390,38 @@ class MetadataSyncManager @Inject constructor(
         )
         gameDao.upsert(hashed)
         return hashed
+    }
+
+    /**
+     * Asks which game this is, and answers itself if nobody does.
+     *
+     * Returns the chosen candidate, or null meaning "use the automatic result" —
+     * which is also what the timeout produces, so the caller has one path for
+     * "nobody chose" whether that was a decision or an absence.
+     *
+     * The prompt is cleared in a `finally` because every way out of here has to
+     * clear it: a timeout, an answer, and a cancelled scrape all leave a dialog
+     * on screen otherwise, and the last of those leaves one that can never be
+     * answered.
+     */
+    private suspend fun askForMatch(
+        game: GameEntity,
+        candidates: List<MetadataCandidate>,
+    ): MetadataCandidate? {
+        val deferred = CompletableDeferred<MetadataCandidate?>()
+        matchChoice = deferred
+        _pendingMatch.value = PendingMatch(
+            entryId = game.id,
+            title = game.title,
+            candidates = candidates,
+            deadlineEpochMs = System.currentTimeMillis() + CHOICE_TIMEOUT_MS,
+        )
+        return try {
+            withTimeoutOrNull(CHOICE_TIMEOUT_MS) { deferred.await() }
+        } finally {
+            _pendingMatch.value = null
+            matchChoice = null
+        }
     }
 
     private suspend fun scrapeFolderArtwork(onlyMissing: Boolean): Int {
@@ -480,6 +580,9 @@ class MetadataSyncManager @Inject constructor(
 
     private companion object {
         const val TAG = "MetadataSync"
+
+        /** The prompt's own patience, from the one place that states it. */
+        val CHOICE_TIMEOUT_MS = MetadataSettings.SCRAPE_CHOICE_SECONDS * 1_000L
 
         /** Sorts every non-flagship below every flagship, without excluding it. */
         const val FLAGSHIP_MISS = Int.MAX_VALUE
