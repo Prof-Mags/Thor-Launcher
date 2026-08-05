@@ -193,6 +193,7 @@ fun ThorIntro(
                         drawDeviceMark(
                             extent = size.minDimension,
                             shell = colors.onBackground.copy(alpha = MARK_SHELL_ALPHA),
+                            hinge = colors.onBackground.copy(alpha = MARK_HINGE_ALPHA),
                             topScreen = colors.cursor,
                             bottomScreen = colors.accentEnd,
                         )
@@ -332,6 +333,7 @@ private fun loadingLabel(progress: Float, stages: List<String>): String {
 private fun DrawScope.drawDeviceMark(
     extent: Float,
     shell: Color,
+    hinge: Color,
     topScreen: Color,
     bottomScreen: Color,
 ) {
@@ -348,30 +350,11 @@ private fun DrawScope.drawDeviceMark(
         )
     }
 
-    // Upper shell and the wide screen in it.
-    rect(32f, 26f, 76f, 52f, 5f, shell)
-    rect(35.5f, 30f, 72.5f, 48f, 1.5f, topScreen)
-
-    // Hinge.
-    rect(42f, 51f, 66f, 56f, 0f, shell)
-
-    // Lower shell, its squarer screen, and the pad and buttons either side.
-    rect(32f, 55f, 76f, 82f, 5f, shell)
-    rect(43.5f, 59f, 64.5f, 78f, 1.5f, bottomScreen)
-    rect(37.4f, 62.6f, 40.4f, 73.2f, 1f, bottomScreen)
-    rect(34f, 66.4f, 44f, 69.4f, 1f, bottomScreen)
-    listOf(
-        70f to 62.4f,
-        74f to 67f,
-        70f to 71.6f,
-        66f to 67f,
-    ).forEach { (x, y) ->
-        drawCircle(
-            color = bottomScreen,
-            radius = MARK_BUTTON_RADIUS * scale,
-            center = Offset(originX + x * scale, originY + y * scale),
-        )
-    }
+    // One body, as the icon has: the hinge is a mark on it, not a seam in it.
+    rect(32f, 26f, 76f, 82f, 7f, shell)
+    rect(35.5f, 29.5f, 72.5f, 51f, 2f, topScreen)
+    rect(43.8f, 52.6f, 64.2f, 55.4f, 1.2f, hinge)
+    rect(38f, 57f, 70f, 78.5f, 2f, bottomScreen)
 }
 
 private fun span(progress: Float, from: Float, to: Float): Float {
@@ -382,10 +365,11 @@ private fun span(progress: Float, from: Float, to: Float): Float {
 /** How much of the ring's width the device fills, leaving the arcs clear. */
 private const val MARK_INSET = 0.62f
 
-/** The shell, which is the launcher's own foreground colour held back. */
+/** The body, which is the launcher's own foreground colour held back. */
 private const val MARK_SHELL_ALPHA = 0.22f
 
-private const val MARK_BUTTON_RADIUS = 1.9f
+/** Brighter than the body, so the hinge is a mark on it rather than a shadow. */
+private const val MARK_HINGE_ALPHA = 0.42f
 
 private const val MARK_FROM = 0.02f
 private const val MARK_TO = 0.20f

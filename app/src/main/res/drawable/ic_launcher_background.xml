@@ -2,10 +2,14 @@
 <!--
   The plate behind the mark.
 
-  A gradient rather than a flat fill, angled the same way the device's own
-  shells are, so the icon has one light source instead of two. Dark because the
-  launcher is: a pale icon would be the only bright thing on a home screen
-  otherwise made of box art.
+  Two layers: a dark ground, and a soft accent bloom behind where the screens
+  will sit. The bloom is the reason this is not a flat fill — a lit device on a
+  flat black square reads as a sticker, and the light spilling onto the plate is
+  what makes it read as switched on.
+
+  Offset above centre on purpose, because that is where the brighter of the two
+  screens is. A glow centred on the square would sit between them, which is the
+  one place on the device that emits nothing.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -13,6 +17,7 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
     <path android:pathData="M0,0 L108,0 L108,108 L0,108 Z">
         <aapt:attr name="android:fillColor">
             <gradient
@@ -21,9 +26,23 @@
                 android:endX="108"
                 android:endY="108"
                 android:type="linear">
-                <item android:offset="0" android:color="#FF141A24" />
-                <item android:offset="0.55" android:color="#FF0E1116" />
-                <item android:offset="1" android:color="#FF080A0E" />
+                <item android:offset="0" android:color="#FF161C27" />
+                <item android:offset="0.55" android:color="#FF0D1118" />
+                <item android:offset="1" android:color="#FF07090D" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <path android:pathData="M0,0 L108,0 L108,108 L0,108 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="54"
+                android:centerY="44"
+                android:gradientRadius="46"
+                android:type="radial">
+                <item android:offset="0" android:color="#4C4F8CFF" />
+                <item android:offset="0.6" android:color="#1A4F8CFF" />
+                <item android:offset="1" android:color="#004F8CFF" />
             </gradient>
         </aapt:attr>
     </path>

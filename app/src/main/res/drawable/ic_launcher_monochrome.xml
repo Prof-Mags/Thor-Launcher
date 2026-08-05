@@ -3,7 +3,7 @@
   The same device as one silhouette, for themed icons.
 
   A themed icon is tinted flat by the system, so anything relying on the colour
-  difference between a shell and its screen disappears. The screens are cut out
+  difference between a body and its screens disappears. The screens are cut out
   of the body instead — holes read at any tint, where a second fill colour reads
   at exactly none.
 -->
@@ -13,19 +13,8 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Upper shell with the top screen punched out. -->
     <path
         android:fillColor="#FFFFFFFF"
         android:fillType="evenOdd"
-        android:pathData="M37,26 L71,26 A5,5 0 0 1 76,31 L76,52 L32,52 L32,31 A5,5 0 0 1 37,26 Z M37,30 A1.5,1.5 0 0 0 35.5,31.5 L35.5,46.5 A1.5,1.5 0 0 0 37,48 L71,48 A1.5,1.5 0 0 0 72.5,46.5 L72.5,31.5 A1.5,1.5 0 0 0 71,30 Z" />
-
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M42,51 L66,51 L66,56 L42,56 Z" />
-
-    <!-- Lower shell, with the screen punched out and the controls left solid. -->
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:fillType="evenOdd"
-        android:pathData="M32,55 L76,55 L76,77 A5,5 0 0 1 71,82 L37,82 A5,5 0 0 1 32,77 Z M45,59 A1.5,1.5 0 0 0 43.5,60.5 L43.5,76.5 A1.5,1.5 0 0 0 45,78 L63,78 A1.5,1.5 0 0 0 64.5,76.5 L64.5,60.5 A1.5,1.5 0 0 0 63,59 Z" />
+        android:pathData="M39,26 L69,26 A7,7 0 0 1 76,33 L76,75 A7,7 0 0 1 69,82 L39,82 A7,7 0 0 1 32,75 L32,33 A7,7 0 0 1 39,26 Z M37.5,29.5 A2,2 0 0 0 35.5,31.5 L35.5,49 A2,2 0 0 0 37.5,51 L70.5,51 A2,2 0 0 0 72.5,49 L72.5,31.5 A2,2 0 0 0 70.5,29.5 Z M40,57 A2,2 0 0 0 38,59 L38,76.5 A2,2 0 0 0 40,78.5 L68,78.5 A2,2 0 0 0 70,76.5 L70,59 A2,2 0 0 0 68,57 Z" />
 </vector>
