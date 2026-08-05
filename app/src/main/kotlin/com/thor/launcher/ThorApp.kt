@@ -64,6 +64,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
+import com.thor.core.designsystem.theme.DesignScale
+import com.thor.core.designsystem.theme.PANEL_SHORT_SIDE
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.display.DisplayTopology
 import com.thor.core.display.LauncherFocus
@@ -1933,76 +1935,89 @@ fun ThorApp(
          */
         val infoOverlays: @Composable () -> Unit = {
             /*
-             * The entry editor belongs to this surface, not to the grid's.
+             * These are drawn beside the panels rather than inside one, so they
+             * need the canvas set for them.
              *
-             * It is the launcher's only free-text form, and an IME will not
-             * reliably render on a secondary display — a `Presentation` there is
-             * also unfocusable by default, so its fields could not even take
-             * focus. The info surface is normally the activity's own window on the
-             * default display, which is where the keyboard lives. Opening on the
-             * other panel from where the long press happened is a smaller cost
-             * than a form that cannot be typed into.
+             * Settings, search and the entry editor are composed as siblings of
+             * whichever surface is showing — that is what lets them move to the
+             * window the user can actually see — which also means they miss the
+             * [DesignScale] those surfaces apply to themselves. Without this they
+             * would be the one part of the launcher that still changed size with
+             * the Smallest Width setting.
              */
-            EditEntryDialog(
-                entry = state.editingEntry,
-                onConfirm = { edits ->
-                    state.editingEntry?.let { entry ->
-                        viewModel.applyEdits(entryId = entry.id, edits = edits)
-                    }
-                },
-                onDismiss = viewModel::closeEditor,
-                // Only systems the user has added: reassigning a game to a
-                // console they do not own would leave it unlaunchable.
-                platforms = addedPlatforms,
-                emulatorOptions = viewModel.emulatorOptionsFor(state.editingEntry),
-            )
+            DesignScale(referenceShortSide = PANEL_SHORT_SIDE) {
+                /*
+                 * The entry editor belongs to this surface, not to the grid's.
+                 *
+                 * It is the launcher's only free-text form, and an IME will not
+                 * reliably render on a secondary display — a `Presentation` there is
+                 * also unfocusable by default, so its fields could not even take
+                 * focus. The info surface is normally the activity's own window on the
+                 * default display, which is where the keyboard lives. Opening on the
+                 * other panel from where the long press happened is a smaller cost
+                 * than a form that cannot be typed into.
+                 */
+                EditEntryDialog(
+                    entry = state.editingEntry,
+                    onConfirm = { edits ->
+                        state.editingEntry?.let { entry ->
+                            viewModel.applyEdits(entryId = entry.id, edits = edits)
+                        }
+                    },
+                    onDismiss = viewModel::closeEditor,
+                    // Only systems the user has added: reassigning a game to a
+                    // console they do not own would leave it unlaunchable.
+                    platforms = addedPlatforms,
+                    emulatorOptions = viewModel.emulatorOptionsFor(state.editingEntry),
+                )
 
-            AnimatedVisibility(
-                visible = overlay != Overlay.NONE,
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                when (overlay) {
-                    Overlay.SETTINGS -> if (mode != DualScreenMode.COUCH) {
-                        SettingsScreen(
-                            onRowCountChanged = { settingsRowCount = it },
-                            viewModel = settingsViewModel,
+                AnimatedVisibility(
+                    visible = overlay != Overlay.NONE,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    when (overlay) {
+                        Overlay.SETTINGS -> if (mode != DualScreenMode.COUCH) {
+                            SettingsScreen(
+                                onRowCountChanged = { settingsRowCount = it },
+                                viewModel = settingsViewModel,
+                            )
+                        }
+
+                        Overlay.SEARCH -> SearchScreen(
+                            onEntrySelected = { entry ->
+                                overlay = Overlay.NONE
+                                viewModel.launchEntry(entry)
+                            },
+                            onDismiss = { overlay = Overlay.NONE },
+                            viewModel = searchViewModel,
                         )
+
+                        // Drawn on the grid panel instead; see `bottomContent`. This
+                        // one is answered by touching its rows, so it belongs on the
+                        // panel the user is holding rather than on the one they read.
+                        Overlay.PERMISSIONS -> Unit
+
+                        Overlay.NONE -> Unit
                     }
-
-                    Overlay.SEARCH -> SearchScreen(
-                        onEntrySelected = { entry ->
-                            overlay = Overlay.NONE
-                            viewModel.launchEntry(entry)
-                        },
-                        onDismiss = { overlay = Overlay.NONE },
-                        viewModel = searchViewModel,
-                    )
-
-                    // Drawn on the grid panel instead; see `bottomContent`. This
-                    // one is answered by touching its rows, so it belongs on the
-                    // panel the user is holding rather than on the one they read.
-                    Overlay.PERMISSIONS -> Unit
-
-                    Overlay.NONE -> Unit
                 }
-            }
 
-            /*
-             * The walkthrough's share of this panel, over whatever it opened.
-             *
-             * Outside the `AnimatedVisibility` above because it is not one of the
-             * overlays — it is the thing that opens them. A step about a settings
-             * category has Settings underneath it here and its card on the other
-             * screen; a step about this panel itself has its card here.
-             */
-            TutorialScreen(
-                steps = tutorialSteps,
-                index = tutorialIndex,
-                panel = TutorialPanel.INFO,
-                onBack = { if (tutorialIndex > 0) tutorialIndex-- },
-                onNext = advanceTutorial,
-            )
+                /*
+                 * The walkthrough's share of this panel, over whatever it opened.
+                 *
+                 * Outside the `AnimatedVisibility` above because it is not one of the
+                 * overlays — it is the thing that opens them. A step about a settings
+                 * category has Settings underneath it here and its card on the other
+                 * screen; a step about this panel itself has its card here.
+                 */
+                TutorialScreen(
+                    steps = tutorialSteps,
+                    index = tutorialIndex,
+                    panel = TutorialPanel.INFO,
+                    onBack = { if (tutorialIndex > 0) tutorialIndex-- },
+                    onNext = advanceTutorial,
+                )
+            }
         }
 
         /** The info panel: game artwork and details, plus whatever it is hosting. */

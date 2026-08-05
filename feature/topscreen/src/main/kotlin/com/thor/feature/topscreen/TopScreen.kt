@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.thor.core.designsystem.theme.DesignScale
+import com.thor.core.designsystem.theme.PANEL_SHORT_SIDE
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AnimatedWallpaper
 import com.thor.core.model.AppEntry
@@ -132,115 +134,127 @@ fun TopScreen(
     val videoUri = game?.metadata?.artwork?.videoUri
         ?.takeIf { videoPreviewsEnabled && !videoFailed }
 
-    Box(modifier = modifier.fillMaxSize().background(colors.background)) {
-        AnimatedContent(
-            targetState = selection?.id,
-            transitionSpec = {
-                fadeIn(motion.tweenSpec(motion.backdropMillis)) togetherWith
-                    fadeOut(motion.tweenSpec(motion.backdropMillis))
-            },
-            label = "topScreenBackdrop",
-        ) { _ ->
-            Backdrop(
-                selection = selection,
-                platform = platform,
-                folderChildren = folderChildren,
-                wallpaperUri = wallpaperUri,
-                screenshotIndex = selectedScreenshot,
-            )
-        }
+    /*
+     * The panel's own design canvas.
+     *
+     * The same correction the grid panel gets, for the same reason: this side
+     * mixes fixed sizes — the card's width, its padding, the height of a game
+     * row — with fractions of the panel, and the two only agree at one screen
+     * size unless the density is chosen to make them. Wrapped here rather than
+     * per panel so the backdrop, the cards and the status bar are all measured
+     * against one canvas.
+     */
+    DesignScale(referenceShortSide = PANEL_SHORT_SIDE, modifier = modifier) {
+    Box(modifier = Modifier.fillMaxSize().background(colors.background)) {
+            AnimatedContent(
+                targetState = selection?.id,
+                transitionSpec = {
+                    fadeIn(motion.tweenSpec(motion.backdropMillis)) togetherWith
+                        fadeOut(motion.tweenSpec(motion.backdropMillis))
+                },
+                label = "topScreenBackdrop",
+            ) { _ ->
+                Backdrop(
+                    selection = selection,
+                    platform = platform,
+                    folderChildren = folderChildren,
+                    wallpaperUri = wallpaperUri,
+                    screenshotIndex = selectedScreenshot,
+                )
+            }
 
-        // A fetched trailer is always placed above its still backdrop. The still
-        // remains beneath the TextureView until its first frame reaches the panel.
-        if (videoUri != null) {
-            GameVideoBackground(
-                videoUri = videoUri,
-                playing = true,
-                onFailure = { videoFailed = true },
+            // A fetched trailer is always placed above its still backdrop. The still
+            // remains beneath the TextureView until its first frame reaches the panel.
+            if (videoUri != null) {
+                GameVideoBackground(
+                    videoUri = videoUri,
+                    playing = true,
+                    onFailure = { videoFailed = true },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            Scrim(
+                artworkLed = selection is GameEntry ||
+                    (selection is FolderEntry && platform != null),
+            )
+
+            AnimatedContent(
+                // Keyed on the selection, so moving between entries crossfades.
+                targetState = selection?.id,
+                transitionSpec = {
+                    fadeIn(motion.tweenSpec(motion.detailMillis)) togetherWith
+                        fadeOut(motion.tweenSpec(motion.detailMillis))
+                },
+                label = "topScreenDetail",
+                modifier = Modifier.fillMaxSize(),
+            ) { _ ->
+                when (val entry = selection) {
+                    null -> IdleWallpaperPanel(wallpaper = wallpaper, wallpaperUri = wallpaperUri)
+
+                    is GameEntry -> GameDetailPanel(
+                        game = entry,
+                        platform = platform,
+                        selectedScreenshot = selectedScreenshot,
+                    )
+
+                    // A platform's folder is a system, not a folder, and gets a panel
+                    // that says so — name, maker, year and a paragraph about it.
+                    is FolderEntry -> if (platform != null) {
+                        PlatformDetailPanel(
+                            platform = platform,
+                            folderTitle = entry.title,
+                            children = folderChildren,
+                            onGameSelected = onEntrySelected,
+                        )
+                    } else {
+                        FolderDetailPanel(folder = entry, children = folderChildren)
+                    }
+                    is AppEntry -> AppDetailPanel(app = entry)
+                    else -> IdleWallpaperPanel(wallpaper = wallpaper, wallpaperUri = wallpaperUri)
+                }
+            }
+
+            // The clock lives on this panel only, centred. It used to sit above the
+            // grid as well, which put two clocks on screen at once.
+            Column(modifier = Modifier.align(Alignment.TopCenter)) {
+                LauncherStatusBar(clockStyle = clockStyle, visible = showStatusBar)
+            }
+
+            // Drawn last of the corner chrome so the opened shade lies over the
+            // panel rather than being clipped behind it.
+            if (status != null) {
+                ProfileNotificationCluster(
+                    profile = status.profile,
+                    avatarPath = status.avatarPath,
+                    access = status.notifications,
+                    expanded = status.shadeOpen,
+                    onToggleExpanded = statusActions.onToggleShade,
+                    onGrantAccess = statusActions.onGrantAccess,
+                    onOpenAppInfo = statusActions.onOpenAppInfo,
+                    onNotificationOpened = statusActions.onNotificationOpened,
+                    onNotificationDismissed = statusActions.onNotificationDismissed,
+                    onDismissAll = statusActions.onDismissAll,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(STATUS_CLUSTER_INSET.dp),
+                )
+            }
+
+            ControllerFocusEdge(
+                visible = focused,
+                canCycleScreenshots = screenshots.size > 1,
+                canLaunch = selection != null,
+                platformAccent = when (selection) {
+                    is FolderEntry -> platform?.let { Color(it.accentArgb) }
+                    is GameEntry -> platform?.let { Color(it.accentArgb) }
+                        ?: selection.metadata.artwork.dominantArgb?.let(::Color)
+                        ?: colors.cursor
+                    else -> null
+                },
                 modifier = Modifier.fillMaxSize(),
             )
-        }
-
-        Scrim(
-            artworkLed = selection is GameEntry ||
-                (selection is FolderEntry && platform != null),
-        )
-
-        AnimatedContent(
-            // Keyed on the selection, so moving between entries crossfades.
-            targetState = selection?.id,
-            transitionSpec = {
-                fadeIn(motion.tweenSpec(motion.detailMillis)) togetherWith
-                    fadeOut(motion.tweenSpec(motion.detailMillis))
-            },
-            label = "topScreenDetail",
-            modifier = Modifier.fillMaxSize(),
-        ) { _ ->
-            when (val entry = selection) {
-                null -> IdleWallpaperPanel(wallpaper = wallpaper, wallpaperUri = wallpaperUri)
-
-                is GameEntry -> GameDetailPanel(
-                    game = entry,
-                    platform = platform,
-                    selectedScreenshot = selectedScreenshot,
-                )
-
-                // A platform's folder is a system, not a folder, and gets a panel
-                // that says so — name, maker, year and a paragraph about it.
-                is FolderEntry -> if (platform != null) {
-                    PlatformDetailPanel(
-                        platform = platform,
-                        folderTitle = entry.title,
-                        children = folderChildren,
-                        onGameSelected = onEntrySelected,
-                    )
-                } else {
-                    FolderDetailPanel(folder = entry, children = folderChildren)
-                }
-                is AppEntry -> AppDetailPanel(app = entry)
-                else -> IdleWallpaperPanel(wallpaper = wallpaper, wallpaperUri = wallpaperUri)
-            }
-        }
-
-        // The clock lives on this panel only, centred. It used to sit above the
-        // grid as well, which put two clocks on screen at once.
-        Column(modifier = Modifier.align(Alignment.TopCenter)) {
-            LauncherStatusBar(clockStyle = clockStyle, visible = showStatusBar)
-        }
-
-        // Drawn last of the corner chrome so the opened shade lies over the
-        // panel rather than being clipped behind it.
-        if (status != null) {
-            ProfileNotificationCluster(
-                profile = status.profile,
-                avatarPath = status.avatarPath,
-                access = status.notifications,
-                expanded = status.shadeOpen,
-                onToggleExpanded = statusActions.onToggleShade,
-                onGrantAccess = statusActions.onGrantAccess,
-                onOpenAppInfo = statusActions.onOpenAppInfo,
-                onNotificationOpened = statusActions.onNotificationOpened,
-                onNotificationDismissed = statusActions.onNotificationDismissed,
-                onDismissAll = statusActions.onDismissAll,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(STATUS_CLUSTER_INSET.dp),
-            )
-        }
-
-        ControllerFocusEdge(
-            visible = focused,
-            canCycleScreenshots = screenshots.size > 1,
-            canLaunch = selection != null,
-            platformAccent = when (selection) {
-                is FolderEntry -> platform?.let { Color(it.accentArgb) }
-                is GameEntry -> platform?.let { Color(it.accentArgb) }
-                    ?: selection.metadata.artwork.dominantArgb?.let(::Color)
-                    ?: colors.cursor
-                else -> null
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
+    }
     }
 }
 

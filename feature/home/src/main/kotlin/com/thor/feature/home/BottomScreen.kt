@@ -36,6 +36,7 @@ import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AnimatedWallpaper
 import com.thor.core.model.ClockStyle
 import com.thor.core.model.CouchWallpaperStyle
+import com.thor.core.model.DisplaySettings
 import com.thor.core.model.DockSettings
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
@@ -272,7 +273,7 @@ fun BottomScreen(
      */
     DesignScale(
         referenceShortSide = if (couchMode) COUCH_SHORT_SIDE else PANEL_SHORT_SIDE,
-        userScale = if (couchMode) couchUiScale else 1f,
+        userScale = if (couchMode) DisplaySettings.couchDensityScale(couchUiScale) else 1f,
         modifier = modifier,
     ) {
     Box(modifier = Modifier.fillMaxSize()) {

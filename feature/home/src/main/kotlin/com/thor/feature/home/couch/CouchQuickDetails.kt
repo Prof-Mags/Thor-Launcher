@@ -48,12 +48,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.theme.contrastingContentColor
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AppEntry
-import com.thor.core.model.DisplaySettings
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
@@ -162,19 +160,17 @@ fun CouchQuickDetails(
         modifier = modifier.fillMaxSize(),
     ) {
         val shown = entry ?: return@AnimatedVisibility
-        run {
-            DetailsPage(
-                entry = shown,
-                platform = platform,
-                focusedAction = focusedAction,
-                scroll = scroll,
-                onActionFocused = onActionFocused,
-                onPlay = onPlay,
-                onToggleFavorite = onToggleFavorite,
-                onDismiss = onDismiss,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+        DetailsPage(
+            entry = shown,
+            platform = platform,
+            focusedAction = focusedAction,
+            scroll = scroll,
+            onActionFocused = onActionFocused,
+            onPlay = onPlay,
+            onToggleFavorite = onToggleFavorite,
+            onDismiss = onDismiss,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 

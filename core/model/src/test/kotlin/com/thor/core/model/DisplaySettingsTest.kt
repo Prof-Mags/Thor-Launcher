@@ -6,25 +6,30 @@ import org.junit.Test
 /**
  * What Couch Mode's interface size setting actually means.
  *
- * The number the user sees and the number the density is multiplied by are not
- * the same, and they are not meant to be - the setting is a percentage of a size
- * chosen for a television, not of the handheld panel's own density. Getting that
- * wrong is invisible in code and unmistakable on a wall.
+ * It used to mean two things at once: the user's preference, and a constant
+ * three-quarter correction folded into the same number because couch mode is
+ * drawn for a room rather than for a hand. A constant could never be that
+ * correction — it never asks how large the screen is — so it is a design canvas
+ * now, `COUCH_SHORT_SIDE`, which is the size the interface is laid out against
+ * rather than a multiplier applied to whatever density a panel happens to have.
+ *
+ * What is left here is the preference and its clamp.
  */
 class DisplaySettingsTest {
 
     @Test
-    fun `the default setting draws at the size chosen for a television`() {
+    fun `the default setting is the designed size, unmodified`() {
         val actual = DisplaySettings.couchDensityScale(DisplaySettings.DEFAULT_COUCH_UI_SCALE)
 
-        assertThat(actual).isWithin(0.001f).of(DisplaySettings.COUCH_BASE_SCALE)
+        // 100% means "the size couch mode was designed at", which the canvas now
+        // states rather than a number multiplied into the density.
+        assertThat(actual).isWithin(0.001f).of(1f)
     }
 
     /**
-     * The slider still reads as a plain percentage.
+     * The slider reads as a plain percentage.
      *
-     * Half as much again on the setting is half as much again on the screen; the
-     * rebasing moves where 100% sits, it does not bend the scale around it.
+     * Half as much again on the setting is half as much again on the screen.
      */
     @Test
     fun `the setting stays proportional`() {
@@ -45,24 +50,20 @@ class DisplaySettingsTest {
         val floor = DisplaySettings.couchDensityScale(0.1f)
         val ceiling = DisplaySettings.couchDensityScale(9f)
 
-        assertThat(floor).isWithin(0.001f).of(
-            DisplaySettings.MIN_COUCH_UI_SCALE * DisplaySettings.COUCH_BASE_SCALE,
-        )
-        assertThat(ceiling).isWithin(0.001f).of(
-            DisplaySettings.MAX_COUCH_UI_SCALE * DisplaySettings.COUCH_BASE_SCALE,
-        )
+        assertThat(floor).isWithin(0.001f).of(DisplaySettings.MIN_COUCH_UI_SCALE)
+        assertThat(ceiling).isWithin(0.001f).of(DisplaySettings.MAX_COUCH_UI_SCALE)
     }
 
     /**
-     * The top of the range still reaches the size couch mode used to open at.
+     * The range still spans both sides of the designed size.
      *
-     * Rebasing without widening would have made the old default unreachable, so
-     * anybody who liked it would have had no way back to it.
+     * Down to three quarters and up to nearly half again, around a default that
+     * is the designed size rather than a rebased one — so every setting this ever
+     * opened at is still reachable.
      */
     @Test
-    fun `the largest setting still reaches the old default size`() {
-        val largest = DisplaySettings.couchDensityScale(DisplaySettings.MAX_COUCH_UI_SCALE)
-
-        assertThat(largest).isAtLeast(1f)
+    fun `the range reaches either side of the designed size`() {
+        assertThat(DisplaySettings.MIN_COUCH_UI_SCALE).isLessThan(1f)
+        assertThat(DisplaySettings.MAX_COUCH_UI_SCALE).isGreaterThan(1f)
     }
 }

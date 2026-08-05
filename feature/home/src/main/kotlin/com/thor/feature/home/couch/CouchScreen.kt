@@ -71,10 +71,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.zIndex
@@ -85,7 +83,6 @@ import com.thor.core.model.AnimatedWallpaper
 import com.thor.core.model.AppEntry
 import com.thor.core.model.ClockStyle
 import com.thor.core.model.CouchWallpaperStyle
-import com.thor.core.model.DisplaySettings
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
@@ -354,154 +351,152 @@ fun CouchScreen(
             )
         }
 
-        run {
-            Column(modifier = Modifier.fillMaxSize()) {
-                if (!fullscreenSection) {
-                    CouchNavigationBar(
-                        tabs = tabs,
-                        selectedTab = selectedTab,
-                        focusedTab = navCursor.takeUnless { settingsSelected },
-                        settingsFocused = settingsFocused && !settingsSelected,
-                        settingsSelected = settingsSelected,
-                        clockStyle = clockStyle,
-                        showStatusBar = showStatusBar,
-                        onTabSelected = onTabSelected,
-                        onSettingsSelected = onSettingsSelected,
-                        status = status,
-                        statusActions = statusActions,
-                    )
-                }
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (!fullscreenSection) {
+                CouchNavigationBar(
+                    tabs = tabs,
+                    selectedTab = selectedTab,
+                    focusedTab = navCursor.takeUnless { settingsSelected },
+                    settingsFocused = settingsFocused && !settingsSelected,
+                    settingsSelected = settingsSelected,
+                    clockStyle = clockStyle,
+                    showStatusBar = showStatusBar,
+                    onTabSelected = onTabSelected,
+                    onSettingsSelected = onSettingsSelected,
+                    status = status,
+                    statusActions = statusActions,
+                )
+            }
 
-                if (settingsSelected) {
-                    Box(modifier = Modifier.fillMaxSize().weight(1f)) {
-                        settingsContent?.invoke()
-                    }
-                } else if (selectedTab.isHome) {
-                    if (focusedEntry == null) {
-                        EmptyCouchLibrary(modifier = Modifier.weight(1f))
-                    } else if (COUCH_DASHBOARD_LAYOUT) {
+            if (settingsSelected) {
+                Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+                    settingsContent?.invoke()
+                }
+            } else if (selectedTab.isHome) {
+                if (focusedEntry == null) {
+                    EmptyCouchLibrary(modifier = Modifier.weight(1f))
+                } else if (COUCH_DASHBOARD_LAYOUT) {
+                    /*
+                     * The television dashboard: hero, library counts, one
+                     * shelf and a system row, with a rail down the side.
+                     *
+                     * The rail deck below is kept whole behind the flag
+                     * rather than deleted — see [LauncherFeatures] for why
+                     * an unsettled shape is decided in code. Everything the
+                     * controller does is unchanged: this draws the same
+                     * rails from the same focus, so up and down still walk
+                     * the library and the shelf still moves with it.
+                     */
+                    CouchHome(
+                        state = state,
+                        rails = rails,
                         /*
-                         * The television dashboard: hero, library counts, one
-                         * shelf and a system row, with a rail down the side.
+                         * The whole cursor, not just its shelf half.
                          *
-                         * The rail deck below is kept whole behind the flag
-                         * rather than deleted — see [LauncherFeatures] for why
-                         * an unsettled shape is decided in code. Everything the
-                         * controller does is unchanged: this draws the same
-                         * rails from the same focus, so up and down still walk
-                         * the library and the shelf still moves with it.
+                         * This was `CouchFocus(safeRail, safeItem)`, which
+                         * rebuilt the focus from two fields and so handed the
+                         * dashboard the defaults for the other two — zone
+                         * SHELF, action 0 — no matter where the controller
+                         * actually was. Everything still *moved*: the view
+                         * model tracked the zone and Confirm did the right
+                         * thing. None of it was drawn. Walking down to the
+                         * system row and pressing A opened the power dialog
+                         * from a screen that showed the cursor sitting on a
+                         * game, which is the worst version of this bug —
+                         * silent, and only reproducible with a controller.
                          */
-                        CouchHome(
-                            state = state,
-                            rails = rails,
+                        focus = focus.copy(rail = safeRail, item = safeItem),
+                        onEntryFocused = onEntryFocused,
+                        onEntrySelected = onEntrySelected,
+                        onEntryLongPressed = onEntryLongPressed,
+                        onRailSelected = { rail -> onEntryFocused(rail, 0) },
+                        actions = dashboardActions,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                    )
+                } else {
+                    Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                        /*
+                         * The shelf takes what it needs; the panel centres in
+                         * everything left over.
+                         *
+                         * It used to be the other way round — the panel had a
+                         * weighted slot at the top and the shelf had the rest
+                         * — and the shelf draws its rail hard against its own
+                         * bottom edge, so all of that leftover height ended up
+                         * *below* the panel. Centring the card inside its own
+                         * slot could not help: the slot itself was at the top
+                         * of the screen. Giving the shelf a height and the
+                         * panel the remainder puts the empty space where it
+                         * belongs, around the panel rather than under it.
+                         */
+                        Column(
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                            verticalArrangement = Arrangement.Center,
+                        ) {
                             /*
-                             * The whole cursor, not just its shelf half.
+                             * Which shelf you are on, above the card.
                              *
-                             * This was `CouchFocus(safeRail, safeItem)`, which
-                             * rebuilt the focus from two fields and so handed the
-                             * dashboard the defaults for the other two — zone
-                             * SHELF, action 0 — no matter where the controller
-                             * actually was. Everything still *moved*: the view
-                             * model tracked the zone and Confirm did the right
-                             * thing. None of it was drawn. Walking down to the
-                             * system row and pressing A opened the power dialog
-                             * from a screen that showed the cursor sitting on a
-                             * game, which is the worst version of this bug —
-                             * silent, and only reproducible with a controller.
+                             * The rail's own title used to be the only place
+                             * this was said, down at the shelf — so on a
+                             * screen showing one rail at a time, the answer
+                             * to "where am I in the library" was at the far
+                             * edge of it. Above the card is where the eye
+                             * already is.
                              */
-                            focus = focus.copy(rail = safeRail, item = safeItem),
+                            rails.getOrNull(safeRail)?.title?.let { railTitle ->
+                                Text(
+                                    text = railTitle.uppercase(),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = focusedPlatform
+                                        ?.let { Color(it.accentArgb) }
+                                        ?: colors.cursor,
+                                    fontWeight = FontWeight.Black,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(
+                                        start = SCREEN_INSET.dp,
+                                        end = SCREEN_INSET.dp,
+                                        bottom = 6.dp,
+                                    ),
+                                )
+                            }
+
+                            CouchHero(
+                                entry = focusedEntry,
+                                platform = focusedEntry.platform(state.platformsById),
+                                onPlay = { onEntrySelected(focusedEntry) },
+                                onFavorite = { onEntryFavorite(focusedEntry) },
+                                onMore = { onEntryLongPressed(focusedEntry) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(HERO_HEIGHT.dp),
+                            )
+                            CouchLibrarySummary(
+                                stats = libraryStats,
+                                accent = focusedPlatform
+                                    ?.let { Color(it.accentArgb) }
+                                    ?: colors.cursor,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(LIBRARY_SUMMARY_HEIGHT.dp),
+                            )
+                        }
+                        CouchRailDeck(
+                            rails = rails,
+                            focus = CouchFocus(safeRail, safeItem),
+                            platforms = state.platformsById,
                             onEntryFocused = onEntryFocused,
                             onEntrySelected = onEntrySelected,
                             onEntryLongPressed = onEntryLongPressed,
-                            onRailSelected = { rail -> onEntryFocused(rail, 0) },
-                            actions = dashboardActions,
-                            modifier = Modifier.fillMaxWidth().weight(1f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(SHELF_HEIGHT.dp),
                         )
-                    } else {
-                        Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                            /*
-                             * The shelf takes what it needs; the panel centres in
-                             * everything left over.
-                             *
-                             * It used to be the other way round — the panel had a
-                             * weighted slot at the top and the shelf had the rest
-                             * — and the shelf draws its rail hard against its own
-                             * bottom edge, so all of that leftover height ended up
-                             * *below* the panel. Centring the card inside its own
-                             * slot could not help: the slot itself was at the top
-                             * of the screen. Giving the shelf a height and the
-                             * panel the remainder puts the empty space where it
-                             * belongs, around the panel rather than under it.
-                             */
-                            Column(
-                                modifier = Modifier.fillMaxWidth().weight(1f),
-                                verticalArrangement = Arrangement.Center,
-                            ) {
-                                /*
-                                 * Which shelf you are on, above the card.
-                                 *
-                                 * The rail's own title used to be the only place
-                                 * this was said, down at the shelf — so on a
-                                 * screen showing one rail at a time, the answer
-                                 * to "where am I in the library" was at the far
-                                 * edge of it. Above the card is where the eye
-                                 * already is.
-                                 */
-                                rails.getOrNull(safeRail)?.title?.let { railTitle ->
-                                    Text(
-                                        text = railTitle.uppercase(),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = focusedPlatform
-                                            ?.let { Color(it.accentArgb) }
-                                            ?: colors.cursor,
-                                        fontWeight = FontWeight.Black,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(
-                                            start = SCREEN_INSET.dp,
-                                            end = SCREEN_INSET.dp,
-                                            bottom = 6.dp,
-                                        ),
-                                    )
-                                }
-
-                                CouchHero(
-                                    entry = focusedEntry,
-                                    platform = focusedEntry.platform(state.platformsById),
-                                    onPlay = { onEntrySelected(focusedEntry) },
-                                    onFavorite = { onEntryFavorite(focusedEntry) },
-                                    onMore = { onEntryLongPressed(focusedEntry) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(HERO_HEIGHT.dp),
-                                )
-                                CouchLibrarySummary(
-                                    stats = libraryStats,
-                                    accent = focusedPlatform
-                                        ?.let { Color(it.accentArgb) }
-                                        ?: colors.cursor,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(LIBRARY_SUMMARY_HEIGHT.dp),
-                                )
-                            }
-                            CouchRailDeck(
-                                rails = rails,
-                                focus = CouchFocus(safeRail, safeItem),
-                                platforms = state.platformsById,
-                                onEntryFocused = onEntryFocused,
-                                onEntrySelected = onEntrySelected,
-                                onEntryLongPressed = onEntryLongPressed,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(SHELF_HEIGHT.dp),
-                            )
-                        }
                     }
-                } else {
-                    Box(modifier = Modifier.fillMaxSize().weight(1f)) {
-                        sectionContent?.invoke(selectedTab)
-                    }
+                }
+            } else {
+                Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+                    sectionContent?.invoke(selectedTab)
                 }
             }
         }
@@ -543,21 +538,19 @@ fun CouchScreen(
                             onClick = statusActions.onToggleShade,
                         ),
                 )
-                run {
-                    NotificationShadePanel(
-                        profile = status.profile,
-                        access = status.notifications,
-                        onGrantAccess = statusActions.onGrantAccess,
-                        onOpenAppInfo = statusActions.onOpenAppInfo,
-                        onNotificationOpened = statusActions.onNotificationOpened,
-                        onNotificationDismissed = statusActions.onNotificationDismissed,
-                        onDismissAll = statusActions.onDismissAll,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = TOP_BAR_HEIGHT.dp + SHADE_GAP.dp, end = SCREEN_INSET.dp)
-                            .width(COUCH_SHADE_WIDTH.dp),
-                    )
-                }
+                NotificationShadePanel(
+                    profile = status.profile,
+                    access = status.notifications,
+                    onGrantAccess = statusActions.onGrantAccess,
+                    onOpenAppInfo = statusActions.onOpenAppInfo,
+                    onNotificationOpened = statusActions.onNotificationOpened,
+                    onNotificationDismissed = statusActions.onNotificationDismissed,
+                    onDismissAll = statusActions.onDismissAll,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = TOP_BAR_HEIGHT.dp + SHADE_GAP.dp, end = SCREEN_INSET.dp)
+                        .width(COUCH_SHADE_WIDTH.dp),
+                )
             }
         }
     }
