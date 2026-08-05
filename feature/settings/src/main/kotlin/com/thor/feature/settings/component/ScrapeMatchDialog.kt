@@ -1,12 +1,10 @@
 package com.thor.feature.settings.component
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,17 +18,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
@@ -38,25 +31,30 @@ import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.data.metadata.MetadataCandidate
+import com.thor.data.sync.ArtworkOption
 import com.thor.data.sync.PendingMatch
 
 /**
- * Asks which game a file is, mid-scrape, and answers itself if nobody does.
+ * Asks which game a file is, and then which of its covers to keep.
  *
- * Raised only where there is a decision — more than one provider came back with
- * something different — so it is not the interruption per game that "ask every
- * time" sounds like.
+ * Two questions in sequence rather than one, because the answers come from
+ * different places: the provider that identified the game correctly is routinely
+ * not the one with the best art for it. The second is skipped where every
+ * provider offered the same picture, which is most games.
  *
- * The countdown is the important part of the design. A dialog that closes on its
- * own without warning reads as a bug; one that visibly runs down reads as an
- * offer, and it is what makes this safe to leave running unattended. Whatever
- * the scrape would have picked on its own is what it picks when the bar empties,
- * so ignoring this entirely costs nothing at all.
+ * It waits rather than answering itself. A countdown was tried and taken out —
+ * three seconds is not long enough to read four titles and compare their covers,
+ * so it answered for the user more often than it let them answer. A scrape left
+ * on a prompt is stopped, and stopped is recoverable; a scrape that guessed
+ * while somebody was still reading is not. "Keep the best guess" is always on
+ * the card, and Back does the same thing.
  */
 @Composable
 fun ScrapeMatchDialog(
     pending: PendingMatch?,
-    onChoose: (MetadataCandidate) -> Unit,
+    focusedIndex: Int,
+    onChooseGame: (MetadataCandidate) -> Unit,
+    onChooseArtwork: (String) -> Unit,
     onUseAutomatic: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -64,33 +62,14 @@ fun ScrapeMatchDialog(
 
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
-
-    /*
-     * Driven from the frame clock against the deadline the manager set.
-     *
-     * Not a countdown this composable owns: the timeout is the scrape's, and a
-     * second timer here would drift from it — showing a bar with time left on a
-     * dialog that had already been answered, or the reverse.
-     */
-    var remaining by remember(pending.entryId) { mutableFloatStateOf(1f) }
-    LaunchedEffect(pending.entryId) {
-        val started = System.currentTimeMillis()
-        val span = (pending.deadlineEpochMs - started).coerceAtLeast(1L).toFloat()
-        while (true) {
-            withFrameMillis { }
-            val left = (pending.deadlineEpochMs - System.currentTimeMillis()) / span
-            remaining = left.coerceIn(0f, 1f)
-            if (remaining <= 0f) break
-        }
-    }
-    val bar by animateFloatAsState(targetValue = remaining, label = "matchCountdown")
+    val choosingArtwork = pending.artwork.isNotEmpty()
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(colors.scrim)
-            // Dismissing takes the automatic answer, which is the same thing
-            // waiting would have done — so a stray press cannot cost anything.
+            // Dismissing takes the automatic answer, which is what the scrape
+            // would have done unasked — so a stray press cannot cost anything.
             .clickable(onClick = onUseAutomatic),
         contentAlignment = Alignment.Center,
     ) {
@@ -102,7 +81,7 @@ fun ScrapeMatchDialog(
         ) {
             Column(modifier = Modifier.padding(dimens.spacing)) {
                 Text(
-                    text = "Which game is this?",
+                    text = if (choosingArtwork) "Which cover?" else "Which game is this?",
                     style = MaterialTheme.typography.titleMedium,
                     color = colors.onSurface,
                 )
@@ -112,24 +91,8 @@ fun ScrapeMatchDialog(
                     color = colors.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(bottom = dimens.spacingSmall),
                 )
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = dimens.spacingSmall, bottom = dimens.spacingSmall)
-                        .height(COUNTDOWN_HEIGHT.dp)
-                        .clip(ThorTheme.shapes.pill)
-                        .background(colors.onSurfaceVariant.copy(alpha = 0.16f)),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(bar)
-                            .fillMaxHeight()
-                            .clip(ThorTheme.shapes.pill)
-                            .background(colors.cursor),
-                    )
-                }
 
                 Column(
                     modifier = Modifier
@@ -137,15 +100,26 @@ fun ScrapeMatchDialog(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    pending.candidates.forEachIndexed { index, candidate ->
-                        CandidateRow(
-                            candidate = candidate,
-                            // The first is what the scrape would take anyway, so
-                            // it wears the highlight: the countdown and the
-                            // marked row then say the same thing.
-                            leading = index == 0,
-                            onClick = { onChoose(candidate) },
-                        )
+                    if (choosingArtwork) {
+                        pending.artwork.forEachIndexed { index, option ->
+                            ArtworkRow(
+                                option = option,
+                                focused = index == focusedIndex,
+                                onClick = { onChooseArtwork(option.url) },
+                            )
+                        }
+                    } else {
+                        pending.candidates.forEachIndexed { index, candidate ->
+                            CandidateRow(
+                                candidate = candidate,
+                                focused = index == focusedIndex,
+                                // The first is what the scrape would take
+                                // unasked, so it is named as such rather than
+                                // merely being at the top.
+                                leading = index == 0,
+                                onClick = { onChooseGame(candidate) },
+                            )
+                        }
                     }
                 }
 
@@ -167,6 +141,7 @@ fun ScrapeMatchDialog(
 @Composable
 private fun CandidateRow(
     candidate: MetadataCandidate,
+    focused: Boolean,
     leading: Boolean,
     onClick: () -> Unit,
 ) {
@@ -178,7 +153,7 @@ private fun CandidateRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
-            .thorCursor(focused = leading, shape = shape)
+            .thorCursor(focused = focused, shape = shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
@@ -216,9 +191,10 @@ private fun CandidateRow(
                     candidate.providerId.uppercase(),
                     candidate.metadata.releaseYear?.toString(),
                     candidate.metadata.developer,
+                    "best guess".takeIf { leading },
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant,
+                color = if (leading) colors.cursor else colors.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -232,10 +208,70 @@ private fun CandidateRow(
     }
 }
 
-private const val CARD_WIDTH = 400
-private const val CONTENT_MAX_HEIGHT = 220
-private const val COUNTDOWN_HEIGHT = 4
+/**
+ * One cover on offer.
+ *
+ * Drawn much larger than the thumbnail in the match list, because this row *is*
+ * the decision — the whole question is which of these pictures ends up on the
+ * grid, and it cannot be answered from a stamp.
+ */
+@Composable
+private fun ArtworkRow(
+    option: ArtworkOption,
+    focused: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = ThorTheme.colors
+    val shape = ThorTheme.shapes.small
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .thorCursor(focused = focused, shape = shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = ART_WIDTH.dp, height = ART_HEIGHT.dp)
+                .clip(shape)
+                .background(colors.surfaceElevated),
+            contentAlignment = Alignment.Center,
+        ) {
+            ArtworkImage(
+                model = option.url,
+                contentDescription = option.providerId,
+                // Fitted, not cropped: cover art comes at wildly different
+                // shapes and a crop would hide exactly the difference being
+                // chosen between.
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        Text(
+            text = option.providerId.uppercase(),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (focused) colors.onSurface else colors.onSurfaceVariant,
+            textAlign = TextAlign.Start,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .padding(start = 12.dp)
+                .weight(1f),
+        )
+    }
+}
+
+private const val CARD_WIDTH = 420
+private const val CONTENT_MAX_HEIGHT = 260
 
 /** Roughly box-art proportions, so a cover is recognisable at row height. */
 private const val COVER_WIDTH = 34
 private const val COVER_HEIGHT = 46
+
+/** The artwork step's own, which has to be big enough to actually judge. */
+private const val ART_WIDTH = 64
+private const val ART_HEIGHT = 88

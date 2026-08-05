@@ -1,7 +1,6 @@
 package com.thor.feature.settings.page
 
 import androidx.compose.runtime.Composable
-import com.thor.core.model.MetadataSettings
 import com.thor.core.model.ThorSettings
 import com.thor.data.metadata.ProviderStatus
 import com.thor.data.sync.ScrapeState
@@ -60,9 +59,9 @@ internal fun MetadataPage(
     RowDivider()
     SwitchRow(
         title = "Choose matches myself",
-        subtitle = "Shows the candidates when providers disagree, and takes the " +
-            "best guess after ${MetadataSettings.SCRAPE_CHOICE_SECONDS} seconds " +
-            "if nobody answers",
+        subtitle = "Shows the candidates when providers disagree, then the covers " +
+            "when they offer more than one. Scraping a single system asks about " +
+            "every game.",
         checked = metadata.askForMatches,
         focused = focusedRow == 2,
         onCheckedChange = { on -> viewModel.updateMetadata { it.copy(askForMatches = on) } },

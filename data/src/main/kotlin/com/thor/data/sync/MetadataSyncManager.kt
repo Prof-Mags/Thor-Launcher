@@ -28,23 +28,29 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** One cover on offer, and who supplied it. */
+data class ArtworkOption(val url: String, val providerId: String)
+
 /**
- * A game a scrape has paused on, waiting to be told which match is right.
+ * A game a scrape has paused on, and what it is asking.
  *
- * Carries the deadline rather than a remaining count so the dialog can render a
- * countdown without the manager having to tick one — and so a dialog that is
- * recomposed, or drawn a frame late, still shows the truth.
+ * Two questions rather than one, asked in order: which game this file is, and
+ * then which of the covers to keep. They are separate because the answers come
+ * from different places — the first decides what the game *is*, and every
+ * provider that recognised it then offers its own art for it, so the best match
+ * and the best cover are routinely from different sources.
+ *
+ * [artwork] empty means the first question is the one on screen.
  */
 data class PendingMatch(
     val entryId: String,
     val title: String,
     val candidates: List<MetadataCandidate>,
-    val deadlineEpochMs: Long,
+    val artwork: List<ArtworkOption> = emptyList(),
 )
 
 /** Progress of a metadata scrape. */
@@ -98,7 +104,7 @@ class MetadataSyncManager @Inject constructor(
     val pendingMatch: StateFlow<PendingMatch?> = _pendingMatch.asStateFlow()
 
     /**
-     * Completed by whichever comes first: the user, or the timeout.
+     * Completed by the user's answer, and by nothing else.
      *
      * A deferred rather than a channel because exactly one answer is wanted and
      * a second press must not queue an answer for the *next* game — which is
@@ -106,14 +112,20 @@ class MetadataSyncManager @Inject constructor(
      * scrape put the wrong metadata on a game nobody was looking at.
      */
     private var matchChoice: CompletableDeferred<MetadataCandidate?>? = null
+    private var artworkChoice: CompletableDeferred<String?>? = null
 
     /**
-     * Takes the user's answer to the current prompt.
+     * Takes the answer to "which game is this".
      *
      * @param candidate the match to apply, or null to take the automatic one.
      */
     fun chooseMatch(candidate: MetadataCandidate?) {
         matchChoice?.complete(candidate)
+    }
+
+    /** Takes the answer to "which cover"; null keeps whatever the match carried. */
+    fun chooseArtwork(url: String?) {
+        artworkChoice?.complete(url)
     }
 
     private var runningJob: Job? = null
@@ -315,10 +327,30 @@ class MetadataSyncManager @Inject constructor(
             val ask = if (alwaysAsk) candidates.isNotEmpty() else askForMatches && candidates.size > 1
             val chosen = if (ask) askForMatch(game, candidates) else null
 
-            val merged = if (chosen != null) {
+            val identified = if (chosen != null) {
                 aggregator.applyChosen(game.metadata, chosen)
             } else {
                 aggregator.mergeCandidates(candidates, game.metadata, replaceArtwork)
+            }
+
+            /*
+             * Then which cover, where the providers offered more than one.
+             *
+             * Only when the user is being asked at all, and only when there is
+             * something to choose between — one cover is not a choice, and the
+             * automatic path has no business stopping for a picture.
+             */
+            val covers = if (ask) artworkOptionsOf(candidates) else emptyList()
+            val cover = if (covers.size > 1) {
+                askForArtwork(game, candidates, covers)
+            } else {
+                null
+            }
+
+            val merged = if (cover == null) {
+                identified
+            } else {
+                identified.copy(artwork = identified.artwork.copy(boxArt = cover))
             }
 
             /*
@@ -423,15 +455,61 @@ class MetadataSyncManager @Inject constructor(
             entryId = game.id,
             title = game.title,
             candidates = candidates,
-            deadlineEpochMs = System.currentTimeMillis() + CHOICE_TIMEOUT_MS,
         )
         return try {
-            withTimeoutOrNull(CHOICE_TIMEOUT_MS) { deferred.await() }
+            deferred.await()
         } finally {
             _pendingMatch.value = null
             matchChoice = null
         }
     }
+
+    /**
+     * Asks which cover to keep, when more than one provider offered a different one.
+     *
+     * A separate question from the match because the answers come from different
+     * places: the provider that identified the game correctly is routinely not
+     * the one with the best art for it. Skipped where there is nothing to choose
+     * between, which is most games.
+     *
+     * @return the chosen URL, or null to keep whatever the match already carried.
+     */
+    private suspend fun askForArtwork(
+        game: GameEntity,
+        candidates: List<MetadataCandidate>,
+        options: List<ArtworkOption>,
+    ): String? {
+        val deferred = CompletableDeferred<String?>()
+        artworkChoice = deferred
+        _pendingMatch.value = PendingMatch(
+            entryId = game.id,
+            title = game.title,
+            candidates = candidates,
+            artwork = options,
+        )
+        return try {
+            deferred.await()
+        } finally {
+            _pendingMatch.value = null
+            artworkChoice = null
+        }
+    }
+
+    /**
+     * The distinct covers on offer, best-scoring provider first.
+     *
+     * Deduplicated by URL, because several providers serving the same image is
+     * not a choice — and a grid with the same picture in it twice reads as a
+     * bug rather than as an option.
+     */
+    private fun artworkOptionsOf(candidates: List<MetadataCandidate>): List<ArtworkOption> =
+        candidates
+            .sortedByDescending { it.confidence }
+            .mapNotNull { candidate ->
+                val url = candidate.artwork.boxArt ?: candidate.artwork.cellImage
+                url?.takeIf(String::isNotBlank)?.let { ArtworkOption(it, candidate.providerId) }
+            }
+            .distinctBy(ArtworkOption::url)
 
     private suspend fun scrapeFolderArtwork(onlyMissing: Boolean): Int {
         /*
@@ -589,9 +667,6 @@ class MetadataSyncManager @Inject constructor(
 
     private companion object {
         const val TAG = "MetadataSync"
-
-        /** The prompt's own patience, from the one place that states it. */
-        val CHOICE_TIMEOUT_MS = MetadataSettings.SCRAPE_CHOICE_SECONDS * 1_000L
 
         /** Sorts every non-flagship below every flagship, without excluding it. */
         const val FLAGSHIP_MISS = Int.MAX_VALUE

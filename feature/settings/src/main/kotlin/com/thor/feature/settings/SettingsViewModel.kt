@@ -613,11 +613,63 @@ class SettingsViewModel @Inject constructor(
     /** The game a scrape has paused on, or null; see [ScrapeMatchDialog]. */
     val pendingMatch: StateFlow<PendingMatch?> = metadataSyncManager.pendingMatch
 
-    fun chooseScrapeMatch(candidate: MetadataCandidate) =
-        metadataSyncManager.chooseMatch(candidate)
+    /**
+     * Which row of the prompt the controller is on.
+     *
+     * Its own cursor rather than the settings screen's, because the prompt
+     * outlives the screen: a scrape runs on the application scope, so this is
+     * raised over the grid just as readily as over Settings, and borrowing a
+     * cursor that only exists on one of those would leave it unusable on the
+     * other.
+     */
+    private val _matchFocus = MutableStateFlow(0)
+    val matchFocus: StateFlow<Int> = _matchFocus.asStateFlow()
 
-    /** Takes the automatic answer now rather than waiting for the countdown. */
-    fun keepAutomaticMatch() = metadataSyncManager.chooseMatch(null)
+    /** True while a scrape is waiting to be answered. */
+    val isChoosingMatch: Boolean get() = metadataSyncManager.pendingMatch.value != null
+
+    fun moveMatchFocus(delta: Int) {
+        val pending = metadataSyncManager.pendingMatch.value ?: return
+        val count = if (pending.artwork.isNotEmpty()) {
+            pending.artwork.size
+        } else {
+            pending.candidates.size
+        }
+        if (count <= 0) return
+        _matchFocus.value = (_matchFocus.value + delta).mod(count)
+    }
+
+    /** Takes whichever row the cursor is on. */
+    fun confirmMatchFocus() {
+        val pending = metadataSyncManager.pendingMatch.value ?: return
+        if (pending.artwork.isNotEmpty()) {
+            pending.artwork.getOrNull(_matchFocus.value)?.let { chooseScrapeArtwork(it.url) }
+        } else {
+            pending.candidates.getOrNull(_matchFocus.value)?.let(::chooseScrapeMatch)
+        }
+    }
+
+    fun chooseScrapeMatch(candidate: MetadataCandidate) {
+        // Back to the top for the artwork question, which is a different list.
+        _matchFocus.value = 0
+        metadataSyncManager.chooseMatch(candidate)
+    }
+
+    fun chooseScrapeArtwork(url: String) {
+        _matchFocus.value = 0
+        metadataSyncManager.chooseArtwork(url)
+    }
+
+    /** Takes the automatic answer to whichever question is on screen. */
+    fun keepAutomaticMatch() {
+        val pending = metadataSyncManager.pendingMatch.value ?: return
+        _matchFocus.value = 0
+        if (pending.artwork.isNotEmpty()) {
+            metadataSyncManager.chooseArtwork(null)
+        } else {
+            metadataSyncManager.chooseMatch(null)
+        }
+    }
 
     /**
      * Platforms with their installable emulators resolved.

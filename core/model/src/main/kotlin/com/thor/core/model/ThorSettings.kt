@@ -539,23 +539,15 @@ data class MetadataSettings(
      * files match one thing, so this asks far less often than "every game" makes
      * it sound.
      *
-     * It never blocks indefinitely — see [SCRAPE_CHOICE_SECONDS]. A scrape is a
-     * long unattended job, and one left waiting on a dialog nobody is in the room
-     * for has simply stopped.
+     * The prompt waits rather than answering itself. A countdown was tried and
+     * taken out: three seconds is not long enough to read four titles and
+     * compare their covers, so it answered for the user more often than it let
+     * them answer, which is the opposite of what this setting is for. A scrape
+     * left on a prompt is stopped, and stopped is recoverable — a scrape that
+     * guessed while somebody was still reading is not.
      */
     val askForMatches: Boolean = true,
-) {
-    companion object {
-        /**
-         * How long the match prompt waits before answering itself.
-         *
-         * Short on purpose. It is long enough to stop a scrape you are watching
-         * and take the choice, and short enough that walking away still gets you
-         * a finished library rather than a dialog on a dark screen.
-         */
-        const val SCRAPE_CHOICE_SECONDS = 3
-    }
-}
+)
 
 @Serializable
 data class ControlSettings(
