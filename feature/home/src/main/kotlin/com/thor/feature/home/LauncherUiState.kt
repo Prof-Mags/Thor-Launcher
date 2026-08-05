@@ -1,13 +1,15 @@
 package com.thor.feature.home
 
 import androidx.compose.runtime.Immutable
+import com.thor.core.model.FolderEntry
 import com.thor.core.model.FolderStyle
 import com.thor.core.model.GridEntry
 import com.thor.core.model.GridPage
 import com.thor.core.model.GridPlacement
 import com.thor.core.model.GridSpec
-import com.thor.core.model.FolderEntry
 import com.thor.core.model.Platform
+import com.thor.feature.home.couch.platform
+import com.thor.feature.home.shell.icon
 
 /**
  * What the two screens render.

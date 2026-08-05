@@ -103,8 +103,8 @@ import com.thor.feature.home.LauncherEffect
 import com.thor.feature.home.AppDrawerScreen
 import com.thor.feature.home.InputSurface
 import com.thor.feature.home.LauncherViewModel
-import com.thor.feature.home.component.EditEntryDialog
-import com.thor.feature.home.component.EmptySection
+import com.thor.feature.home.dialog.EditEntryDialog
+import com.thor.feature.home.shell.EmptySection
 import com.thor.feature.movies.MoviesBottomPanel
 import com.thor.feature.movies.couch.MoviesCouchScreen
 import com.thor.feature.movies.MoviesMode
@@ -123,9 +123,9 @@ import com.thor.feature.movies.pickSeason
 import com.thor.feature.movies.pickEpisode
 import com.thor.feature.movies.pickTitle
 import com.thor.core.model.LauncherTab
-import com.thor.feature.home.component.SideMenuAction
-import com.thor.feature.home.component.ShortcutPanel
-import com.thor.feature.home.component.SortDialog
+import com.thor.feature.home.menu.SideMenuAction
+import com.thor.feature.home.shell.ShortcutPanel
+import com.thor.feature.home.dialog.SortDialog
 import com.thor.feature.search.SearchScreen
 import com.thor.feature.search.SearchViewModel
 import com.thor.feature.settings.SettingsCategory

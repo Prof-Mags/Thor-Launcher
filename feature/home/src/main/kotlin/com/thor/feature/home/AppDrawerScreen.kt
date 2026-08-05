@@ -2,11 +2,11 @@ package com.thor.feature.home
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -16,9 +16,9 @@ import com.thor.core.model.AppEntry
 import com.thor.core.model.FolderStyle
 import com.thor.core.model.GridSpec
 import com.thor.core.ui.component.AnimatedWallpaperBackground
-import com.thor.feature.home.component.GridCellData
-import com.thor.feature.home.component.GridPager
-import com.thor.feature.home.component.PageIndicators
+import com.thor.feature.home.grid.GridCellData
+import com.thor.feature.home.grid.GridPager
+import com.thor.feature.home.grid.PageIndicators
 
 /**
  * Every installed application, in the launcher's own grid.

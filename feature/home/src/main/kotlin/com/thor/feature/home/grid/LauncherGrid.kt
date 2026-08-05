@@ -1,4 +1,4 @@
-package com.thor.feature.home.component
+package com.thor.feature.home.grid
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.PlatformFolders
+import com.thor.feature.home.couch.platform
 import com.thor.feature.home.EditMode
 import com.thor.feature.home.LauncherUiState
 

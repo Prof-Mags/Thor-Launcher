@@ -4,9 +4,9 @@ import com.google.common.truth.Truth.assertThat
 import com.thor.core.model.AppEntry
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
-import com.thor.core.model.PlayStats
 import com.thor.core.model.GridEntry
 import com.thor.core.model.PlatformFolders
+import com.thor.core.model.PlayStats
 import org.junit.Test
 
 /**

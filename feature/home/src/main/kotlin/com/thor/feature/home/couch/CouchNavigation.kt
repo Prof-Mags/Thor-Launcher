@@ -1,5 +1,7 @@
 package com.thor.feature.home.couch
 
+import com.thor.feature.home.LauncherViewModel
+
 /**
  * Which region of the dashboard the controller is in.
  *
