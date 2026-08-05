@@ -503,6 +503,27 @@ fun ThorApp(
     val lastDisplayMode = remember { mutableStateOf<DualScreenMode?>(null) }
 
     /*
+     * Couch mode has one surface, so the controller is pointed at it.
+     *
+     * `touchedSurface` is a lock: it holds until the *other* surface is touched,
+     * which is right while there are two of them and wrong the moment there is
+     * one. Couch mode is reached from Settings, which is drawn on the information
+     * surface — so a viewer who turned it on by touching that page arrived in
+     * couch mode with the controller still aimed at a surface this mode does not
+     * draw. Every press went somewhere invisible and the screen looked deaf until
+     * it was tapped, which is precisely why tapping fixed it: a tap on the one
+     * panel there is puts the lock back where it can only have been.
+     *
+     * The yield goes with it. A claim given up so an app could take a panel means
+     * nothing in a mode that has no second panel to give away.
+     */
+    LaunchedEffect(mode) {
+        if (mode != DualScreenMode.COUCH) return@LaunchedEffect
+        touchedSurface = InputSurface.BOTTOM
+        focusYieldedToApp = false
+    }
+
+    /*
      * Films and Shows are two tabs over one section, and either end can move
      * first.
      *

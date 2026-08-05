@@ -18,9 +18,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -54,6 +56,21 @@ fun ThorDropdownMenu(
 ) {
     val colors = ThorTheme.colors
 
+    /*
+     * The size the menu was opened at, carried into its own window.
+     *
+     * A dropdown is a popup, and a popup is a separate composition with a Compose
+     * owner of its own — which provides [LocalDensity] from that view's resources
+     * and discards whatever the tree above it provided. Couch mode composes the
+     * whole launcher through a scaled density and the movies section scales its
+     * content again on top of that, so a menu raised from either came up at the
+     * panel's raw size: arithmetically correct, and visibly a different interface
+     * from the screen that opened it.
+     *
+     * A no-op everywhere the two agree, which is everywhere but couch mode.
+     */
+    val openedAt = LocalDensity.current
+
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
@@ -65,8 +82,12 @@ fun ThorDropdownMenu(
         shadowElevation = 0.dp,
         tonalElevation = 0.dp,
         modifier = modifier.background(colors.surfaceHighest),
-        content = content,
-    )
+    ) {
+        val column = this
+        CompositionLocalProvider(LocalDensity provides openedAt) {
+            column.content()
+        }
+    }
 }
 
 /**
