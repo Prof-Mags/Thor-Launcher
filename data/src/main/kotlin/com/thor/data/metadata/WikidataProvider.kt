@@ -374,7 +374,7 @@ class WikidataProvider @Inject constructor(
          * synopsis the panel has to truncate is worse than a shorter one that
          * ends where it meant to.
          */
-        private const val DESCRIPTION_SENTENCES = 4
+        private const val DESCRIPTION_SENTENCES = 3
 
         /**
          * Identifies THOR to Wikidata, per their API etiquette.

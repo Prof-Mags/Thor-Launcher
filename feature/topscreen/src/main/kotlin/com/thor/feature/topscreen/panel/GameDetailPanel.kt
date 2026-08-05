@@ -39,6 +39,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.thor.core.common.text.splitSentences
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.GameEntry
 import com.thor.core.model.Platform
@@ -750,30 +751,75 @@ private fun GameDescription(text: String, color: Color, modifier: Modifier = Mod
 
     BoxWithConstraints(modifier = modifier) {
         val available = constraints
-        val style = remember(text, available, base) {
-            val scale = fittedTextScale(
+        val fitted = remember(text, available, base) {
+            fitDescription(
+                text = text,
                 available = available.maxHeight,
-                measureHeight = { candidate ->
+                measureHeight = { candidate, body ->
                     measurer.measure(
-                        text = AnnotatedString(text),
+                        text = AnnotatedString(body),
                         style = base.scaledBy(candidate),
                         constraints = Constraints(maxWidth = available.maxWidth),
                     ).size.height
                 },
             )
-            base.scaledBy(scale)
         }
 
         Text(
-            text = text,
-            style = style,
+            text = fitted.text,
+            style = base.scaledBy(fitted.scale),
             color = color,
-            // No line cap: the fitted size is what keeps it inside the panel, and
-            // a cap on top of it would truncate text that had already been made
-            // to fit.
+            // No line cap: the fitted size and the sentence count are what keep
+            // this inside the panel, and a cap on top of them would truncate
+            // text that had already been made to fit.
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/** What to draw, and how big: the outcome of [fitDescription]. */
+internal data class FittedDescription(val text: String, val scale: Float)
+
+/**
+ * Makes a synopsis fit, by shrinking it and then by shortening it.
+ *
+ * Shrinking alone was the whole mechanism, and it has a floor — below
+ * [MIN_DESCRIPTION_SCALE] the text is smaller than anything else on the panel.
+ * A description long enough to hit that floor and still overflow was then
+ * ellipsised, which is where "…the princess is kidnapped by Bows" came from: the
+ * one outcome the fitter exists to prevent, reached by the fitter running out of
+ * room.
+ *
+ * So size gives way first, because a slightly smaller synopsis is a whole
+ * synopsis. Only when that is exhausted do whole sentences come off the end, and
+ * they come off *whole* — what remains is shorter than what the scraper wrote
+ * and reads as though it were written that way, which is the difference between
+ * a summary and a truncation.
+ */
+internal fun fitDescription(
+    text: String,
+    available: Int,
+    /** Height of [String] rendered at a given scale. */
+    measureHeight: (Float, String) -> Int,
+): FittedDescription {
+    if (available <= 0 || available == Constraints.Infinity) return FittedDescription(text, 1f)
+
+    val scale = fittedTextScale(available) { measureHeight(it, text) }
+    if (measureHeight(scale, text) <= available) return FittedDescription(text, scale)
+
+    // Still over at the smallest size worth reading, so drop sentences from the
+    // end — the last one first, since a synopsis front-loads what it is about.
+    val sentences = text.splitSentences()
+    for (count in sentences.size - 1 downTo 1) {
+        val candidate = sentences.take(count).joinToString(" ")
+        if (measureHeight(MIN_DESCRIPTION_SCALE, candidate) <= available) {
+            return FittedDescription(candidate, MIN_DESCRIPTION_SCALE)
+        }
+    }
+
+    // Not even one sentence fits. Show the first and let it ellipsise: there is
+    // nothing left to give up, and an empty panel says less than a cut one.
+    return FittedDescription(sentences.firstOrNull() ?: text, MIN_DESCRIPTION_SCALE)
 }
 
 /**

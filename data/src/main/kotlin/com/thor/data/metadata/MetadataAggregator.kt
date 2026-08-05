@@ -3,20 +3,21 @@ package com.thor.data.metadata
 import com.thor.core.common.dispatchers.Dispatcher
 import com.thor.core.common.dispatchers.ThorDispatcher
 import com.thor.core.common.log.ThorLog
+import com.thor.core.common.text.truncateToSentences
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.model.ArtworkSet
 import com.thor.core.model.GameMetadata
 import com.thor.core.model.MetadataSettings
-import kotlinx.coroutines.CoroutineDispatcher
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * Queries every enabled provider and merges the results into one record.
@@ -256,7 +257,14 @@ class MetadataAggregator @Inject constructor(
                 existing.description,
                 preferred = DESCRIPTION_PROVIDER,
             ) {
-                it.metadata.description
+                /*
+                 * Capped here, inside the selector, so it applies to what a
+                 * provider offers and never to what is already stored. A
+                 * description the user typed in the editor is `existing` and is
+                 * returned untouched; shortening that would be editing their
+                 * writing on their behalf.
+                 */
+                it.metadata.description?.truncateToSentences(DESCRIPTION_MAX_CHARS)
             },
             genres = if (GameMetadata.FIELD_GENRES in locked || existing.genres.isNotEmpty()) {
                 existing.genres
@@ -405,6 +413,22 @@ class MetadataAggregator @Inject constructor(
         const val ARTWORK_PROVIDER = "igdb"
         const val ICON_PROVIDER = "steamgriddb"
         const val DESCRIPTION_PROVIDER = "wikidata"
+
+        /**
+         * How much synopsis is worth keeping.
+         *
+         * Wikipedia is asked for a few sentences and obliges; the others hand
+         * over whatever their page holds, and ScreenScraper in particular will
+         * return several hundred words of plot for a platformer. The information
+         * panel is a few square inches and has to make what it is given fit, so
+         * everything past roughly a short paragraph was only ever going to be
+         * dropped at the far end — better to not carry it in the first place
+         * than to store an essay and shrink it on every frame.
+         *
+         * Cut on a sentence, never at the character, so what is stored reads as
+         * something somebody wrote rather than as something that ran out.
+         */
+        const val DESCRIPTION_MAX_CHARS = 600
 
         /**
          * Concurrent provider requests per game.

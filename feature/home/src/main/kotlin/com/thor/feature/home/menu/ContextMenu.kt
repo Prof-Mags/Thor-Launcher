@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
@@ -52,13 +55,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
@@ -67,10 +70,11 @@ import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
 import com.thor.core.model.PlatformFolders
-import com.thor.core.ui.component.ThorMenuRow
+import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.feature.home.couch.platform
+import com.thor.feature.home.grid.AppIcon
 import com.thor.feature.home.shell.icon
 
 /**
@@ -85,22 +89,65 @@ enum class ContextAction(
     val label: String,
     val description: String,
     val icon: ImageVector,
+    /**
+     * The caption on the tile itself.
+     *
+     * The menu is a grid of half-width tiles now, which is what lets a game's
+     * eleven actions be on screen at once — but half a card is about twelve
+     * characters, and "Launch on second screen" is twenty-three. The full
+     * [label] and [description] are still read before anything is pressed:
+     * both are shown for whichever tile holds the cursor, on one line under the
+     * grid. So the tile says which one it is and the line underneath says what
+     * it does, rather than every row paying for a caption in full.
+     */
+    val short: String,
 ) {
-    LAUNCH("Launch", "Start this now", Icons.Rounded.PlayArrow),
-    LAUNCH_MAIN_SCREEN("Launch on main screen", "Open on the top display", Icons.Rounded.Monitor),
+    LAUNCH("Launch", "Start this now", Icons.Rounded.PlayArrow, "Launch"),
+    LAUNCH_MAIN_SCREEN(
+        "Launch on main screen",
+        "Open on the top display",
+        Icons.Rounded.Monitor,
+        "Top screen",
+    ),
     LAUNCH_SECOND_SCREEN(
         "Launch on second screen",
         "Open on the bottom display",
         Icons.Rounded.Tablet,
+        "Bottom screen",
     ),
-    ADD_TO_GRID("Add to grid", "Give this a cell on the home screen", Icons.AutoMirrored.Rounded.AddToHomeScreen),
-    REMOVE_FROM_GRID("Remove from grid", "Free the cell; keeps the entry", Icons.Rounded.VisibilityOff),
-    MOVE_TO_FOLDER("Move to folder…", "File this under another folder", Icons.AutoMirrored.Rounded.DriveFileMove),
-    REMOVE_FROM_FOLDER("Take out of folder", "Return this to the home grid", Icons.Rounded.FolderOff),
-    EDIT("Edit…", "Title, artwork, details and emulator", Icons.Rounded.Edit),
-    APP_INFO("App info", "Open Android's settings page", Icons.Rounded.Info),
-    TOGGLE_FAVORITE("Favourite", "Keep this at the front of the rail", Icons.Rounded.StarOutline),
-    HIDE("Hide from grid", "Stays in the library and in search", Icons.Rounded.VisibilityOff),
+    ADD_TO_GRID(
+        "Add to grid",
+        "Give this a cell on the home screen",
+        Icons.AutoMirrored.Rounded.AddToHomeScreen,
+        "Add to grid",
+    ),
+    REMOVE_FROM_GRID(
+        "Remove from grid",
+        "Free the cell; keeps the entry",
+        Icons.Rounded.VisibilityOff,
+        "Clear cell",
+    ),
+    MOVE_TO_FOLDER(
+        "Move to folder…",
+        "File this under another folder",
+        Icons.AutoMirrored.Rounded.DriveFileMove,
+        "Move…",
+    ),
+    REMOVE_FROM_FOLDER(
+        "Take out of folder",
+        "Return this to the home grid",
+        Icons.Rounded.FolderOff,
+        "Unfile",
+    ),
+    EDIT("Edit…", "Title, artwork, details and emulator", Icons.Rounded.Edit, "Edit…"),
+    APP_INFO("App info", "Open Android's settings page", Icons.Rounded.Info, "App info"),
+    TOGGLE_FAVORITE(
+        "Favourite",
+        "Keep this at the front of the rail",
+        Icons.Rounded.StarOutline,
+        "Favourite",
+    ),
+    HIDE("Hide from grid", "Stays in the library and in search", Icons.Rounded.VisibilityOff, "Hide"),
 
     /**
      * Offered in place of [HIDE] on an entry that is already hidden.
@@ -110,9 +157,14 @@ enum class ContextAction(
      * caption depends on state is exactly the kind of thing that ends up saying
      * "Hide" over an entry that is already hidden.
      */
-    UNHIDE("Show on grid", "Put this back on the home screen", Icons.Rounded.Visibility),
+    UNHIDE("Show on grid", "Put this back on the home screen", Icons.Rounded.Visibility, "Show"),
 
-    UNINSTALL("Uninstall", "Removes the app from the device", Icons.Rounded.DeleteOutline),
+    UNINSTALL(
+        "Uninstall",
+        "Removes the app from the device",
+        Icons.Rounded.DeleteOutline,
+        "Uninstall",
+    ),
 
     /**
      * Removes the entry from the library, as opposed to hiding it.
@@ -121,7 +173,15 @@ enum class ContextAction(
      * the point: this is the way to undo a state an entry has got stuck in, not a
      * way to delete anything from disk. THOR never touches the user's files.
      */
-    DELETE("Remove from library", "Your files are left untouched", Icons.Rounded.DeleteForever),
+    DELETE(
+        "Remove from library",
+        "Your files are left untouched",
+        Icons.Rounded.DeleteForever,
+        // Not "Remove", which is what the grid action would shorten to as well.
+        // The two sit together in the drawer and are the pair this menu most
+        // has to keep apart.
+        "Forget",
+    ),
 
     /**
      * Hand-picked artwork for a game, as a shortcut.
@@ -131,8 +191,13 @@ enum class ContextAction(
      * where a full correction belongs; these are here because swapping a wrong
      * cover is the single most common fix and should not need a dialog.
      */
-    SET_GAME_COVER("Choose cover…", "Replace the tall box art", Icons.Rounded.Image),
-    SET_GAME_BACKDROP("Choose backdrop…", "Replace the wide banner", Icons.Rounded.Wallpaper),
+    SET_GAME_COVER("Choose cover…", "Replace the tall box art", Icons.Rounded.Image, "Cover…"),
+    SET_GAME_BACKDROP(
+        "Choose backdrop…",
+        "Replace the wide banner",
+        Icons.Rounded.Wallpaper,
+        "Backdrop…",
+    ),
 
     /**
      * Hands a game's pictures back to the scrapers.
@@ -142,7 +207,12 @@ enum class ContextAction(
      * find these again", and the editor's own edits now lock artwork against the
      * next scrape, so there has to be a way to unlock it.
      */
-    CLEAR_GAME_ARTWORK("Reset artwork", "Let the scrapers choose again", Icons.Rounded.Restore),
+    CLEAR_GAME_ARTWORK(
+        "Reset artwork",
+        "Let the scrapers choose again",
+        Icons.Rounded.Restore,
+        "Reset art",
+    ),
 
     /**
      * Hand-picked artwork for a platform folder.
@@ -155,15 +225,26 @@ enum class ContextAction(
      * wanted. Choosing one by hand marks it as the user's, and nothing — not a
      * rescrape, not a newly installed icon pack — overwrites it afterwards.
      */
-    SET_PLATFORM_ICON("Choose icon…", "Pick an image for this system", Icons.Rounded.Image),
-    SET_PLATFORM_HERO("Choose backdrop…", "Pick the wide banner image", Icons.Rounded.Wallpaper),
+    SET_PLATFORM_ICON("Choose icon…", "Pick an image for this system", Icons.Rounded.Image, "Icon…"),
+    SET_PLATFORM_HERO(
+        "Choose backdrop…",
+        "Pick the wide banner image",
+        Icons.Rounded.Wallpaper,
+        "Backdrop…",
+    ),
     CLEAR_PLATFORM_ARTWORK(
         "Reset artwork",
         "Back to the pack's own icon",
         Icons.Rounded.Restore,
+        "Reset art",
     ),
 
-    DELETE_FOLDER("Delete folder", "Its contents return to the grid", Icons.Rounded.Delete),
+    DELETE_FOLDER(
+        "Delete folder",
+        "Its contents return to the grid",
+        Icons.Rounded.Delete,
+        "Delete folder",
+    ),
 }
 
 /**
@@ -260,6 +341,20 @@ fun contextActionsFor(
  * Presented as a centred card rather than a bottom sheet: the bottom of the
  * panel is occupied by the dock, and a sheet sliding up from there would cover
  * it and read as part of it.
+ *
+ * A grid of tiles rather than a list of rows. A game on the grid offers eleven
+ * actions, and as full-width rows carrying an icon tile, a label and a line of
+ * description that came to some seven hundred device-independent pixels against
+ * a panel about four hundred tall — so the menu scrolled, and the actions past
+ * the fold were reachable only by discovering that it did. Two columns halves
+ * the height; the tile height is then measured against the space actually
+ * available rather than fixed, so the whole set is on screen on the handheld
+ * panel and merely generous on a television.
+ *
+ * What the tiles give up is the per-row description, which is restored where it
+ * is actually read: one line under the grid, for whichever tile holds the
+ * cursor. Nobody reads eleven descriptions; they read the one they are about to
+ * press.
  */
 @Composable
 fun EntryContextMenu(
@@ -284,7 +379,7 @@ fun EntryContextMenu(
         exit = fadeOut(motion.tweenSpec(motion.selectionMillis)),
         modifier = modifier.fillMaxSize(),
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.scrim)
@@ -293,7 +388,30 @@ fun EntryContextMenu(
         ) {
             // `entry` is captured once so the card keeps rendering its content
             // through the exit animation instead of blanking on dismissal.
-            val target = entry ?: return@Box
+            val target = entry ?: return@BoxWithConstraints
+            val actions = contextActionsFor(
+                target, hasSecondScreen, fromDrawer, onGrid, foldersExist, inFolder,
+            )
+            if (actions.isEmpty()) return@BoxWithConstraints
+
+            val rows = (actions.size + CONTEXT_MENU_COLUMNS - 1) / CONTEXT_MENU_COLUMNS
+            /*
+             * What is left for the tiles once everything around them is paid for.
+             *
+             * Measured rather than assumed: this card is raised over the handheld
+             * panel and over a television, and the same fixed tile height cannot be
+             * right for both. The clamp is what keeps it sane at the extremes — a
+             * floor so the tiles do not become unreadable slivers on a short panel,
+             * a ceiling so eleven actions on a big screen do not become eleven
+             * billboards.
+             */
+            val chrome = (HEADER_HEIGHT + HEADER_GAP + HINT_HEIGHT + CARD_PADDING * 2).dp +
+                TILE_GAP.dp * (rows - 1)
+            val budget = maxHeight * CARD_HEIGHT_FRACTION - chrome
+            val tileHeight = (budget / rows).coerceIn(TILE_MIN.dp, TILE_MAX.dp)
+            // Only when even the floor will not fit, which the handheld does not
+            // reach; a card that never scrolls is the point of all of the above.
+            val overflows = tileHeight * rows + chrome > maxHeight
 
             AnimatedVisibility(
                 visible = true,
@@ -306,51 +424,53 @@ fun EntryContextMenu(
                     // reusing the base surface made them read as part of it.
                     color = ThorTheme.colors.surfaceHighest,
                     modifier = Modifier
-                        // Capped rather than fixed: the rows read at body size now,
-                        // and a flat 360dp had no answer for a panel narrower than
-                        // itself — the card would simply have run off the edge.
+                        // Capped rather than fixed: a flat width had no answer for a
+                        // panel narrower than itself — the card would simply have run
+                        // off the edge.
                         .fillMaxWidth(CARD_FRACTION)
                         .widthIn(max = CARD_WIDTH.dp)
                         .clickable(enabled = false) {},
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(dimens.spacing),
-                    ) {
-                        Text(
-                            text = target.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = colors.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = target.subtitle(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(bottom = dimens.spacingSmall),
-                        )
+                    Column(modifier = Modifier.padding(CARD_PADDING.dp)) {
+                        ContextHeader(target)
 
                         Column(
-                            modifier = Modifier.verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalArrangement = Arrangement.spacedBy(TILE_GAP.dp),
+                            modifier = Modifier
+                                .padding(top = HEADER_GAP.dp)
+                                .then(
+                                    if (overflows) {
+                                        Modifier.verticalScroll(rememberScrollState())
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
                         ) {
-                            contextActionsFor(
-                                target, hasSecondScreen, fromDrawer, onGrid,
-                                foldersExist, inFolder,
-                            )
-                                .forEachIndexed { index, action ->
-                                    ContextRow(
-                                        action = action,
-                                        entry = target,
-                                        focused = index == focusedIndex,
-                                        onClick = { onAction(action) },
-                                    )
+                            repeat(rows) { row ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(TILE_GAP.dp)) {
+                                    repeat(CONTEXT_MENU_COLUMNS) { column ->
+                                        val index = row * CONTEXT_MENU_COLUMNS + column
+                                        val action = actions.getOrNull(index)
+                                        if (action == null) {
+                                            // Holds the column so a ragged last row
+                                            // keeps its tiles the width of every other.
+                                            Spacer(Modifier.weight(1f))
+                                        } else {
+                                            ContextTile(
+                                                action = action,
+                                                entry = target,
+                                                focused = index == focusedIndex,
+                                                height = tileHeight,
+                                                onClick = { onAction(action) },
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                        }
+                                    }
                                 }
+                            }
                         }
+
+                        ContextHint(action = actions.getOrNull(focusedIndex), entry = target)
                     }
                 }
             }
@@ -358,36 +478,168 @@ fun EntryContextMenu(
     }
 }
 
+/** The entry this menu is about: its own picture, its name, and what it is. */
+@Composable
+private fun ContextHeader(entry: GridEntry) {
+    val colors = ThorTheme.colors
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.height(HEADER_HEIGHT.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(HEADER_ICON.dp)
+                .clip(RoundedCornerShape(HEADER_ICON_RADIUS.dp))
+                .background(colors.surface),
+            contentAlignment = Alignment.Center,
+        ) {
+            ContextEntryIcon(entry)
+        }
+
+        Column(
+            modifier = Modifier
+                .padding(start = HEADER_GAP.dp)
+                .weight(1f),
+        ) {
+            Text(
+                text = entry.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.onSurface,
+                // Two lines here where the rest of the menu takes one: this is the
+                // one string on the card the user came in knowing, and a game whose
+                // name is cut at "The Legend of Zelda: Ocarina of…" is the entry
+                // they cannot confirm they picked.
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = entry.subtitle(),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
+ * The same picture the entry wears on the grid.
+ *
+ * Deliberately the grid's own choice rather than a fresh one: the user pressed Y
+ * on a cell they were looking at, and a menu that opened with a different image
+ * at the top would read as being about something else.
+ */
+@Composable
+private fun ContextEntryIcon(entry: GridEntry) {
+    val inset = Modifier
+        .fillMaxSize()
+        .padding(HEADER_ICON_INSET.dp)
+
+    when (entry) {
+        is GameEntry -> ArtworkImage(
+            model = entry.metadata.artwork.cellImage,
+            contentDescription = entry.title,
+            fallbackText = entry.title,
+            // The cell tints its fallback with the platform's accent; the menu
+            // has no platform map to hand and the fallback only shows when there
+            // is no artwork at all, so it is not worth threading one through.
+            fallbackTint = ThorTheme.colors.primary,
+            // Fit rather than crop, as on the cell: box art is rarely square.
+            contentScale = ContentScale.Fit,
+            modifier = inset,
+        )
+
+        is AppEntry -> if (entry.customIconUri != null) {
+            ArtworkImage(
+                model = entry.customIconUri,
+                contentDescription = entry.title,
+                fallbackText = entry.title,
+                contentScale = ContentScale.Fit,
+                modifier = inset,
+            )
+        } else {
+            AppIcon(
+                packageName = entry.packageName,
+                title = entry.title,
+                shape = RoundedCornerShape(HEADER_ICON_RADIUS.dp),
+            )
+        }
+
+        is FolderEntry -> Icon(
+            imageVector = Icons.Rounded.Folder,
+            contentDescription = entry.title,
+            tint = ThorTheme.colors.primary,
+            modifier = Modifier.size(HEADER_GLYPH.dp),
+        )
+
+        else -> ArtworkImage(
+            model = null,
+            contentDescription = entry.title,
+            fallbackText = entry.title,
+            contentScale = ContentScale.Fit,
+            modifier = inset,
+        )
+    }
+}
+
+/**
+ * What the tile under the cursor actually does.
+ *
+ * Height is reserved whether or not there is anything to say, so the card does
+ * not change size as the cursor moves across it.
+ */
+@Composable
+private fun ContextHint(action: ContextAction?, entry: GridEntry) {
+    val colors = ThorTheme.colors
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(HINT_HEIGHT.dp),
+    ) {
+        if (action == null) return@Row
+        Text(
+            text = action.labelFor(entry),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (action.isDestructive) colors.error else colors.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = action.descriptionFor(entry),
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = HINT_GAP.dp),
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ContextRow(
+private fun ContextTile(
     action: ContextAction,
     entry: GridEntry,
     focused: Boolean,
+    height: Dp,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    val shape = RoundedCornerShape(TILE_RADIUS.dp)
+    val hover = rememberPointerHover()
+    val lit = focused || hover.isHovered
 
-    // The favourite row reflects current state rather than being a static label.
-    val label = if (action == ContextAction.TOGGLE_FAVORITE && entry.isFavorite) {
-        "Remove from favourites"
-    } else {
-        action.label
-    }
-    val icon = if (action == ContextAction.TOGGLE_FAVORITE && entry.isFavorite) {
-        Icons.Rounded.Star
-    } else {
-        action.icon
-    }
-    val description = if (action == ContextAction.TOGGLE_FAVORITE && entry.isFavorite) {
-        "Stop keeping this at the front"
-    } else {
-        action.description
-    }
-    val destructive = action == ContextAction.UNINSTALL || action == ContextAction.DELETE_FOLDER
+    // A destructive tile reads in the error colour throughout, focused or not.
+    // The cursor tint would otherwise make "Uninstall" the one tile that stops
+    // looking dangerous at the moment it is about to be pressed.
+    val accent = if (action.isDestructive) colors.error else colors.cursor
 
     val requester = remember { BringIntoViewRequester() }
-
     LaunchedEffect(focused) {
         if (focused) {
             withFrameNanos { }
@@ -395,19 +647,62 @@ private fun ContextRow(
         }
     }
 
-    ThorMenuRow(
-        label = label,
-        description = description,
-        icon = icon,
-        focused = focused,
-        // A destructive row reads in the error colour throughout, focused or
-        // not. The cursor tint would otherwise make "Uninstall" the one row that
-        // stops looking dangerous at the moment it is about to be pressed.
-        accent = if (destructive) colors.error else null,
-        modifier = Modifier.bringIntoViewRequester(requester),
-        onClick = onClick,
-    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .height(height)
+            .clip(shape)
+            .background(if (lit) accent.copy(alpha = TILE_LIT_ALPHA) else colors.surface)
+            .thorCursor(focused = lit, shape = shape)
+            .pointerHover(hover)
+            .bringIntoViewRequester(requester)
+            .clickable(onClick = onClick)
+            .padding(horizontal = TILE_INSET.dp),
+    ) {
+        Icon(
+            imageVector = action.iconFor(entry),
+            contentDescription = null,
+            tint = if (action.isDestructive) colors.error else colors.onSurface,
+            modifier = Modifier.size(TILE_GLYPH.dp),
+        )
+        Text(
+            text = action.shortFor(entry),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (action.isDestructive) colors.error else colors.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = TILE_GAP.dp),
+        )
+    }
 }
+
+/**
+ * Favouriting is the one action whose caption depends on where it already is.
+ *
+ * Resolved here rather than in the enum because the enum describes the action
+ * and this describes the entry — and a "Favourite" tile over something already
+ * favourited is the sort of thing that survives review by being technically the
+ * name of the action.
+ */
+private fun ContextAction.isFavouriteOn(entry: GridEntry): Boolean =
+    this == ContextAction.TOGGLE_FAVORITE && entry.isFavorite
+
+private fun ContextAction.labelFor(entry: GridEntry): String =
+    if (isFavouriteOn(entry)) "Remove from favourites" else label
+
+private fun ContextAction.shortFor(entry: GridEntry): String =
+    if (isFavouriteOn(entry)) "Unfavourite" else short
+
+private fun ContextAction.descriptionFor(entry: GridEntry): String =
+    if (isFavouriteOn(entry)) "Stop keeping this at the front" else description
+
+private fun ContextAction.iconFor(entry: GridEntry): ImageVector =
+    if (isFavouriteOn(entry)) Icons.Rounded.Star else icon
+
+private val ContextAction.isDestructive: Boolean
+    get() = this == ContextAction.UNINSTALL ||
+        this == ContextAction.DELETE ||
+        this == ContextAction.DELETE_FOLDER
 
 /** One-line description shown under the entry's title. */
 private fun GridEntry.subtitle(): String = when (this) {
@@ -423,16 +718,82 @@ private fun GridEntry.subtitle(): String = when (this) {
 }
 
 /**
- * Wider than the single-line menu it replaces: the rows now carry a leading
- * icon tile and a line of description under the label, and at the old width the
- * longer captions wrapped to three lines.
+ * How many tiles stand across the card.
+ *
+ * Shared with the view model, which moves the cursor: left and right step by
+ * one, up and down step by a row, and a layout that knew its own width while
+ * the navigation did not is a cursor that appears to jump at random. Fixed
+ * rather than derived from the width for the same reason — the two have to
+ * agree, and only one of them can measure the screen.
  */
-private const val CARD_WIDTH = 392
+const val CONTEXT_MENU_COLUMNS = 2
+
+/**
+ * One row up or down the menu's grid, wrapping within the column.
+ *
+ * The last row is usually ragged — eleven actions in two columns leaves one
+ * tile on its own — so stepping down off the end returns to the top of the same
+ * column rather than to index zero, and stepping up from the top lands on the
+ * lowest tile that column actually has. Wrapping to a cell that is not drawn
+ * would park the cursor on nothing: the highlight disappears and the next press
+ * does something the user did not aim at.
+ *
+ * Lives here beside [CONTEXT_MENU_COLUMNS] rather than in the view model
+ * because the two have to agree, and this is the one that knows the number.
+ */
+fun stepContextMenuRow(index: Int, direction: Int, count: Int): Int {
+    if (count <= 0) return 0
+    val columns = CONTEXT_MENU_COLUMNS
+    val next = index + direction * columns
+    if (next in 0 until count) return next
+
+    val column = index % columns
+    if (direction > 0) return column
+
+    // The bottom-most index in this column, which the ragged row may not reach.
+    var last = count - 1
+    while (last % columns != column) last--
+    return last
+}
+
+/**
+ * Wider than the single-column menu it replaces, because it now holds two.
+ */
+private const val CARD_WIDTH = 460
 
 /** Leaves the grid showing at the edges, so the card reads as sitting over it. */
 private const val CARD_FRACTION = 0.88f
 
-/** Matches the side menu, whose rows these are deliberately a copy of. */
-private const val EDGE_MARKER_HEIGHT = 22
-private const val ICON_TILE = 40
-private const val ICON_GLYPH = 21
+/** The same, vertically: the card is not allowed to reach the panel's edges. */
+private const val CARD_HEIGHT_FRACTION = 0.94f
+private const val CARD_PADDING = 12
+
+private const val HEADER_HEIGHT = 56
+private const val HEADER_ICON = 48
+private const val HEADER_ICON_RADIUS = 10
+private const val HEADER_ICON_INSET = 4
+private const val HEADER_GLYPH = 26
+private const val HEADER_GAP = 10
+
+/** Reserved whether or not a tile is focused, so the card never resizes. */
+private const val HINT_HEIGHT = 26
+private const val HINT_GAP = 8
+
+private const val TILE_GAP = 6
+private const val TILE_RADIUS = 10
+private const val TILE_INSET = 10
+private const val TILE_GLYPH = 18
+
+/**
+ * The range a tile is allowed to be squeezed into.
+ *
+ * The floor is set by the label: below about this the caption is smaller than
+ * the subtitle above it and the card stops reading as a deliberate object. The
+ * ceiling is set by the television, where the leftover is large enough to give
+ * eleven actions the proportions of a billboard if nothing said otherwise.
+ */
+private const val TILE_MIN = 34
+private const val TILE_MAX = 52
+
+/** Tint under a tile the cursor or the pointer is on. */
+private const val TILE_LIT_ALPHA = 0.18f

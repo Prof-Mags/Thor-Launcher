@@ -90,4 +90,80 @@ class GameDescriptionFitTest {
         assertThat(fittedTextScale(available = 0, measureHeight = proportional(300)))
             .isEqualTo(1f)
     }
+
+    // ---- Shortening, once shrinking has run out ------------------------------
+
+    /** 10px per character at full size, scaling with the text. */
+    private fun perCharacter(): (Float, String) -> Int =
+        { scale, body -> (body.length * 10 * scale).toInt() }
+
+    private val threeSentences =
+        "Bowser takes the princess. Mario gives chase. The castle is always empty."
+
+    @Test
+    fun `a synopsis that fits is left whole and unshrunk`() {
+        val fitted = fitDescription(threeSentences, available = 10_000, measureHeight = perCharacter())
+
+        assertThat(fitted.text).isEqualTo(threeSentences)
+        assertThat(fitted.scale).isEqualTo(1f)
+    }
+
+    @Test
+    fun `shrinking is tried before anything is dropped`() {
+        // Fits at a smaller size, so the whole text survives.
+        val available = (threeSentences.length * 10 * 0.9f).toInt()
+
+        val fitted = fitDescription(threeSentences, available, perCharacter())
+
+        assertThat(fitted.text).isEqualTo(threeSentences)
+        assertThat(fitted.scale).isLessThan(1f)
+    }
+
+    /**
+     * The case that put "…kidnapped by Bows" on the panel.
+     *
+     * Too long to fit even at the floor, so sentences come off — and what is
+     * left has to end where a sentence ended.
+     */
+    @Test
+    fun `text past the floor loses whole sentences rather than being cut`() {
+        val available = (30 * 10 * MIN_DESCRIPTION_SCALE).toInt()
+
+        val fitted = fitDescription(threeSentences, available, perCharacter())
+
+        assertThat(fitted.text).isEqualTo("Bowser takes the princess.")
+        assertThat(fitted.scale).isEqualTo(MIN_DESCRIPTION_SCALE)
+        assertThat(threeSentences).contains(fitted.text)
+    }
+
+    @Test
+    fun `the most sentences that fit are kept, not merely some`() {
+        val available = (60 * 10 * MIN_DESCRIPTION_SCALE).toInt()
+
+        val fitted = fitDescription(threeSentences, available, perCharacter())
+
+        assertThat(fitted.text).isEqualTo("Bowser takes the princess. Mario gives chase.")
+    }
+
+    @Test
+    fun `a single sentence too long for the panel is still shown`() {
+        val one = "One enormous sentence with nowhere to break it at all."
+
+        val fitted = fitDescription(one, available = 10, measureHeight = perCharacter())
+
+        assertThat(fitted.text).isEqualTo(one)
+        assertThat(fitted.scale).isEqualTo(MIN_DESCRIPTION_SCALE)
+    }
+
+    @Test
+    fun `an unbounded panel keeps the whole synopsis`() {
+        val fitted = fitDescription(
+            threeSentences,
+            available = Constraints.Infinity,
+            measureHeight = perCharacter(),
+        )
+
+        assertThat(fitted.text).isEqualTo(threeSentences)
+        assertThat(fitted.scale).isEqualTo(1f)
+    }
 }
