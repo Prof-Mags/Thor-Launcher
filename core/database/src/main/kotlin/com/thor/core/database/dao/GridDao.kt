@@ -62,6 +62,14 @@ interface GridDao {
     /**
      * Removes placements pointing at entries that no longer exist anywhere.
      * Run after every scan, since placements carry no foreign key.
+     *
+     * The widget clause is not decoration. A widget's identity lives in its own
+     * table and in no other, so without it every placed widget matched "exists
+     * nowhere" and had its cell deleted by the scan that runs at startup — the
+     * row survived, the widget did not, and it read as widgets not being saved.
+     * Matching against the table rather than excusing the `widget:` prefix
+     * outright keeps the useful half: a widget whose row really has gone still
+     * has its cell reclaimed.
      */
     @Query(
         """
@@ -69,6 +77,7 @@ interface GridDao {
         WHERE entry_id NOT IN (SELECT id FROM apps)
           AND entry_id NOT IN (SELECT id FROM games)
           AND entry_id NOT IN (SELECT id FROM folders)
+          AND entry_id NOT IN (SELECT 'widget:' || app_widget_id FROM widgets)
           AND entry_id NOT LIKE 'shortcut:%'
         """,
     )

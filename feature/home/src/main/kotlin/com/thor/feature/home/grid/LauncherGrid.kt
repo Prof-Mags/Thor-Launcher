@@ -5,8 +5,11 @@ import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import com.thor.core.model.CellSpan
 import com.thor.core.model.FolderEntry
+import com.thor.core.model.GridFootprint
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
 import com.thor.core.model.PlatformFolders
@@ -40,6 +43,21 @@ fun LauncherGrid(
     val cellsPerPage = state.spec.cellsPerPage.coerceAtLeast(1)
 
     /*
+     * Lifted out of `state` so the overlay lambda below can be reused.
+     *
+     * A lambda that reads `state` directly captures a different object on every
+     * cursor move, which makes it a new lambda, which recomposes the whole cell
+     * matrix — undoing the one optimisation this file exists to protect. These
+     * are the parts of the state the overlay actually depends on, and none of
+     * them changes when the cursor does.
+     */
+    val spec = state.spec
+    val editing = state.editMode.isActive
+    val folderOpen = state.isFolderOpen
+    val currentPage = state.currentPage
+    val cursorState = rememberUpdatedState(state.cursor)
+
+    /*
      * A controller move changes only the cursor, but the old `entryAt` path made
      * every visible cell rebuild a map of all placements to find its entry.  Index
      * the stable layout once instead, so movement changes the two focused cells
@@ -64,17 +82,39 @@ fun LauncherGrid(
 
     /** The other half of that: what the overlay draws, keyed by page. */
     val widgetsByPage = remember(state.placements, state.entriesById) {
-        state.placements
-            .mapNotNull { placement ->
-                (state.entriesById[placement.entryId] as? WidgetEntry)?.let { widget ->
-                    placement.pageIndex to PlacedWidget(
-                        entry = widget,
-                        row = placement.row,
-                        column = placement.column,
-                    )
+        PlacedWidgets(
+            state.placements
+                .mapNotNull { placement ->
+                    (state.entriesById[placement.entryId] as? WidgetEntry)?.let { widget ->
+                        placement.pageIndex to PlacedWidget(
+                            entry = widget,
+                            row = placement.row,
+                            column = placement.column,
+                        )
+                    }
                 }
+                .groupBy({ it.first }, { it.second }),
+        )
+    }
+
+    /*
+     * Which cells are standing underneath a widget, per page.
+     *
+     * The matrix still lays every cell out — a widget is drawn over it, not in
+     * it — so without this the cells beneath one go on drawing their empty
+     * plates and, when the cursor is there, a second highlight inside the first.
+     */
+    val coveredByPage = remember(widgetsByPage, state.spec) {
+        widgetsByPage.byPage.mapValues { (_, onPage) ->
+            onPage.flatMapTo(mutableSetOf()) { placed ->
+                GridFootprint.cells(
+                    row = placed.row,
+                    column = placed.column,
+                    span = CellSpan(placed.entry.spanColumns, placed.entry.spanRows),
+                    spec = state.spec,
+                )
             }
-            .groupBy({ it.first }, { it.second })
+        }
     }
 
     /*
@@ -86,7 +126,7 @@ fun LauncherGrid(
      * for on a grid with no widgets on it.
      */
     val widgetData = remember(state.entriesById, state.platformsById, widgetsByPage) {
-        if (widgetsByPage.values.none { page -> page.any { it.entry.isBuiltIn } }) {
+        if (widgetsByPage.byPage.values.none { page -> page.any { it.entry.isBuiltIn } }) {
             LauncherWidgetData()
         } else {
             val games = state.entriesById.values.filterIsInstance<GameEntry>()
@@ -203,21 +243,26 @@ fun LauncherGrid(
                     folderPreview = (entry as? FolderEntry)
                         ?.let { folder -> folderPreviews[folder.id] }
                         .orEmpty(),
+                    covered = !state.isFolderOpen &&
+                        coveredByPage[page]?.contains(cell) == true,
                 )
             },
             pageOverlay = { page, metrics ->
                 // Never inside a folder: a folder shows a list of its children,
                 // and the widgets belong to the page behind it.
-                val onPage = if (state.isFolderOpen) emptyList() else widgetsByPage[page].orEmpty()
+                val onPage = if (folderOpen) emptyList() else widgetsByPage.on(page)
                 if (onPage.isNotEmpty()) {
                     WidgetLayer(
                         widgets = onPage,
                         metrics = metrics,
-                        columns = state.spec.columns,
-                        rows = state.spec.rows,
-                        focusedCell = (state.cursor.row to state.cursor.column)
-                            .takeIf { page == state.currentPage },
-                        editing = state.editMode.isActive,
+                        spec = spec,
+                        // The cursor arrives as a State for the same reason the
+                        // cells read theirs from one: a move would otherwise
+                        // rebuild this lambda, and with it every cell on every
+                        // composed page, to change one ring.
+                        cursor = cursorState,
+                        onThisPage = page == currentPage,
+                        editing = editing,
                         heldId = heldId,
                         createView = createWidgetView,
                         onMeasured = onWidgetMeasured,

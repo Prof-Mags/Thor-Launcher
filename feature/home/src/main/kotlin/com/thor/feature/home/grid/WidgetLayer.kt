@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.key
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -35,7 +36,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.GridEntry
+import com.thor.core.model.GridSpec
 import com.thor.core.model.WidgetEntry
+import com.thor.feature.home.CursorPosition
 
 /**
  * The measured geometry of one grid page.
@@ -71,6 +74,19 @@ data class PlacedWidget(
 )
 
 /**
+ * Every placed widget, by page.
+ *
+ * A wrapper rather than the bare map because Compose treats `Map` as unstable,
+ * and anything capturing one is unstable in turn — including the lambda that
+ * draws this layer, which would then be rebuilt on every cursor move and take
+ * the whole cell matrix with it.
+ */
+@Immutable
+data class PlacedWidgets(val byPage: Map<Int, List<PlacedWidget>> = emptyMap()) {
+    fun on(page: Int): List<PlacedWidget> = byPage[page].orEmpty()
+}
+
+/**
  * Widgets, drawn over the cell matrix rather than inside it.
  *
  * The matrix is a nested `repeat(rows) { repeat(columns) }` of equally weighted
@@ -87,10 +103,17 @@ data class PlacedWidget(
 fun WidgetLayer(
     widgets: List<PlacedWidget>,
     metrics: GridMetrics,
-    columns: Int,
-    rows: Int,
-    /** Cursor position on this page, or null when the cursor is elsewhere. */
-    focusedCell: Pair<Int, Int>?,
+    spec: GridSpec,
+    /**
+     * The live cursor, read inside each frame rather than here.
+     *
+     * A plain value would invalidate this whole layer — and the cell matrix it
+     * is drawn over — every time the cursor moved. Read one level down, a move
+     * recomposes only the widget it arrived at and the one it left, which is the
+     * same bargain the cells make; see `GridCellSlot`.
+     */
+    cursor: State<CursorPosition>,
+    onThisPage: Boolean,
     editing: Boolean,
     /** The entry the cursor is carrying, so a held widget shows it is held. */
     heldId: String?,
@@ -106,19 +129,20 @@ fun WidgetLayer(
     widgets.forEach { placed ->
         // Clipped to the page, so a widget that outlived a pinch down to a
         // smaller matrix still draws the part of itself that is on screen.
-        val spanColumns =
-            placed.entry.spanColumns.coerceIn(1, (columns - placed.column).coerceAtLeast(1))
-        val spanRows = placed.entry.spanRows.coerceIn(1, (rows - placed.row).coerceAtLeast(1))
-
-        val focused = focusedCell?.let { (focusRow, focusColumn) ->
-            focusRow in placed.row until placed.row + spanRows &&
-                focusColumn in placed.column until placed.column + spanColumns
-        } == true
+        val spanColumns = placed.entry.spanColumns
+            .coerceIn(1, (spec.columns - placed.column).coerceAtLeast(1))
+        val spanRows = placed.entry.spanRows
+            .coerceIn(1, (spec.rows - placed.row).coerceAtLeast(1))
 
         key(placed.entry.appWidgetId) {
             WidgetFrame(
                 entry = placed.entry,
-                focused = focused,
+                cursor = cursor,
+                onThisPage = onThisPage,
+                row = placed.row,
+                column = placed.column,
+                spanColumns = spanColumns,
+                spanRows = spanRows,
                 held = placed.entry.id == heldId,
                 editing = editing,
                 createView = createView,
@@ -159,7 +183,12 @@ fun WidgetLayer(
 @Composable
 private fun WidgetFrame(
     entry: WidgetEntry,
-    focused: Boolean,
+    cursor: State<CursorPosition>,
+    onThisPage: Boolean,
+    row: Int,
+    column: Int,
+    spanColumns: Int,
+    spanRows: Int,
     held: Boolean,
     editing: Boolean,
     createView: (Context, Int) -> View?,
@@ -174,6 +203,13 @@ private fun WidgetFrame(
     val shape = ThorTheme.shapes.small
     val density = LocalDensity.current
     val context = LocalContext.current
+
+    // Read here, inside this frame's own restart scope, so a cursor move
+    // invalidates the two widgets it concerns and nothing else.
+    val position = cursor.value
+    val focused = onThisPage &&
+        position.row in row until row + spanRows &&
+        position.column in column until column + spanColumns
 
     /*
      * Inflated once and kept.
@@ -191,11 +227,22 @@ private fun WidgetFrame(
         if (entry.isBuiltIn) null else createView(context, entry.appWidgetId)
     }
 
+    /*
+     * The ring gets pixels of its own.
+     *
+     * An app widget is a real View from another process, and a View carrying any
+     * elevation is composited by the platform rather than in the order Compose
+     * drew it — so a highlight painted by an ancestor over the same pixels can
+     * end up underneath it. Insetting the content by the ring's width means the
+     * two never share a pixel, and the highlight is right whatever the provider
+     * does with its own layers.
+     */
     Box(
         modifier = modifier
             .thorCursor(focused = focused, shape = shape)
             .clip(shape)
             .background(colors.surfaceElevated, shape)
+            .padding(FRAME_INSET.dp)
             .onSizeChanged { size ->
                 // Only a provider needs telling; the launcher's own widgets are
                 // measured by the same layout pass that sizes this box.
@@ -284,6 +331,14 @@ private fun UnavailableWidget(entry: WidgetEntry) {
         )
     }
 }
+
+/**
+ * The gutter the cursor ring lives in.
+ *
+ * Wide enough for the thickest cursor the theme offers, so the ring always lands
+ * on pixels the widget's own content never touches.
+ */
+private const val FRAME_INSET = 3
 
 /** How far a widget is dimmed while the grid is being arranged. */
 private const val EDIT_LID_ALPHA = 0.35f

@@ -56,6 +56,16 @@ data class GridCellData(
     val isHeld: Boolean = false,
     /** Artwork of the first few children, for the folder preview styles. */
     val folderPreview: List<String?> = emptyList(),
+    /**
+     * True when a widget is standing on this cell.
+     *
+     * Such a cell draws nothing at all — not even the empty plate and cursor
+     * ring an unoccupied cell normally gets. It has no content of its own, and
+     * the ring in particular was the visible fault: with the cursor on a widget,
+     * the cell underneath its top-left corner drew a second, icon-sized
+     * highlight inside the one around the widget.
+     */
+    val covered: Boolean = false,
 )
 
 /**
@@ -285,6 +295,10 @@ private fun GridCellSlot(
     jiggling: Boolean,
     folderStyle: FolderStyle,
 ) {
+    // Nothing is drawn over a cell a widget is standing on; see
+    // [GridCellData.covered].
+    if (data.covered) return
+
     val currentCursor = cursor.value
     GridCell(
         entry = data.entry,
