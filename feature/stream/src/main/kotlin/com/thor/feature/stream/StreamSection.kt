@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Computer
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
@@ -463,6 +464,7 @@ fun StreamBottomPanel(
     onPairHost: () -> Unit = {},
     onCancelPairing: () -> Unit = {},
     onStopStream: () -> Unit = {},
+    onForgetHost: (StreamHost) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -493,6 +495,7 @@ fun StreamBottomPanel(
                 onPairHost = onPairHost,
                 onCancelPairing = onCancelPairing,
                 onStopStream = onStopStream,
+                onForgetHost = onForgetHost,
                 modifier = Modifier.weight(SELECTED_PANEL_WEIGHT).fillMaxHeight(),
             )
             ManualHostPanel(
@@ -558,6 +561,7 @@ private fun SelectedHostPanel(
     onPairHost: () -> Unit,
     onCancelPairing: () -> Unit,
     onStopStream: () -> Unit,
+    onForgetHost: (StreamHost) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -701,6 +705,7 @@ private fun SelectedHostPanel(
                 onPairHost = onPairHost,
                 onCancelPairing = onCancelPairing,
                 onStopStream = onStopStream,
+                onForgetHost = onForgetHost,
             )
         }
     }
@@ -808,6 +813,7 @@ private fun HostActions(
     onPairHost: () -> Unit,
     onCancelPairing: () -> Unit,
     onStopStream: () -> Unit,
+    onForgetHost: (StreamHost) -> Unit,
 ) {
     val online = status as? HostStatus.Online
 
@@ -840,6 +846,7 @@ private fun HostActions(
                     }
                     StreamHostAction.PAIR -> "PAIR PC"
                     StreamHostAction.CANCEL_PAIRING -> "CANCEL PAIRING"
+                    StreamHostAction.FORGET -> "REMOVE"
                 }
                 val icon = when (action) {
                     StreamHostAction.START_STREAM -> Icons.Rounded.PlayArrow
@@ -847,6 +854,7 @@ private fun HostActions(
                     StreamHostAction.REFRESH -> Icons.Rounded.Refresh
                     StreamHostAction.PAIR -> Icons.Rounded.Link
                     StreamHostAction.CANCEL_PAIRING -> Icons.Rounded.Close
+                    StreamHostAction.FORGET -> Icons.Rounded.DeleteOutline
                 }
                 val onClick = when (action) {
                     StreamHostAction.START_STREAM -> onStartStream
@@ -854,13 +862,15 @@ private fun HostActions(
                     StreamHostAction.REFRESH -> ({ onRefreshHost(host) })
                     StreamHostAction.PAIR -> onPairHost
                     StreamHostAction.CANCEL_PAIRING -> onCancelPairing
+                    StreamHostAction.FORGET -> ({ onForgetHost(host) })
                 }
                 StreamActionButton(
                     label = label,
                     icon = icon,
                     primary = action == StreamHostAction.START_STREAM ||
                         (action == StreamHostAction.REFRESH && online?.paired != true),
-                    destructive = action == StreamHostAction.STOP_SESSION,
+                    destructive = action == StreamHostAction.STOP_SESSION ||
+                        action == StreamHostAction.FORGET,
                     controllerFocused = state.focusedHostAction == action,
                     onClick = onClick,
                     modifier = Modifier.weight(1f),

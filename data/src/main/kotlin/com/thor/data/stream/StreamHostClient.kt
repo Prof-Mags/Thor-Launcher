@@ -7,6 +7,7 @@ import com.thor.core.model.HostStatus
 import com.thor.core.model.StreamApp
 import com.thor.core.model.StreamHost
 import com.thor.data.network.await
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
@@ -172,6 +173,23 @@ class StreamHostClient @Inject constructor(
             } catch (e: IllegalArgumentException) {
                 ThorLog.w(TAG, "${host.address}: unreadable reply", e)
                 HostStatus.Offline("Answered, but not like a GameStream host")
+            } catch (e: CancellationException) {
+                // The caller gave up, which is not an answer about the host.
+                throw e
+            } catch (e: Exception) {
+                /*
+                 * Anything else, still reported as an answer rather than thrown.
+                 *
+                 * The contract above is that this never throws, and it held only
+                 * for the three failures that had been thought of. The rest of
+                 * the stack can fail in other ways — the client certificate is
+                 * generated and presented by a crypto library with exceptions of
+                 * its own — and one of those would leave the section to turn it
+                 * into a status, which it does without a log and without knowing
+                 * which host it was asking about.
+                 */
+                ThorLog.w(TAG, "${host.address}: check failed", e)
+                HostStatus.Offline(e.shortReason())
             }
         }
 

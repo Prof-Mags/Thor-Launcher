@@ -109,6 +109,39 @@ class StreamCouchScreenTest {
         assertThat(couchHostCardHeight(1_400.dp)).isEqualTo(couchHostCardHeight(2_000.dp))
     }
 
+    // ---- The rail and the help page ------------------------------------------
+
+    /**
+     * The rail's cursor walks the enum, and the rail draws its rows by hand.
+     *
+     * Nothing connects the two but this order, so a destination inserted in one
+     * place and not the other sends Down past "Add a PC" to whichever page the
+     * enum happens to list next — a coupling with no compiler behind it.
+     */
+    @Test
+    fun `the rail's destinations are in the order they are drawn`() {
+        assertThat(StreamCouchPage.entries)
+            .containsExactly(
+                StreamCouchPage.COMPUTERS,
+                StreamCouchPage.ADD_HOST,
+                StreamCouchPage.HELP,
+            )
+            .inOrder()
+    }
+
+    /**
+     * Titles are the list keys on the help page, and a duplicate key is a crash
+     * rather than a page that merely looks wrong.
+     */
+    @Test
+    fun `every help section has its own title and something to say`() {
+        val titles = STREAM_HELP_SECTIONS.map(StreamHelpSection::title)
+
+        assertThat(titles).isNotEmpty()
+        assertThat(titles).containsNoDuplicates()
+        assertThat(STREAM_HELP_SECTIONS.filter { it.body.isBlank() }).isEmpty()
+    }
+
     // ---- What a card says ----------------------------------------------------
 
     @Test

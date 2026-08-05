@@ -21,10 +21,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.outlined.DesktopWindows
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Computer
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -99,6 +101,9 @@ fun StreamCouchScreen(
     onPairHost: () -> Unit,
     onCancelPairing: () -> Unit,
     onStopStream: () -> Unit,
+    onForgetHost: (StreamHost) -> Unit,
+    onOpenHelp: () -> Unit,
+    onHelpSectionFocused: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -114,6 +119,7 @@ fun StreamCouchScreen(
             state = state,
             onShowComputers = onCloseAddHost,
             onShowAddHost = onOpenAddHost,
+            onShowHelp = onOpenHelp,
             modifier = Modifier.width(RAIL_WIDTH.dp).fillMaxHeight(),
         )
 
@@ -130,6 +136,14 @@ fun StreamCouchScreen(
                     onPairHost = onPairHost,
                     onCancelPairing = onCancelPairing,
                     onStopStream = onStopStream,
+                    onForgetHost = onForgetHost,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
+
+                StreamCouchPage.HELP -> CouchHelpPage(
+                    cursor = state.helpCursor,
+                    clientName = clientName,
+                    onSectionFocused = onHelpSectionFocused,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )
 
@@ -148,9 +162,11 @@ fun StreamCouchScreen(
             }
 
             CouchLegend(
-                entries = when (state.page) {
-                    StreamCouchPage.COMPUTERS -> COMPUTERS_LEGEND
-                    StreamCouchPage.ADD_HOST -> ADD_HOST_LEGEND
+                entries = when {
+                    state.zone == StreamCouchZone.RAIL -> RAIL_LEGEND
+                    state.page == StreamCouchPage.ADD_HOST -> ADD_HOST_LEGEND
+                    state.page == StreamCouchPage.HELP -> HELP_LEGEND
+                    else -> COMPUTERS_LEGEND
                 },
             )
         }
@@ -174,6 +190,7 @@ private fun StreamCouchRail(
     state: StreamUiState,
     onShowComputers: () -> Unit,
     onShowAddHost: () -> Unit,
+    onShowHelp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -214,11 +231,18 @@ private fun StreamCouchRail(
             }
         }
 
+        // Lit when the controller is in the rail, marked when the page it names
+        // is the one on screen. Two different facts, and on a television both
+        // have to be visible at once: the cursor may be resting on Help while
+        // the computers are still the page behind it.
+        val focus = state.railFocus.takeIf { state.zone == StreamCouchZone.RAIL }
+
         RailDestination(
             icon = Icons.Rounded.Computer,
             label = "Computers",
             trailing = state.hosts.size.toString(),
             selected = state.page == StreamCouchPage.COMPUTERS,
+            focused = focus == StreamCouchPage.COMPUTERS,
             onClick = onShowComputers,
         )
         RailDestination(
@@ -226,7 +250,16 @@ private fun StreamCouchRail(
             label = "Add a PC",
             trailing = null,
             selected = state.page == StreamCouchPage.ADD_HOST,
+            focused = focus == StreamCouchPage.ADD_HOST,
             onClick = onShowAddHost,
+        )
+        RailDestination(
+            icon = Icons.AutoMirrored.Rounded.HelpOutline,
+            label = "Help",
+            trailing = null,
+            selected = state.page == StreamCouchPage.HELP,
+            focused = focus == StreamCouchPage.HELP,
+            onClick = onShowHelp,
         )
 
         Spacer(modifier = Modifier.weight(1f))
@@ -293,20 +326,28 @@ private fun RailDestination(
     label: String,
     trailing: String?,
     selected: Boolean,
+    focused: Boolean,
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
     val hover = rememberPointerHover()
-    val lit = selected || hover.isHovered
+    val lit = selected || focused || hover.isHovered
     val shape = ThorTheme.shapes.small
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .pointerHover(hover)
-            .thorCursor(focused = hover.isHovered && !selected, shape = shape)
+            .thorCursor(focused = focused || (hover.isHovered && !selected), shape = shape)
             .clip(shape)
             .background(if (lit) colors.surfaceHighest else Color.Transparent)
+            .then(
+                if (focused) {
+                    Modifier.border(1.dp, colors.cursor, shape)
+                } else {
+                    Modifier
+                },
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = RAIL_ROW_PADDING.dp, vertical = RAIL_ROW_PADDING_V.dp),
         horizontalArrangement = Arrangement.spacedBy(RAIL_ICON_GAP.dp),
@@ -389,6 +430,7 @@ private fun CouchComputersPage(
     onPairHost: () -> Unit,
     onCancelPairing: () -> Unit,
     onStopStream: () -> Unit,
+    onForgetHost: (StreamHost) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -451,6 +493,7 @@ private fun CouchComputersPage(
             onPairHost = onPairHost,
             onCancelPairing = onCancelPairing,
             onStopStream = onStopStream,
+            onForgetHost = onForgetHost,
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -723,6 +766,7 @@ private fun CouchHostBand(
     onPairHost: () -> Unit,
     onCancelPairing: () -> Unit,
     onStopStream: () -> Unit,
+    onForgetHost: (StreamHost) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -808,6 +852,7 @@ private fun CouchHostBand(
                         onPairHost = onPairHost,
                         onCancelPairing = onCancelPairing,
                         onStopStream = onStopStream,
+                        onForgetHost = onForgetHost,
                     )
                 }
             }
@@ -840,6 +885,7 @@ private fun CouchHostActions(
     onPairHost: () -> Unit,
     onCancelPairing: () -> Unit,
     onStopStream: () -> Unit,
+    onForgetHost: (StreamHost) -> Unit,
 ) {
     val online = status as? HostStatus.Online
 
@@ -866,6 +912,7 @@ private fun CouchHostActions(
                         if (online?.paired == true) "REFRESH" else "CHECK AGAIN"
                     StreamHostAction.PAIR -> "PAIR PC"
                     StreamHostAction.CANCEL_PAIRING -> "CANCEL"
+                    StreamHostAction.FORGET -> "REMOVE"
                 },
                 icon = when (action) {
                     StreamHostAction.START_STREAM -> Icons.Rounded.PlayArrow
@@ -873,10 +920,12 @@ private fun CouchHostActions(
                     StreamHostAction.REFRESH -> Icons.Rounded.Refresh
                     StreamHostAction.PAIR -> Icons.Rounded.Link
                     StreamHostAction.CANCEL_PAIRING -> Icons.Rounded.Close
+                    StreamHostAction.FORGET -> Icons.Rounded.DeleteOutline
                 },
                 primary = action == StreamHostAction.START_STREAM ||
                     (action == StreamHostAction.REFRESH && online?.paired != true),
-                destructive = action == StreamHostAction.STOP_SESSION,
+                destructive = action == StreamHostAction.STOP_SESSION ||
+                    action == StreamHostAction.FORGET,
                 // Lit only while the controller is actually on this row. The
                 // cursor is on the grid the rest of the time, and a button
                 // wearing the focus ring then is a button that looks pressable
@@ -888,6 +937,7 @@ private fun CouchHostActions(
                     StreamHostAction.REFRESH -> ({ onRefreshHost(host) })
                     StreamHostAction.PAIR -> onPairHost
                     StreamHostAction.CANCEL_PAIRING -> onCancelPairing
+                    StreamHostAction.FORGET -> ({ onForgetHost(host) })
                 },
                 modifier = Modifier.width(BAND_ACTION_WIDTH.dp),
             )
@@ -1047,6 +1097,234 @@ private fun DiscoveryStep(number: String, label: String) {
             color = colors.onSurfaceVariant,
             fontWeight = FontWeight.Bold,
         )
+    }
+}
+
+// ---- The help page -----------------------------------------------------------
+
+/**
+ * How any of this works, on the screen it is needed on.
+ *
+ * Every fact here is one the user would otherwise have to already know: that
+ * Sunshine is what answers, that pairing is a one-time exchange with the PIN
+ * travelling the other way, that a stream is the whole desktop rather than a
+ * chosen game, that leaving does not end the session. None of it is discoverable
+ * from a list of computers, and the machine that would have explained it is the
+ * one across the room.
+ *
+ * Read a section at a time rather than scrolled freely. A pad has no scroll bar,
+ * so a page of continuous prose has no way of saying how much of it is left —
+ * whereas a cursor stepping through numbered sections says exactly that, and the
+ * page follows it.
+ */
+@Composable
+private fun CouchHelpPage(
+    cursor: Int,
+    clientName: String,
+    onSectionFocused: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = ThorTheme.colors
+    val listState = rememberLazyListState()
+    val safeCursor = cursor.coerceIn(0, STREAM_HELP_SECTIONS.lastIndex)
+
+    LaunchedEffect(safeCursor) { listState.animateScrollToItem(safeCursor) }
+
+    Row(
+        modifier = modifier.padding(horizontal = SCREEN_INSET.dp, vertical = SCREEN_TOP_INSET.dp),
+        horizontalArrangement = Arrangement.spacedBy(FORM_GAP.dp),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(FORM_ROW_GAP.dp),
+        ) {
+            Text(
+                text = "Streaming a PC",
+                style = MaterialTheme.typography.headlineSmall,
+                color = colors.onSurface,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+            Text(
+                text = "Loki streams from Sunshine, the same host software Moonlight " +
+                    "talks to. Everything below is done once.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentPadding = PaddingValues(vertical = CARD_GROWTH.dp),
+                verticalArrangement = Arrangement.spacedBy(HELP_GAP.dp),
+            ) {
+                itemsIndexed(
+                    items = STREAM_HELP_SECTIONS,
+                    key = { _, section -> section.title },
+                ) { index, section ->
+                    HelpSection(
+                        number = index + 1,
+                        section = section,
+                        clientName = clientName,
+                        focused = index == safeCursor,
+                        onClick = { onSectionFocused(index) },
+                    )
+                }
+            }
+        }
+
+        CouchPadReference(modifier = Modifier.width(HELP_WIDTH.dp).fillMaxHeight())
+    }
+}
+
+@Composable
+private fun HelpSection(
+    number: Int,
+    section: StreamHelpSection,
+    clientName: String,
+    focused: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = ThorTheme.colors
+    val shape = ThorTheme.shapes.panel
+    val hover = rememberPointerHover()
+    val lit = focused || hover.isHovered
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerHover(hover)
+            .thorCursor(focused = lit, shape = shape)
+            .clip(shape)
+            .background(
+                if (lit) colors.surfaceHighest else colors.surface.copy(alpha = CARD_ALPHA),
+            )
+            .clickable(onClick = onClick),
+    ) {
+        // The accent down the leading edge, as on every other live row in the
+        // launcher. On a page with no buttons it is the only thing saying where
+        // the cursor is.
+        Box(
+            modifier = Modifier
+                .width(HELP_MARKER.dp)
+                .fillMaxHeight()
+                .background(if (lit) colors.cursor else Color.Transparent),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(HELP_PADDING.dp),
+            horizontalArrangement = Arrangement.spacedBy(11.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(HELP_NUMBER.dp)
+                    .clip(ThorTheme.shapes.pill)
+                    .background(colors.cursor.copy(alpha = if (lit) 0.28f else 0.16f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = number.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.cursor,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = section.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = section.body.replace(CLIENT_NAME_TOKEN, clientName),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * What each button does once a stream is up.
+ *
+ * Beside the instructions rather than inside them, because it is the part
+ * somebody comes back for. The rest of this page is read once; this is looked up.
+ */
+@Composable
+private fun CouchPadReference(modifier: Modifier = Modifier) {
+    val colors = ThorTheme.colors
+
+    GlassSurface(modifier = modifier, shape = ThorTheme.shapes.panel) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(HELP_PADDING.dp),
+            verticalArrangement = Arrangement.spacedBy(HELP_GAP.dp),
+        ) {
+            Text(
+                text = "While streaming",
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.cursor,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+            PAD_REFERENCE.forEach { (button, action) ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = button,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.cursor,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier
+                            .width(HELP_BUTTON_WIDTH.dp)
+                            .clip(ThorTheme.shapes.small)
+                            .background(colors.cursor.copy(alpha = 0.14f))
+                            .padding(horizontal = 7.dp, vertical = 4.dp),
+                    )
+                    Text(
+                        text = action,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(colors.outline.copy(alpha = 0.2f)),
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Info,
+                    contentDescription = null,
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(HELP_NUMBER.dp),
+                )
+                Text(
+                    text = "The trackpad and keyboard appear on the bottom screen, and " +
+                        "not in couch mode: docked to a television nobody can reach them.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
@@ -1425,6 +1703,7 @@ private const val VISIBLE_CARD_ROWS = 2
 private val COMPUTERS_LEGEND = listOf(
     "A" to "Select",
     "Y" to "Pair",
+    "LEFT" to "Menu",
     "B" to "Back",
 )
 
@@ -1432,6 +1711,92 @@ private val ADD_HOST_LEGEND = listOf(
     "A" to "Select",
     "Y" to "Keyboard",
     "B" to "Cancel",
+)
+
+private val HELP_LEGEND = listOf(
+    "UP / DOWN" to "Read",
+    "LEFT" to "Menu",
+    "B" to "Back",
+)
+
+private val RAIL_LEGEND = listOf(
+    "A" to "Open",
+    "RIGHT" to "Back to the page",
+)
+
+/**
+ * What the pad does once a stream is up.
+ *
+ * Read from the streaming window's own handling rather than invented for this
+ * page: Back leaves on the press, every other button belongs to the PC, and the
+ * combination is the way out when a game has taken the pad whole.
+ */
+private val PAD_REFERENCE = listOf(
+    "B / BACK" to "Leave the stream. The session keeps running on the PC.",
+    "START" to "Show the trackpad's own settings on the bottom screen.",
+    "EVERY OTHER" to "Goes to the PC, exactly as a pad plugged into it would.",
+)
+
+/** Stands in for whatever the user has named this device to Sunshine. */
+private const val CLIENT_NAME_TOKEN = "%CLIENT%"
+
+/** One numbered part of the help page. */
+internal data class StreamHelpSection(val title: String, val body: String)
+
+/**
+ * What somebody has to know, in the order they have to know it.
+ *
+ * Held here rather than in strings because the view model counts them: the help
+ * page's cursor is clamped to this list, and a count kept in two places is a
+ * cursor that eventually points past the end of the page.
+ */
+internal val STREAM_HELP_SECTIONS = listOf(
+    StreamHelpSection(
+        title = "Install Sunshine on the PC",
+        body = "Sunshine is what answers when Loki asks — the same host software " +
+            "Moonlight talks to. Install it on the computer, start it, and leave " +
+            "it running. Windows asks whether to allow it through the firewall the " +
+            "first time, and it has to be allowed on the private network or nothing " +
+            "on this device will ever reach it.",
+    ),
+    StreamHelpSection(
+        title = "Let it be found",
+        body = "A PC running Sunshine on this network announces itself and appears " +
+            "on the Computers page on its own. One on a VPN, on another subnet, or " +
+            "on a network that blocks those announcements will not — add it by " +
+            "address instead, and it is remembered from then on.",
+    ),
+    StreamHelpSection(
+        title = "Pair, once",
+        body = "Pairing is a one-time exchange, and it is per device rather than per " +
+            "network. Press Y on the PC here; Loki shows a PIN and waits. Type that " +
+            "PIN into Sunshine's web interface on the PC, under PIN. It will list " +
+            "this device as \"$CLIENT_NAME_TOKEN\". Unpairing happens on the PC, and " +
+            "the first sign of it here is a machine asking to be paired again.",
+    ),
+    StreamHelpSection(
+        title = "Stream the desktop",
+        body = "Press A on a paired machine and it shares its whole screen rather " +
+            "than one chosen game — so whatever is then started on the PC appears " +
+            "here, and nothing has to be picked beforehand. A PC already streaming " +
+            "can only be resumed or stopped, which is why it says so on its card.",
+    ),
+    StreamHelpSection(
+        title = "Leaving is not stopping",
+        body = "Back leaves the stream and the session keeps running on the PC, " +
+            "which is what makes going straight back into it instant. Use Stop " +
+            "session to actually end it — otherwise the only other way is to walk " +
+            "to the machine.",
+    ),
+    StreamHelpSection(
+        title = "If a PC will not answer",
+        body = "The card says which failure it was rather than only \"offline\": " +
+            "connection refused means the machine is there and Sunshine is not, a " +
+            "timeout means it is not answering at all, and an address that cannot " +
+            "be resolved is the wrong address. A machine that has answered once is " +
+            "kept in the list while it sleeps, so a PC being listed is not a claim " +
+            "that it is awake.",
+    ),
 )
 
 private val HELP_STEPS = listOf(
@@ -1505,6 +1870,8 @@ private const val HELP_GAP = 11
 private const val HELP_NUMBER = 22
 private const val HELP_ART_HEIGHT = 116
 private const val HELP_ART_ICON = 56
+private const val HELP_MARKER = 3
+private const val HELP_BUTTON_WIDTH = 86
 
 private const val NAME_FIELD_ID = "stream-couch-host-name"
 private const val COUCH_ADDRESS_FIELD_ID = "stream-couch-host-address"

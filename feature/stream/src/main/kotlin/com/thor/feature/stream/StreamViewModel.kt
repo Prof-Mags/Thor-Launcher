@@ -43,6 +43,16 @@ enum class StreamHostAction {
     REFRESH,
     PAIR,
     CANCEL_PAIRING,
+
+    /**
+     * Takes a PC off the list.
+     *
+     * Offered for every machine, including the ones the network announced. A
+     * discovered host reappears while it is still announcing itself, and that is
+     * the honest behaviour rather than a reason to withhold the control: what is
+     * being forgotten is the saved entry and its pairing, not the computer.
+     */
+    FORGET,
 }
 
 /**
@@ -56,10 +66,21 @@ enum class StreamHostAction {
 enum class StreamCouchPage {
     COMPUTERS,
     ADD_HOST,
+    HELP,
 }
 
 /** Where the controller is on Couch Mode's computers page. */
 enum class StreamCouchZone {
+    /**
+     * The destinations down the side.
+     *
+     * Reached by pressing left off the first column, which is where a television
+     * interface keeps its side navigation. Before this the rail was a map the
+     * pointer could click and the controller could not, so a page listed there
+     * and nowhere else — help — was a page no viewer with a pad could open.
+     */
+    RAIL,
+
     /** The wall of PCs. */
     GRID,
 
@@ -130,6 +151,10 @@ data class StreamUiState(
     val page: StreamCouchPage = StreamCouchPage.COMPUTERS,
     /** Where the controller is on the television's computers page. */
     val zone: StreamCouchZone = StreamCouchZone.GRID,
+    /** Which destination the rail's own cursor is on, while it holds one. */
+    val railFocus: StreamCouchPage = StreamCouchPage.COMPUTERS,
+    /** Which section of the help page is being read. */
+    val helpCursor: Int = 0,
     /** Which control on the television's add-a-PC form the controller is on. */
     val addField: StreamAddField = StreamAddField.ADDRESS,
     /**
@@ -179,16 +204,22 @@ data class StreamUiState(
                 online?.paired == true && online.currentGame != null -> listOf(
                     StreamHostAction.START_STREAM,
                     StreamHostAction.STOP_SESSION,
+                    StreamHostAction.FORGET,
                 )
                 online?.paired == true -> listOf(
                     StreamHostAction.START_STREAM,
                     StreamHostAction.REFRESH,
+                    StreamHostAction.FORGET,
                 )
                 online != null -> listOf(
                     StreamHostAction.REFRESH,
                     StreamHostAction.PAIR,
+                    StreamHostAction.FORGET,
                 )
-                else -> listOf(StreamHostAction.REFRESH)
+                // Last, and never where Confirm lands: the cursor arrives on the
+                // first action, and a machine that is merely asleep must not be
+                // one press from being forgotten.
+                else -> listOf(StreamHostAction.REFRESH, StreamHostAction.FORGET)
             }
         }
 
@@ -283,7 +314,18 @@ class StreamViewModel @Inject constructor(
         }
     }
 
-    fun refreshAll() = _uiState.value.hosts.forEach(::refresh)
+    /**
+     * Re-asks every PC how it is.
+     *
+     * Not while a handshake or a launch is in flight. Both are conversations
+     * already under way with a host, and re-asking mid-exchange rewrites the
+     * badge the user is watching for the answer to a different question.
+     */
+    fun refreshAll() {
+        val state = _uiState.value
+        if (state.connecting || state.pairing != PairingState.Idle) return
+        state.hosts.forEach(::refresh)
+    }
 
     fun move(delta: Int) {
         val state = _uiState.value
@@ -342,6 +384,7 @@ class StreamViewModel @Inject constructor(
             StreamHostAction.REFRESH -> _uiState.value.selected?.let(::refresh)
             StreamHostAction.PAIR -> pair()
             StreamHostAction.CANCEL_PAIRING -> cancelPairing()
+            StreamHostAction.FORGET -> _uiState.value.selected?.let(::forget)
         }
     }
 
@@ -364,6 +407,7 @@ class StreamViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 page = StreamCouchPage.ADD_HOST,
+                railFocus = StreamCouchPage.ADD_HOST,
                 zone = StreamCouchZone.GRID,
                 addField = StreamAddField.ADDRESS,
                 keyboardRequest = it.keyboardRequest + 1L,
@@ -372,7 +416,46 @@ class StreamViewModel @Inject constructor(
     }
 
     fun closeAddHost() {
-        _uiState.update { it.copy(page = StreamCouchPage.COMPUTERS) }
+        _uiState.update {
+            it.copy(page = StreamCouchPage.COMPUTERS, railFocus = StreamCouchPage.COMPUTERS)
+        }
+    }
+
+    /** Opens the section's own instructions, from the rail or a pointer. */
+    fun openHelp() {
+        _uiState.update {
+            it.copy(
+                page = StreamCouchPage.HELP,
+                railFocus = StreamCouchPage.HELP,
+                zone = StreamCouchZone.GRID,
+                helpCursor = 0,
+            )
+        }
+    }
+
+    /** Reads down the help page a section at a time. */
+    fun moveHelp(delta: Int) = focusHelpSection(_uiState.value.helpCursor + delta)
+
+    /** Puts the help cursor on one section, for a pointer that clicked it. */
+    fun focusHelpSection(index: Int) {
+        _uiState.update {
+            it.copy(
+                helpCursor = index.coerceIn(0, STREAM_HELP_SECTIONS.lastIndex.coerceAtLeast(0)),
+            )
+        }
+    }
+
+    /** Sends the controller to the rail, or to whichever destination it names. */
+    fun focusRail(page: StreamCouchPage) {
+        _uiState.update {
+            it.copy(zone = StreamCouchZone.RAIL, railFocus = page)
+        }
+    }
+
+    fun openPage(page: StreamCouchPage) = when (page) {
+        StreamCouchPage.COMPUTERS -> closeAddHost()
+        StreamCouchPage.ADD_HOST -> openAddHost()
+        StreamCouchPage.HELP -> openHelp()
     }
 
     /** Moves through the form's fields, and asks for the keyboard on one. */
@@ -408,6 +491,20 @@ class StreamViewModel @Inject constructor(
 
     fun forget(host: StreamHost) {
         viewModelScope.launchSafely(TAG) { repository.removeHost(host.address) }
+        /*
+         * Its answer goes with it.
+         *
+         * Statuses are keyed by address, so a machine re-added at the same one
+         * would arrive wearing whatever the old entry last reported — "offline"
+         * on a PC the user has just gone and switched on, with nothing on screen
+         * to say the reading is from before they removed it.
+         */
+        _uiState.update {
+            it.copy(
+                statuses = it.statuses - host.address,
+                zone = StreamCouchZone.GRID,
+            )
+        }
     }
 
     /**
@@ -621,7 +718,15 @@ class StreamViewModel @Inject constructor(
     // ---- Couch Mode ---------------------------------------------------------
 
     private fun handleCouchCommand(command: ControllerCommand): Boolean {
-        if (_uiState.value.page == StreamCouchPage.ADD_HOST) return handleAddHostCommand(command)
+        // The rail is drawn beside every page and takes the controller from all
+        // of them, so it is asked before the page is.
+        if (_uiState.value.zone == StreamCouchZone.RAIL) return handleRailCommand(command)
+
+        when (_uiState.value.page) {
+            StreamCouchPage.ADD_HOST -> return handleAddHostCommand(command)
+            StreamCouchPage.HELP -> return handleHelpCommand(command)
+            StreamCouchPage.COMPUTERS -> Unit
+        }
 
         val state = _uiState.value
         val onActions = state.zone == StreamCouchZone.ACTIONS
@@ -640,9 +745,12 @@ class StreamViewModel @Inject constructor(
              * the press to the shell from there moves something the user cannot
              * see.
              */
+            // Left off the first column is the rail, which is where a television
+            // interface keeps the way out of the page it is on.
             ControllerCommand.NAVIGATE_LEFT -> when {
                 onActions -> { moveAction(-1); true }
-                state.hosts.isEmpty() -> false
+                state.hosts.isEmpty() -> { focusRail(state.page); true }
+                cell % STREAM_COUCH_COLUMNS == 0 -> { focusRail(state.page); true }
                 else -> moveToCell(cell - 1, cells)
             }
 
@@ -732,6 +840,73 @@ class StreamViewModel @Inject constructor(
         }
     }
 
+    /**
+     * The rail, while the controller is in it.
+     *
+     * Up and down walk the destinations, right goes back to the page, and A opens
+     * whatever is under the cursor. Back does what right does rather than leaving
+     * the section: the rail is a step into the screen, so the way out of it is the
+     * way it was entered.
+     */
+    private fun handleRailCommand(command: ControllerCommand): Boolean {
+        val pages = StreamCouchPage.entries
+        val current = pages.indexOf(_uiState.value.railFocus)
+
+        return when (command) {
+            ControllerCommand.NAVIGATE_UP -> {
+                focusRail(pages[(current - 1).coerceIn(0, pages.lastIndex)])
+                true
+            }
+
+            ControllerCommand.NAVIGATE_DOWN -> {
+                focusRail(pages[(current + 1).coerceIn(0, pages.lastIndex)])
+                true
+            }
+
+            ControllerCommand.NAVIGATE_RIGHT, ControllerCommand.BACK -> {
+                setZone(StreamCouchZone.GRID)
+                true
+            }
+
+            ControllerCommand.NAVIGATE_LEFT -> true
+
+            ControllerCommand.CONFIRM -> {
+                openPage(_uiState.value.railFocus)
+                true
+            }
+
+            else -> false
+        }
+    }
+
+    private fun handleHelpCommand(command: ControllerCommand): Boolean = when (command) {
+        ControllerCommand.NAVIGATE_UP -> {
+            moveHelp(-1)
+            true
+        }
+
+        ControllerCommand.NAVIGATE_DOWN -> {
+            moveHelp(1)
+            true
+        }
+
+        // Left is the rail from here too, so the page has a way back that is not
+        // only Back — the same press reaches the destinations from every page.
+        ControllerCommand.NAVIGATE_LEFT -> {
+            focusRail(StreamCouchPage.HELP)
+            true
+        }
+
+        ControllerCommand.NAVIGATE_RIGHT -> true
+
+        ControllerCommand.BACK -> {
+            closeAddHost()
+            true
+        }
+
+        else -> false
+    }
+
     private fun handleAddHostCommand(command: ControllerCommand): Boolean = when (command) {
         ControllerCommand.NAVIGATE_UP -> {
             moveAddField(-1)
@@ -748,7 +923,12 @@ class StreamViewModel @Inject constructor(
          * here — and letting it through would scroll the grid this page is drawn
          * over, which is the one thing on screen the user is not looking at.
          */
-        ControllerCommand.NAVIGATE_LEFT, ControllerCommand.NAVIGATE_RIGHT -> true
+        ControllerCommand.NAVIGATE_LEFT -> {
+            focusRail(StreamCouchPage.ADD_HOST)
+            true
+        }
+
+        ControllerCommand.NAVIGATE_RIGHT -> true
 
         ControllerCommand.CONFIRM -> {
             when (_uiState.value.addField) {

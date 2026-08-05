@@ -1690,16 +1690,36 @@ fun ThorApp(
         }
 
         /*
-         * Leaving the section closes its form.
+         * The PCs are asked how they are for as long as anyone is looking at them.
          *
-         * The section's state outlives the screen — it is a view model, and it
-         * has to be, because discovery runs for as long as anyone is subscribed.
-         * So a half-typed address left behind on the way to Home would still be
-         * on screen on the way back, and the PCs it was hiding would look like
-         * PCs that had gone away.
+         * A status is the answer to a question asked just now, and it was only
+         * ever asked once — when a host was first seen, which on a cold start is
+         * while the launcher is still coming up and the network may not be. That
+         * answer then stood forever: a PC checked a second before Wi-Fi
+         * associated said "offline" for the rest of the session, on a machine
+         * sitting there switched on, and nothing on screen suggested the reading
+         * was minutes old. Asking again on the way in fixes that one; asking
+         * again while the section is open is what makes a PC that wakes up appear
+         * without the user having gone looking for a refresh button.
+         *
+         * Cancelled with the section, so nothing is asked of the network on
+         * behalf of a screen nobody is on.
+         *
+         * Leaving also closes the form. The section's state outlives its screen —
+         * it has to, because discovery runs for as long as anyone is subscribed —
+         * so a half-typed address left behind on the way to Home would still be
+         * up on the way back, and the PCs it was covering would look like PCs
+         * that had gone away.
          */
         LaunchedEffect(selectedTab) {
-            if (selectedTab != LauncherTab.STREAM) streamViewModel.closeAddHost()
+            if (selectedTab != LauncherTab.STREAM) {
+                streamViewModel.closeAddHost()
+                return@LaunchedEffect
+            }
+            while (true) {
+                streamViewModel.refreshAll()
+                delay(STREAM_RECHECK_MS)
+            }
         }
 
         // ---- One-shot effects ------------------------------------------------
@@ -2115,6 +2135,9 @@ fun ThorApp(
                                 onPairHost = streamViewModel::pair,
                                 onCancelPairing = streamViewModel::cancelPairing,
                                 onStopStream = streamViewModel::stopHostSession,
+                                onForgetHost = streamViewModel::forget,
+                                onOpenHelp = streamViewModel::openHelp,
+                                onHelpSectionFocused = streamViewModel::focusHelpSection,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else {
@@ -2128,6 +2151,7 @@ fun ThorApp(
                                 onPairHost = streamViewModel::pair,
                                 onCancelPairing = streamViewModel::cancelPairing,
                                 onStopStream = streamViewModel::stopHostSession,
+                                onForgetHost = streamViewModel::forget,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
@@ -3122,6 +3146,16 @@ private const val INTRO_REDUCED_MS = 300
  */
 private const val COUCH_INTRO_MARK_MS = 460
 private const val COUCH_INTRO_LOAD_MS = 1_200
+
+/**
+ * How often the Stream section re-asks its PCs, while it is on screen.
+ *
+ * Often enough that a machine switched on in the next room is listed before the
+ * user has finished walking back, and rare enough that it is a handful of
+ * requests a minute on a local network. Each one is per host and off the main
+ * thread, so a PC that is asleep delays only its own row.
+ */
+private const val STREAM_RECHECK_MS = 12_000L
 
 /** The shape a panel is assumed to be before the displays have reported in. */
 private const val DEFAULT_PANEL_ASPECT = 16f / 10f
