@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.thor.core.common.text.splitSentences
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.model.Achievement
 import com.thor.core.model.AchievementSummary
 import com.thor.core.model.GameEntry
 import com.thor.core.model.Platform
@@ -686,22 +688,71 @@ private fun GameAchievements(summary: AchievementSummary, accent: Color) {
             )
         }
 
-        if (summary.recentlyEarned.isNotEmpty()) {
+        /*
+         * Earned first, then a few still to come.
+         *
+         * Both, rather than only what has been earned, because on a game the
+         * user has not started the earned list is empty — and a set of forty
+         * achievements rendered as a bare zero under an empty strip tells
+         * somebody deciding what to play nothing at all. The unearned ones are
+         * held back to a silhouette so the row still reads at a glance as how
+         * far through this is.
+         */
+        val earned = summary.recentlyEarned.take(ACHIEVEMENT_BADGES)
+        val upcoming = summary.upcoming.take(ACHIEVEMENT_BADGES - earned.size)
+
+        if (earned.isNotEmpty() || upcoming.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(ACHIEVEMENT_BADGE_GAP.dp)) {
-                summary.recentlyEarned.take(ACHIEVEMENT_BADGES).forEach { achievement ->
-                    ArtworkImage(
-                        model = achievement.badgeUri,
-                        contentDescription = achievement.title,
-                        fallbackText = achievement.title,
-                        fallbackTint = accent,
-                        modifier = Modifier
-                            .size(ACHIEVEMENT_BADGE.dp)
-                            .clip(ThorTheme.shapes.small),
-                    )
-                }
+                earned.forEach { achievement -> AchievementBadge(achievement, accent, true) }
+                upcoming.forEach { achievement -> AchievementBadge(achievement, accent, false) }
             }
         }
+
+        /*
+         * One line naming what is next, or what was last.
+         *
+         * The badges are pictures somebody else drew and carry no words, so on
+         * their own they say a number of things have been done without saying
+         * what any of them were. Naming one is what turns the strip from
+         * decoration into the answer to "how much is left in this".
+         */
+        val highlight = summary.upcoming.firstOrNull() ?: summary.recentlyEarned.firstOrNull()
+        if (highlight != null) {
+            Text(
+                text = if (summary.upcoming.isNotEmpty()) {
+                    "Next: ${highlight.title} · ${highlight.points} pts"
+                } else {
+                    "Latest: ${highlight.title}"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
+}
+
+/**
+ * One badge, lit or not.
+ *
+ * An unearned badge is the same picture at a fraction of its opacity rather than
+ * a placeholder, because RetroAchievements' art is often the only clue to what
+ * an achievement asks for — a silhouette of the real thing says more than a
+ * question mark, and keeps the row reading as one set.
+ */
+@Composable
+private fun AchievementBadge(achievement: Achievement, accent: Color, earned: Boolean) {
+    ArtworkImage(
+        model = achievement.badgeUri,
+        contentDescription = achievement.title,
+        fallbackText = achievement.title,
+        fallbackTint = accent,
+        modifier = Modifier
+            .size(ACHIEVEMENT_BADGE.dp)
+            .clip(ThorTheme.shapes.small)
+            .alpha(if (earned) 1f else ACHIEVEMENT_LOCKED_ALPHA),
+    )
 }
 
 @Composable
@@ -1001,3 +1052,6 @@ private const val ACHIEVEMENT_BADGE_GAP = 5
 
 /** How many earned badges fit across the card without wrapping. */
 private const val ACHIEVEMENT_BADGES = 5
+
+/** How far an unearned badge is held back; still legible, plainly not done. */
+private const val ACHIEVEMENT_LOCKED_ALPHA = 0.3f

@@ -164,6 +164,19 @@ data class AchievementSummary(
     val totalPoints: Int,
     val isHardcore: Boolean = false,
     val recentlyEarned: List<Achievement> = emptyList(),
+    /**
+     * A few still to earn, cheapest first.
+     *
+     * Carried so the panel has something to show on a game the user has not
+     * started. Without it a set of forty achievements and none earned rendered
+     * as an empty strip under a zero — technically accurate and no use to
+     * somebody deciding what to play, which is the question this panel exists to
+     * answer.
+     *
+     * Cheapest first because points are RetroAchievements' own difficulty
+     * signal, so these are the ones actually within reach.
+     */
+    val upcoming: List<Achievement> = emptyList(),
 ) {
     val completionFraction: Float
         get() = if (total <= 0) 0f else earned.toFloat() / total.toFloat()

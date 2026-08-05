@@ -161,6 +161,14 @@ class AchievementRepository @Inject constructor(
                 .sortedByDescending { it.earnedEpochMs ?: 0L }
                 .take(RECENT_LIMIT)
                 .map(AchievementEntity::toDomain),
+            // Cheapest first, which is RetroAchievements' own difficulty signal:
+            // these are the ones actually within reach rather than the first few
+            // the set happens to define.
+            upcoming = rows
+                .filter { it.earnedEpochMs == null }
+                .sortedBy { it.points }
+                .take(RECENT_LIMIT)
+                .map(AchievementEntity::toDomain),
         )
         storeSummary(game, summary)
         summary
@@ -228,6 +236,7 @@ class AchievementRepository @Inject constructor(
                 totalPoints = remote.totalPoints,
                 isHardcore = hardcoreOnly,
                 recentlyEarned = existing?.recentlyEarned.orEmpty(),
+                upcoming = existing?.upcoming.orEmpty(),
             ),
         )
     }
