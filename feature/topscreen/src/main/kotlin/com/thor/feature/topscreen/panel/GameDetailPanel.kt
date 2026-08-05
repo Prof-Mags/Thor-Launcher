@@ -78,10 +78,7 @@ fun GameDetailPanel(
                 platform = platform,
                 selectedScreenshot = selectedScreenshot,
                 accent = accent,
-                modifier = Modifier
-                    .fillMaxWidth(GAME_PANEL_WIDTH)
-                    .fillMaxHeight()
-                    .padding(GAME_PANEL_OUTER_PADDING.dp),
+                modifier = Modifier.infoPanelBounds(),
             )
         }
     }
@@ -105,31 +102,7 @@ private fun GameProfileCard(
 
     BoxWithConstraints(
         modifier = modifier
-            .shadow(12.dp, shape, clip = false)
-            .clip(shape)
-            /*
-             * Opaque, not a tint over the artwork.
-             *
-             * The panel sits on a screenshot that is itself the subject, and a
-             * half-transparent card over one puts detail behind text — every value
-             * on it was being read against whatever happened to be underneath, which
-             * changes per game and per screenshot. The gradient stays, because the
-             * card still wants a top-to-bottom fall; it simply stops letting the
-             * backdrop through.
-             *
-             * The stops sit at the top of the surface ramp. Going opaque against
-             * `surface`/`background` made the card land at or below the page it is
-             * meant to float over — the alpha had been borrowing light from the
-             * artwork behind it, and once that was gone it just read as dark.
-             */
-            .background(
-                Brush.verticalGradient(
-                    0f to colors.surfaceHighest,
-                    .58f to colors.surfaceHighest,
-                    1f to colors.surfaceElevated,
-                ),
-            )
-            .border(1.dp, platformAccentBrush(accent, alpha = .22f), shape),
+            .infoPanelSurface(platformAccentBrush(accent, alpha = .22f), shape),
     ) {
         // Read out here rather than at the call site below: inside the Column the
         // implicit receiver is a ColumnScope and the card's own constraints are no
@@ -137,16 +110,29 @@ private fun GameProfileCard(
         val cardHeight = maxHeight
         val contentWidth = maxWidth - (GAME_HORIZONTAL_PADDING * 2).dp
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(platformAccentBrush(accent, alpha = .36f)),
-        )
+        /*
+         * The card's own top edge, and only the card's.
+         *
+         * A full-width accent rule on a blended panel would run straight into
+         * the fade and stop dead in the middle of the artwork — a hard line
+         * across the picture, which is the single thing that style exists to
+         * remove.
+         */
+        if (infoPanelHasEdges()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(platformAccentBrush(accent, alpha = .36f)),
+            )
+        }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // Keeps the text at the width it was written for, so a blended
+                // panel's fade happens in space nothing was going to occupy.
+                .padding(infoPanelContentInset())
                 .padding(
                     start = GAME_HORIZONTAL_PADDING.dp,
                     end = GAME_HORIZONTAL_PADDING.dp,

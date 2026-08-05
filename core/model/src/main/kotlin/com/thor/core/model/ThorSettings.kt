@@ -242,6 +242,8 @@ data class PersonalizationSettings(
     val showStatusBar: Boolean = true,
     val showPageIndicators: Boolean = true,
     val folderStyle: FolderStyle = FolderStyle.STACK,
+    /** How the information panel meets the artwork; see [InfoPanelStyle]. */
+    val infoPanelStyle: InfoPanelStyle = InfoPanelStyle.CARD,
     /**
      * Whether the console artwork Loki ships with dresses platform folders.
      *
@@ -380,6 +382,37 @@ enum class ClockStyle(val label: String) {
     DIGITAL_12("12-hour"),
     DIGITAL_24("24-hour"),
     ANALOG("Analog"),
+}
+
+/**
+ * How the top screen's information panel meets the artwork behind it.
+ *
+ * The panel is drawn over a screenshot or a piece of key art that is itself the
+ * subject, so where it ends is a real decision rather than a detail — and the
+ * two honest answers pull in opposite directions. One says the panel is an
+ * object laid on the picture; the other says the picture continues under the
+ * words.
+ */
+@Serializable
+enum class InfoPanelStyle(val label: String, val description: String) {
+    /**
+     * A card: opaque, edged, with a shadow under it.
+     *
+     * Every value on it is read against a known colour rather than against
+     * whatever the artwork happens to be doing there, which changes per game and
+     * per screenshot. The safe answer, and the default.
+     */
+    CARD("Card", "An opaque panel with a defined edge"),
+
+    /**
+     * No edge at all: the panel fades out into the artwork.
+     *
+     * Reads as one picture rather than as a picture with a box on it, at the
+     * cost of the guarantee above — anything near the fade is read against
+     * whatever is behind it. Which is why the fade begins well clear of where
+     * the words stop.
+     */
+    BLENDED("Blended", "Fades into the artwork with no visible edge"),
 }
 
 @Serializable

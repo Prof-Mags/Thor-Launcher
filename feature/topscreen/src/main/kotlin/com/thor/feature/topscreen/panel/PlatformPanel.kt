@@ -106,10 +106,7 @@ fun PlatformDetailPanel(
                 showingActivity = showingActivity,
                 onGameSelected = onGameSelected,
                 accent = accent,
-                modifier = Modifier
-                    .fillMaxWidth(PLATFORM_PANEL_WIDTH)
-                    .fillMaxHeight()
-                    .padding(PLATFORM_PANEL_OUTER_PADDING.dp),
+                modifier = Modifier.infoPanelBounds(),
             )
         }
     }
@@ -133,38 +130,30 @@ private fun PlatformProfileCard(
     val shape = ThorTheme.shapes.panel
     val outlineBrush = platformAccentBrush(accent, alpha = .22f)
 
-    Box(
-        modifier = modifier
-            .shadow(12.dp, shape, clip = false)
-            .clip(shape)
-            /*
-             * Opaque, matching the game panel.
-             *
-             * These two alternate as the cursor crosses the grid, so they have to
-             * agree about how solid they are and where they sit on the surface
-             * ramp — a half-transparent card over hero artwork puts detail behind
-             * every figure on it, and an opaque one built from `background` reads
-             * as a hole rather than a panel.
-             */
-            .background(
-                Brush.verticalGradient(
-                    0f to colors.surfaceHighest,
-                    .58f to colors.surfaceHighest,
-                    1f to colors.surfaceElevated,
-                ),
+    Box(modifier = modifier.infoPanelSurface(outlineBrush, shape)) {
+        /*
+         * The card's own top edge, and only the card's.
+         *
+         * A full-width accent rule on a blended panel would run straight into
+         * the fade and stop dead in the middle of the artwork — a hard line
+         * across the picture, which is the single thing that style exists to
+         * remove.
+         */
+        if (infoPanelHasEdges()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(platformAccentBrush(accent, alpha = .36f)),
             )
-            .border(1.dp, outlineBrush, shape),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(platformAccentBrush(accent, alpha = .36f)),
-        )
+        }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // Keeps the text at the width it was written for; see the game
+                // panel, which does the same for the same reason.
+                .padding(infoPanelContentInset())
                 .padding(
                     start = PROFILE_HORIZONTAL_PADDING.dp,
                     end = PROFILE_HORIZONTAL_PADDING.dp,

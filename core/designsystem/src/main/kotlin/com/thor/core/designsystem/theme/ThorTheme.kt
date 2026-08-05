@@ -25,6 +25,7 @@ import com.thor.core.model.CornerStyle
 import com.thor.core.model.CursorAnimation
 import com.thor.core.model.CursorStyle
 import com.thor.core.model.PerformanceSettings
+import com.thor.core.model.InfoPanelStyle
 import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.SurfaceStyle
 import com.thor.core.model.SurfaceTreatment
@@ -214,6 +215,15 @@ data class ThorMaterials(
     /** How far the background graduates toward the accent; 0 is flat. */
     val backgroundDepth: Float,
     /**
+     * How the information panel meets the artwork behind it.
+     *
+     * Here with the other surface treatments rather than threaded through the
+     * panels as a parameter: it is exactly the kind of thing this object exists
+     * for, and the two panels that read it are four composables deep on the
+     * other screen.
+     */
+    val infoPanel: InfoPanelStyle,
+    /**
      * How far the wallpaper is dimmed behind the interface, 0..1.
      *
      * Resolved here beside the other material values rather than read from
@@ -340,6 +350,7 @@ fun ThorTheme(
             // Flattened in performance mode along with everything else that costs
             // a gradient the user did not ask for.
             backgroundDepth = if (performance.performanceMode) 0f else spec.backgroundDepth,
+            infoPanel = personalization.infoPanelStyle,
             wallpaperDim = personalization.wallpaperDim.coerceIn(0f, 1f),
         )
     }

@@ -8,6 +8,7 @@ import com.thor.core.model.CursorAnimation
 import com.thor.core.model.CursorStyle
 import com.thor.core.model.DockStyle
 import com.thor.core.model.FolderStyle
+import com.thor.core.model.InfoPanelStyle
 import com.thor.core.model.FontChoice
 import com.thor.core.model.GridSpec
 import com.thor.core.model.IconShape
@@ -329,20 +330,43 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
         },
     )
     RowDivider()
+    /*
+     * How the information panel meets the artwork behind it.
+     *
+     * On this page rather than under Theme because it is a layout decision more
+     * than a colour one: it changes where the panel ends, not what shade it is.
+     */
+    ChoiceRow(
+        title = "Info panel edge",
+        subtitle = InfoPanelStyle.entries
+            .firstOrNull { it == personalization.infoPanelStyle }
+            ?.description,
+        options = InfoPanelStyle.entries,
+        selected = personalization.infoPanelStyle,
+        focused = focusedRow == 8,
+        label = InfoPanelStyle::label,
+        onSelected = { style ->
+            viewModel.updatePersonalization { it.copy(infoPanelStyle = style) }
+        },
+    )
+    RowDivider()
     SwitchRow(
         title = "Autoplay trailers",
         subtitle = "Play a game's trailer on the info panel while it is highlighted; " +
             "L1 or R1 shows screenshots instead",
         checked = personalization.autoplayTrailers,
-        focused = focusedRow == 8,
+        focused = focusedRow == 9,
         onCheckedChange = { on ->
             viewModel.updatePersonalization { it.copy(autoplayTrailers = on) }
         },
     )
 }
 
-/** Typeface, size, motion, speed, clock, status bar, folders, indicators, trailers. */
-internal const val INTERFACE_ROWS = 9
+/**
+ * Typeface, size, motion, speed, clock, status bar, folders, indicators, panel
+ * edge, trailers.
+ */
+internal const val INTERFACE_ROWS = 10
 
 private val FONT_OPTIONS: List<FontChoice?> = listOf(null) + FontChoice.entries
 private val MOTION_OPTIONS: List<MotionStyle?> = listOf(null) + MotionStyle.entries
