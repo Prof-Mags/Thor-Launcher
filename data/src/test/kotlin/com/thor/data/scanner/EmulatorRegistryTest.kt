@@ -215,7 +215,69 @@ class EmulatorRegistryTest {
                 .isEqualTo("paulscode.android.mupen64plusae.SplashActivity")
         }
     }
+
+    /**
+     * The fault this was reported as: emulators installed and not detected.
+     *
+     * A table of exact ids can only name builds that existed when it was
+     * written, and these projects ship nightlies, forks and store editions that
+     * each append a segment to the id. Every one of those was invisible, on a
+     * device where the emulator was sitting on the home screen.
+     */
+    @Test
+    fun `a suffixed build resolves to the emulator it came from`() {
+        val nightly = EmulatorRegistry.resolve("org.dolphinemu.dolphinemu.debug")
+
+        assertThat(nightly).isNotNull()
+        assertThat(nightly!!.packageName).isEqualTo("org.dolphinemu.dolphinemu")
+        assertThat(nightly.platformIds).contains("gamecube")
+    }
+
+    @Test
+    fun `a build with its own row keeps it rather than its parent's`() {
+        // Yuzu Early Access is listed in its own right, and its id is also
+        // Yuzu's with a segment appended. The longest base has to win.
+        val early = EmulatorRegistry.resolve("org.yuzu.yuzu_emu.ea")
+
+        assertThat(early?.packageName).isEqualTo("org.yuzu.yuzu_emu.ea")
+        assertThat(early?.displayName).isEqualTo("Yuzu Early Access")
+    }
+
+    /**
+     * The separating dot is what stops this being a bare prefix match.
+     *
+     * "My Boy! Free" is a different application from "My Boy!", not a build of
+     * it, and its id happens to start with the same characters. Without the dot
+     * it would inherit the paid version's row.
+     */
+    @Test
+    fun `an unrelated package sharing a prefix is not treated as a variant`() {
+        assertThat(EmulatorRegistry.resolve("com.fastemulator.gbafree")?.displayName)
+            .isEqualTo("My Boy! Free")
+    }
+
+    @Test
+    fun `a package with nothing to do with emulation resolves to nothing`() {
+        assertThat(EmulatorRegistry.resolve("com.android.chrome")).isNull()
+        assertThat(EmulatorRegistry.isKnownEmulator("com.android.chrome")).isFalse()
+    }
+
+    /** A variant has to be nameable, or the picker shows a raw application id. */
+    @Test
+    fun `a variant is named after the build it actually is`() {
+        assertThat(EmulatorRegistry.displayNameFor("org.dolphinemu.dolphinemu"))
+            .isEqualTo("Dolphin")
+        assertThat(EmulatorRegistry.displayNameFor("org.dolphinemu.dolphinemu.debug"))
+            .isEqualTo("Dolphin (Debug)")
+    }
+
+    @Test
+    fun `every package in the table is unique`() {
+        // Two rows with one id would make `resolve` depend on list order, and
+        // the second of them would be unreachable.
+        assertThat(EmulatorRegistry.KNOWN.map { it.packageName }).containsNoDuplicates()
+    }
 }
 
 /** Kept in step with the figure in README.md, by the test above. */
-private const val EMULATORS_IN_README = 81
+private const val EMULATORS_IN_README = 86

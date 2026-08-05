@@ -365,6 +365,11 @@ object EmulatorRegistry {
             platformIds = setOf("switch"),
         ),
         EmulatorSpec(
+            packageName = "org.ryujinx.android",
+            displayName = "Ryujinx",
+            platformIds = setOf("switch"),
+        ),
+        EmulatorSpec(
             packageName = "org.sudachi.sudachi_emu",
             displayName = "Sudachi",
             platformIds = setOf("switch"),
@@ -412,6 +417,12 @@ object EmulatorRegistry {
         EmulatorSpec(
             packageName = "org.citra.citra_emu",
             displayName = "Citra",
+            platformIds = setOf("3ds"),
+        ),
+        EmulatorSpec(
+            // Citra MMJ, whose id shares nothing with the upstream one.
+            packageName = "org.citra.emu",
+            displayName = "Citra MMJ",
             platformIds = setOf("3ds"),
         ),
         EmulatorSpec(
@@ -496,6 +507,16 @@ object EmulatorRegistry {
         EmulatorSpec(
             packageName = "com.retroarch",
             displayName = "RetroArch",
+            platformIds = BuiltInPlatforms.ALL.map { it.id }.toSet(),
+            activityName = "com.retroarch.browser.retroactivity.RetroActivityFuture",
+            launchContract = RomLaunchContract.RetroArch,
+            mayReuseExistingTask = true,
+            isFrontEnd = true,
+        ),
+        EmulatorSpec(
+            // The 32-bit build, still current on older handhelds.
+            packageName = "com.retroarch.ra32",
+            displayName = "RetroArch (32-bit)",
             platformIds = BuiltInPlatforms.ALL.map { it.id }.toSet(),
             activityName = "com.retroarch.browser.retroactivity.RetroActivityFuture",
             launchContract = RomLaunchContract.RetroArch,
@@ -609,6 +630,18 @@ object EmulatorRegistry {
             displayName = "My OldBoy!",
             platformIds = setOf("gb", "gbc"),
         ),
+        // The free editions, which are separate applications rather than
+        // variants — the id has no separating dot, so nothing infers them.
+        EmulatorSpec(
+            packageName = "com.fastemulator.gbafree",
+            displayName = "My Boy! Free",
+            platformIds = setOf("gba", "gb", "gbc"),
+        ),
+        EmulatorSpec(
+            packageName = "com.fastemulator.gbcfree",
+            displayName = "My OldBoy! Free",
+            platformIds = setOf("gb", "gbc"),
+        ),
         EmulatorSpec(
             packageName = "com.dsemu.drastic",
             displayName = "DraStic",
@@ -709,7 +742,47 @@ object EmulatorRegistry {
 
     fun specFor(packageName: String): EmulatorSpec? = byPackage[packageName]
 
-    fun isKnownEmulator(packageName: String): Boolean = packageName in byPackage
+    /** True for anything this table names, and for builds descended from one. */
+    fun isKnownEmulator(packageName: String): Boolean = resolve(packageName) != null
+
+    /**
+     * The spec for an installed package, allowing for builds this table predates.
+     *
+     * An exact table match is not enough, and never could be. Emulators here ship
+     * under ids this list cannot enumerate in advance: Dolphin's own nightlies are
+     * `org.dolphinemu.dolphinemu.debug`, a fork appends its own name, a store
+     * build appends the store's. Every one of those was reported as not installed
+     * while sitting on the user's home screen, because the id was one character
+     * different from a row here.
+     *
+     * A suffixed id is treated as the same emulator: it is the same project, it
+     * accepts the same intent, and it runs the same systems. The longest matching
+     * base wins so `org.yuzu.yuzu_emu.ea` uses its own row rather than Yuzu's, and
+     * the dot is required so `com.fastemulator.gbafree` cannot be mistaken for a
+     * variant of `com.fastemulator.gba` — a different application that happens to
+     * share a prefix, and one this table lists in its own right.
+     */
+    fun resolve(packageName: String): EmulatorSpec? =
+        byPackage[packageName] ?: KNOWN
+            .filter { packageName.startsWith("${it.packageName}.") }
+            .maxByOrNull { it.packageName.length }
+
+    /**
+     * What to call a build that is not the one this table named.
+     *
+     * "Dolphin" for both Dolphin and its nightly would leave two rows that cannot
+     * be told apart, and the assignment picker is exactly where that matters. The
+     * suffix is the only thing that distinguishes them, so the suffix is what is
+     * shown.
+     */
+    fun displayNameFor(packageName: String): String {
+        val spec = resolve(packageName) ?: return packageName
+        if (spec.packageName == packageName) return spec.displayName
+        val suffix = packageName.removePrefix("${spec.packageName}.")
+            .replace('.', ' ')
+            .replaceFirstChar(Char::uppercaseChar)
+        return "${spec.displayName} ($suffix)"
+    }
 
     /**
      * Every known emulator able to run [platformId], best first.

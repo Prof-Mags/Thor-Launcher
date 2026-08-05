@@ -606,19 +606,37 @@ class SettingsViewModel @Inject constructor(
     val platformOptions: StateFlow<List<PlatformEmulatorOption>> = libraryRepository.addedPlatforms
         .map { platforms ->
             platforms.map { platform ->
+                /*
+                 * The installed builds, then everything else that would work.
+                 *
+                 * The installed half comes from the device rather than from the
+                 * table, so a nightly or a fork is listed under its own id — see
+                 * `EntryLauncher.installedEmulators`. The rest of the table is
+                 * appended as suggestions, minus anything already listed.
+                 */
+                val installed = entryLauncher.installedEmulatorsFor(platform.id)
+                    .map { packageName ->
+                        EmulatorChoice(
+                            packageName = packageName,
+                            displayName = EmulatorRegistry.displayNameFor(packageName),
+                            installed = true,
+                        )
+                    }
+                val installedBases = installed
+                    .mapNotNull { EmulatorRegistry.resolve(it.packageName)?.packageName }
+                    .toSet()
+
                 PlatformEmulatorOption(
                     platform = platform,
-                    emulators = EmulatorRegistry.candidatesFor(platform.id)
+                    emulators = installed + EmulatorRegistry.candidatesFor(platform.id)
+                        .filterNot { it.packageName in installedBases }
                         .map { spec ->
                             EmulatorChoice(
                                 packageName = spec.packageName,
                                 displayName = spec.displayName,
-                                installed = entryLauncher.isInstalled(spec.packageName),
+                                installed = false,
                             )
-                        }
-                        // Installed first, so the ones that can be pressed are
-                        // together and the rest read as a list of suggestions.
-                        .sortedByDescending { it.installed },
+                        },
                 )
             }
         }
@@ -668,7 +686,10 @@ class SettingsViewModel @Inject constructor(
     /** Emulators installed for the platform currently being added. */
     fun installedEmulatorsFor(platform: Platform): List<Pair<String, String>> =
         entryLauncher.installedEmulatorsFor(platform.id).map { packageName ->
-            packageName to (EmulatorRegistry.specFor(packageName)?.displayName ?: packageName)
+            // Through `displayNameFor`, not `specFor`: an installed build may be
+            // a nightly or a fork whose exact id is in no table, and naming it by
+            // the package would put a raw application id in the picker.
+            packageName to EmulatorRegistry.displayNameFor(packageName)
         }
 
     fun beginAddPlatform(platform: Platform) {

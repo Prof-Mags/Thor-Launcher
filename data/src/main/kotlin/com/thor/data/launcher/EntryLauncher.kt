@@ -13,6 +13,7 @@ import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Process
+import android.os.SystemClock
 import android.os.UserHandle
 import android.os.UserManager
 import android.app.DownloadManager
@@ -23,6 +24,7 @@ import com.thor.core.common.log.ThorLog
 import com.thor.core.model.AppEntry
 import com.thor.core.model.GameEntry
 import com.thor.data.scanner.EmulatorRegistry
+import com.thor.data.scanner.EmulatorSpec
 import com.thor.data.scanner.RomLaunchContract
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -285,7 +287,11 @@ class EntryLauncher @Inject constructor(
         }
 
         val uri = (contentUriOverride ?: game.contentUri).toUri()
-        val spec = EmulatorRegistry.specFor(emulatorPackage)
+        // Resolved rather than looked up exactly: a build the table does not name
+        // by id still takes its parent's launch contract, and falling through to
+        // the generic one here is how a nightly ends up opening its own file
+        // browser instead of the game.
+        val spec = EmulatorRegistry.resolve(emulatorPackage)
         if ((contentUriOverride == null && game.isMissing) || !canReadRom(uri)) {
             ThorLog.w(TAG, "ROM is unavailable: $uri")
             return LaunchResult.Failed(LaunchFailure.RomUnavailable)
@@ -608,11 +614,69 @@ class EntryLauncher @Inject constructor(
         false
     }
 
-    /** Installed emulators able to run [platformId], in registry order. */
-    fun installedEmulatorsFor(platformId: String): List<String> =
-        EmulatorRegistry.candidatesFor(platformId)
-            .map(com.thor.data.scanner.EmulatorSpec::packageName)
-            .filter(::isInstalled)
+    /**
+     * Every installed package this launcher recognises as an emulator.
+     *
+     * Asked of the device rather than of the table, which is the whole fix. The
+     * table can only name builds that existed when it was written, and emulators
+     * ship under ids it cannot enumerate in advance — nightlies, forks and store
+     * editions each append their own suffix. Checking every known id for
+     * installation therefore reported a great many installed emulators as
+     * missing, because the id on the device was one segment longer than the row.
+     *
+     * Enumerating instead and resolving each result means a build nobody here
+     * has heard of is still recognised, as long as it descends from something
+     * this table knows; see [EmulatorRegistry.resolve].
+     *
+     * Cached, because this is a binder call returning every package on the
+     * device and the settings screen asks the question once per system. Held
+     * only for [INSTALLED_CACHE_MS], so an emulator installed while the launcher
+     * is running turns up without a restart.
+     */
+    fun installedEmulators(): List<InstalledEmulator> {
+        val cached = installedEmulatorCache
+        if (cached != null && SystemClock.elapsedRealtime() - cachedAt < INSTALLED_CACHE_MS) {
+            return cached
+        }
+        val resolved = runCatching {
+            packageManager.getInstalledPackages(0).mapNotNull { info ->
+                EmulatorRegistry.resolve(info.packageName)?.let { spec ->
+                    InstalledEmulator(
+                        packageName = info.packageName,
+                        displayName = EmulatorRegistry.displayNameFor(info.packageName),
+                        spec = spec,
+                    )
+                }
+            }
+        }.getOrElse {
+            ThorLog.w("Launcher", "Could not list installed packages", it)
+            emptyList()
+        }
+        installedEmulatorCache = resolved
+        cachedAt = SystemClock.elapsedRealtime()
+        return resolved
+    }
+
+    /**
+     * Installed emulators able to run [platformId], in registry order.
+     *
+     * Grouped by the row each build descends from, so the table's own ordering —
+     * dedicated emulators before the many-core front-ends — still decides what
+     * an unassigned game launches with. Within a group the exact id comes first,
+     * so a plain install wins over a nightly of the same thing.
+     */
+    fun installedEmulatorsFor(platformId: String): List<String> {
+        val installed = installedEmulators()
+        return EmulatorRegistry.candidatesFor(platformId).flatMap { spec ->
+            installed
+                .filter { it.spec.packageName == spec.packageName }
+                .sortedBy { if (it.packageName == spec.packageName) 0 else 1 }
+                .map(InstalledEmulator::packageName)
+        }
+    }
+
+    private var installedEmulatorCache: List<InstalledEmulator>? = null
+    private var cachedAt = 0L
 
     private fun firstInstalledEmulatorFor(platformId: String): String? =
         installedEmulatorsFor(platformId).firstOrNull()
@@ -674,6 +738,15 @@ class EntryLauncher @Inject constructor(
         const val TAG = "Launcher"
 
         /**
+         * How long the installed-emulator list is trusted.
+         *
+         * Short enough that installing one and going straight to Settings shows
+         * it; long enough that drawing a screen with a system per row does not
+         * enumerate every package on the device once per row.
+         */
+        const val INSTALLED_CACHE_MS = 10_000L
+
+        /**
          * ROMs have no registered MIME types, and emulators match on a wildcard
          * rather than on any specific type.
          */
@@ -687,3 +760,17 @@ class EntryLauncher @Inject constructor(
         const val LAUNCH_SINGLE_INSTANCE_PER_TASK = 4
     }
 }
+
+/**
+ * An emulator that is actually on the device.
+ *
+ * Carries both ids because they can differ: [packageName] is what is installed
+ * and what an intent must be aimed at, while [spec] is the row it descends from
+ * and holds everything about how to hand it a ROM. A nightly build has its own
+ * package and its parent's contract.
+ */
+data class InstalledEmulator(
+    val packageName: String,
+    val displayName: String,
+    val spec: EmulatorSpec,
+)
