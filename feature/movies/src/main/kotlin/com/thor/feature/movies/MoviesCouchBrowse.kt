@@ -649,12 +649,13 @@ private fun CouchFeaturedCard(
                     horizontalArrangement = Arrangement.spacedBy(ACTION_GAP.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Hold A rather than A: the press itself opens the title, which
+                    // Held A rather than A: the press itself opens the title, which
                     // is where the source list lives, and the hold is the launcher's
                     // existing shortcut for taking the best one without looking.
+                    // Said in the legend below rather than on the button.
                     CouchMediaButton(
                         label = if (resume?.isResumable == true) "Resume" else "Play",
-                        hint = "HOLD A",
+                        hint = null,
                         icon = Icons.Rounded.PlayArrow,
                         primary = true,
                         onClick = onPlay,
@@ -718,11 +719,18 @@ private fun CouchFeaturedCard(
     }
 }
 
-/** A labelled action with the button that performs it printed on the end. */
+/**
+ * A labelled action, with the pad button that performs it printed on the end.
+ *
+ * [hint] is optional because the primary action does not need one. Play is what a
+ * play button does, and the legend along the foot of the screen is where the
+ * shortcut for it is written down - putting it on the button as well made the one
+ * control nobody has to be taught the busiest thing in the card.
+ */
 @Composable
 internal fun CouchMediaButton(
     label: String,
-    hint: String,
+    hint: String?,
     icon: ImageVector,
     primary: Boolean,
     onClick: () -> Unit,
@@ -762,13 +770,15 @@ internal fun CouchMediaButton(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )
-        Text(
-            text = hint,
-            style = MaterialTheme.typography.labelSmall,
-            color = content.copy(alpha = HINT_ALPHA),
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-        )
+        hint?.let { glyph ->
+            Text(
+                text = glyph,
+                style = MaterialTheme.typography.labelSmall,
+                color = content.copy(alpha = HINT_ALPHA),
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+        }
     }
 }
 

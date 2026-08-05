@@ -360,7 +360,7 @@ private fun TitleFacts(
         ) {
             CouchMediaButton(
                 label = if (detail.resumeProgress?.isResumable == true) "Resume" else "Play best",
-                hint = "HOLD A",
+                hint = null,
                 icon = Icons.Rounded.PlayArrow,
                 primary = true,
                 onClick = onPlay,
