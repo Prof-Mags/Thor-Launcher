@@ -849,20 +849,40 @@ private fun CouchGamesShelf(
             horizontalArrangement = Arrangement.spacedBy(SECTION_GAP.dp),
         ) {
             CouchSectionLabel(rail?.title ?: "Your games", modifier = Modifier.weight(1f))
+            /*
+             * It says what it does now, and it does it.
+             *
+             * This was a label with a chevron on the end — the shape of a
+             * control, with nothing behind it for either input. A pointer finding
+             * one of those does not read it as decoration; it reads it as the
+             * pointer not working here, which is the whole complaint this sweep
+             * is about. What a shelf can offer is its own beginning: the row
+             * scrolls, and after walking to the far end of it the way back is
+             * otherwise every press you just made, in reverse.
+             */
+            val viewAll = rememberPointerHover()
+            val viewAllLit = viewAll.isHovered
             Row(
+                modifier = Modifier
+                    .pointerHover(viewAll)
+                    .clip(ThorTheme.shapes.small)
+                    .clickable(enabled = rail != null && rail.entries.isNotEmpty()) {
+                        onEntryFocused(0)
+                    }
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
                     text = "VIEW ALL",
                     style = MaterialTheme.typography.labelMedium,
-                    color = colors.onSurfaceVariant,
+                    color = if (viewAllLit) colors.onSurface else colors.onSurfaceVariant,
                     fontWeight = FontWeight.Bold,
                 )
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                     contentDescription = null,
-                    tint = colors.onSurfaceVariant,
+                    tint = if (viewAllLit) colors.onSurface else colors.onSurfaceVariant,
                     modifier = Modifier.size(16.dp),
                 )
             }

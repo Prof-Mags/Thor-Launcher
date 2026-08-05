@@ -535,12 +535,22 @@ private fun StepperButton(
     onClick: () -> Unit,
 ) {
     val colors = ThorTheme.colors
+    // The two smallest targets on the settings screen, and the two a pointer
+    // presses most: a stepper is pressed repeatedly, and one that gives nothing
+    // back until the number moves is one the user cannot tell they have hit.
+    val hover = rememberPointerHover()
+    val lit = enabled && hover.isHovered
     Box(
         modifier = Modifier
             .size(34.dp)
+            .pointerHover(hover)
             .clip(ThorTheme.shapes.small)
             .background(
-                if (enabled) colors.surfaceHighest else Color.Transparent,
+                when {
+                    !enabled -> Color.Transparent
+                    lit -> colors.cursor.copy(alpha = 0.24f)
+                    else -> colors.surfaceHighest
+                },
             )
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -550,7 +560,7 @@ private fun StepperButton(
             contentDescription = description,
             tint = when {
                 !enabled -> colors.outline
-                highlighted -> colors.cursor
+                highlighted || lit -> colors.cursor
                 else -> colors.onSurface
             },
             modifier = Modifier.size(18.dp),
@@ -664,28 +674,41 @@ fun ColorRow(
         ) {
             items(colorsToPick) { color ->
                 val isSelected = color == selected
+                // A swatch is a circle of colour and nothing else, so the ring is
+                // the only thing that can say the cursor is on it.
+                val hover = rememberPointerHover()
                 Box(
                     modifier = Modifier
                         .size(30.dp)
+                        .pointerHover(hover)
                         .clip(ThorTheme.shapes.pill)
                         .background(color)
                         .border(
-                            width = if (isSelected) 3.dp else 1.dp,
-                            color = if (isSelected) theme.onSurface else theme.outline,
+                            width = if (isSelected || hover.isHovered) 3.dp else 1.dp,
+                            color = when {
+                                isSelected -> theme.onSurface
+                                hover.isHovered -> theme.cursor
+                                else -> theme.outline
+                            },
                             shape = ThorTheme.shapes.pill,
                         )
                         .clickable { onSelected(color) },
                 )
             }
             item {
+                val hover = rememberPointerHover()
                 Box(
                     modifier = Modifier
                         .size(30.dp)
+                        .pointerHover(hover)
                         .clip(ThorTheme.shapes.pill)
                         .background(theme.surfaceHighest)
                         .border(
-                            width = if (selected == null) 3.dp else 1.dp,
-                            color = if (selected == null) theme.cursor else theme.outline,
+                            width = if (selected == null || hover.isHovered) 3.dp else 1.dp,
+                            color = when {
+                                selected == null || hover.isHovered -> theme.cursor
+                                else -> theme.outline
+                            },
                             shape = ThorTheme.shapes.pill,
                         )
                         .clickable { onSelected(null) },

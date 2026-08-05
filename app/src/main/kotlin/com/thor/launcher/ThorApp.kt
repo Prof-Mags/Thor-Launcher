@@ -2335,6 +2335,11 @@ fun ThorApp(
                         viewModel.copyFieldText()
                         feedback.play(FeedbackCue.SUCCESS)
                     },
+                    // A card at the foot of a television, a dock on a handheld.
+                    // Nothing reaches for the edges of a screen across a room,
+                    // so the full width only made the keys enormous and hid what
+                    // was being typed into behind them.
+                    compact = mode == DualScreenMode.COUCH,
                 )
             }
 

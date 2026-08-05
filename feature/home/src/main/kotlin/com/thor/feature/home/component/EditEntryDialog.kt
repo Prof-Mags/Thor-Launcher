@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import com.thor.core.common.log.ThorLog
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.theme.ThorTheme
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.core.ui.input.ThorInputField
 import com.thor.core.model.AppEntry
 import com.thor.core.model.ArtworkSet
@@ -435,15 +437,19 @@ private fun PickerRow(
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
     var expanded by remember { mutableStateOf(false) }
+    // A bordered row that never changed under the cursor was indistinguishable
+    // from the read-only facts above it.
+    val hover = rememberPointerHover()
 
     Box(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .pointerHover(hover)
                 .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
                 .border(
                     width = 1.dp,
-                    color = colors.outline,
+                    color = if (hover.isHovered) colors.cursor else colors.outline,
                     shape = RoundedCornerShape(dimens.cornerRadiusSmall),
                 )
                 .clickable(enabled = options.isNotEmpty()) { expanded = true }
@@ -507,6 +513,10 @@ private fun ArtworkSlot(
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
 
+    // An empty slot is a grey rectangle and a filled one is a picture; neither
+    // says it can be pressed until something happens when the cursor arrives.
+    val hover = rememberPointerHover()
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(dimens.spacingTiny),
@@ -515,7 +525,17 @@ private fun ArtworkSlot(
             modifier = Modifier
                 .height(SLOT_PREVIEW.dp)
                 .aspectRatio(ratio)
+                .pointerHover(hover)
                 .clip(RoundedCornerShape(dimens.cornerRadiusSmall))
+                .border(
+                    width = if (hover.isHovered) 2.dp else 1.dp,
+                    color = if (hover.isHovered) {
+                        colors.cursor
+                    } else {
+                        colors.outline.copy(alpha = 0.36f)
+                    },
+                    shape = RoundedCornerShape(dimens.cornerRadiusSmall),
+                )
                 .clickable(onClick = onPick),
         ) {
             ArtworkImage(

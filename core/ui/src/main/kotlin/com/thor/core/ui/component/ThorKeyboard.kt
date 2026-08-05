@@ -48,6 +48,8 @@ import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.KeyboardKey
 import com.thor.core.model.KeyboardLayer
 import com.thor.core.model.ThorKeyboardLayout
+import com.thor.core.ui.pointer.pointerHover
+import com.thor.core.ui.pointer.rememberPointerHover
 
 /**
  * THOR's own on-screen keyboard.
@@ -67,6 +69,8 @@ import com.thor.core.model.ThorKeyboardLayout
  * @param label what the text is for, shown above the field
  * @param onKey a key was pressed by touch; the caller applies it and plays feedback
  * @param onDismiss the scrim was tapped
+ * @param compact draws it as a card at the foot of the screen rather than docked
+ *   across the whole of it; see the note in the body
  */
 @Composable
 fun ThorKeyboard(
@@ -84,6 +88,7 @@ fun ThorKeyboard(
     clipIndex: Int = 0,
     onPasteClip: (String) -> Unit = {},
     onCopyText: () -> Unit = {},
+    compact: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
@@ -101,13 +106,35 @@ fun ThorKeyboard(
         // already are on a handheld.
         contentAlignment = Alignment.BottomCenter,
     ) {
+        /*
+         * Docked on a handheld, a card on a television.
+         *
+         * Docking is what a keyboard does on a panel held in two hands: it is
+         * square and full width because the thumbs reach the edges and because a
+         * floating rounded card on a screen that size reads as a dialog. None of
+         * that is true across a room. Nothing is reaching for the edges of a
+         * television — the keys are pressed by a cursor or a stick — so the full
+         * width buys a row of enormous keys and a field of empty surface, and it
+         * covers the thing being typed into while doing it.
+         *
+         * A share of the panel rather than a width in dp, because couch mode
+         * composes through a scaled density: a fixed dp card would change size
+         * with the user's interface scale, which is the setting for how big
+         * everything *else* is.
+         */
         GlassSurface(
-            // Square, and the full width of the panel: this is a keyboard, not a
-            // dialog, and a floating rounded card read as one.
-            shape = RectangleShape,
+            shape = if (compact) ThorTheme.shapes.panel else RectangleShape,
             color = colors.surfaceHighest,
             modifier = Modifier
-                .fillMaxWidth()
+                .then(
+                    if (compact) {
+                        Modifier
+                            .fillMaxWidth(COMPACT_WIDTH_FRACTION)
+                            .padding(bottom = COMPACT_LIFT.dp)
+                    } else {
+                        Modifier.fillMaxWidth()
+                    },
+                )
                 // Swallows taps on the keyboard so they do not reach the scrim.
                 .clickable(enabled = false) {},
         ) {
@@ -144,6 +171,11 @@ fun ThorKeyboard(
                                         shifted = shifted,
                                         focused = rowIndex == cursorRow &&
                                             columnIndex == cursorColumn,
+                                        // Shorter on a card than on a dock: the
+                                        // card is a little over half the panel,
+                                        // and a key that keeps its docked height
+                                        // in that width is a tall thin tile.
+                                        height = if (compact) COMPACT_KEY_HEIGHT else KEY_HEIGHT,
                                         onClick = { onKey(key) },
                                         // Wider keys earn their width from the same
                                         // row budget, so every row still spans the card.
@@ -165,7 +197,10 @@ fun ThorKeyboard(
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.onSurfaceVariant,
-                    maxLines = 1,
+                    // Six shortcuts in a card a little over half a screen wide
+                    // do not fit on one line, and a legend that ellipsises has
+                    // dropped the last thing it had to say.
+                    maxLines = if (compact) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -240,13 +275,19 @@ private fun ClipRow(
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
     val shape = ThorTheme.shapes.small
+    val hover = rememberPointerHover()
+    val lit = focused || hover.isHovered
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .pointerHover(hover)
             .clip(shape)
-            .background(colors.surfaceElevated, shape)
-            .thorCursor(focused = focused, shape = shape)
+            .background(
+                if (hover.isHovered) colors.surfaceHighest else colors.surfaceElevated,
+                shape,
+            )
+            .thorCursor(focused = lit, shape = shape)
             .clickable(onClick = onClick)
             .padding(horizontal = dimens.spacing, vertical = dimens.spacingSmall),
     ) {
@@ -321,6 +362,7 @@ private fun KeyCap(
     key: KeyboardKey,
     shifted: Boolean,
     focused: Boolean,
+    height: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -328,11 +370,22 @@ private fun KeyCap(
     val dimens = ThorTheme.dimens
     val shape = RoundedCornerShape(dimens.cornerRadiusSmall)
 
+    /*
+     * The cursor lights a key the way the controller does.
+     *
+     * A keyboard is the surface a pointer spends the longest on — every other
+     * screen in the launcher is chosen from, and this one is typed on, a press at
+     * a time — and it was the one surface that answered a click without ever
+     * showing what was about to be clicked. From a sofa that is the difference
+     * between typing an address and guessing at one.
+     */
+    val hover = rememberPointerHover()
     // Shift and the layer switch are stateful, so they show their state rather than
     // looking identical whether or not they are engaged.
     val active = key == KeyboardKey.Shift && shifted
+    val lit = focused || hover.isHovered
     val tint = when {
-        focused -> colors.cursor
+        lit -> colors.cursor
         active -> colors.cursor
         key is KeyboardKey.Character -> colors.onSurface
         else -> colors.onSurfaceVariant
@@ -340,10 +393,17 @@ private fun KeyCap(
 
     Box(
         modifier = modifier
-            .height(KEY_HEIGHT.dp)
+            .height(height.dp)
+            .pointerHover(hover)
             .clip(shape)
-            .background(if (active) colors.cursor.copy(alpha = 0.18f) else colors.surfaceElevated)
-            .thorCursor(focused = focused, shape = shape)
+            .background(
+                when {
+                    active -> colors.cursor.copy(alpha = 0.18f)
+                    hover.isHovered -> colors.surfaceHighest
+                    else -> colors.surfaceElevated
+                },
+            )
+            .thorCursor(focused = lit, shape = shape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -414,6 +474,19 @@ private fun KeyboardKey.weight(): Float = when (this) {
 
 private const val KEY_HEIGHT = 40
 private const val KEY_GAP = 5
+
+/**
+ * How much of a television the card takes, and how far off the bottom it sits.
+ *
+ * A little over half, which is wide enough for ten letters at a size that can be
+ * read across a room and narrow enough to leave the screen behind it visible —
+ * on a television the thing being typed into is usually the thing being covered.
+ * Lifted off the edge because it is a card now: a rounded card flush with the
+ * bottom of the screen looks like a docked one that failed to reach it.
+ */
+private const val COMPACT_WIDTH_FRACTION = 0.56f
+private const val COMPACT_LIFT = 26
+private const val COMPACT_KEY_HEIGHT = 34
 
 /**
  * Ceiling on the clipboard sheet.
