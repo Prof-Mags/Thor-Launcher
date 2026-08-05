@@ -23,7 +23,7 @@ import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.Platform
 import com.thor.core.model.RomDirectory
 import com.thor.core.model.ThemeId
-import com.thor.core.model.ThemeSpec
+import com.thor.core.model.ThemeRecipe
 import com.thor.core.model.ThorSettings
 import android.net.Uri
 import android.content.Context
@@ -921,7 +921,7 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.updatePersonalization {
                 it.copy(
                     themeId = themeId,
-                    animatedWallpaper = ThemeSpec.of(themeId).defaultWallpaper,
+                    animatedWallpaper = ThemeRecipe.of(themeId).defaultWallpaper,
                 )
             }
         }

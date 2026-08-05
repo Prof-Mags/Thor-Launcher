@@ -47,23 +47,30 @@ import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorShapes
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.ThemeId
+import com.thor.core.model.ThemeOptions
+import com.thor.core.model.ThemeRecipe
 import com.thor.core.model.ThemeSpec
 
 /**
  * A scrollable gallery of theme swatches.
  *
  * Themes were previously chosen from a dropdown of names, which meant picking
- * blind and backing out of Settings to see the result — for twenty themes that
- * is twenty round trips. Each card here renders its own palette, so the choice
- * is made by looking rather than by guessing what "Lagoon" means.
+ * blind and backing out of Settings to see the result — twelve names is twelve
+ * round trips. Each card here renders its own palette, so the choice is made by
+ * looking rather than by guessing what "Sakura" means.
  *
- * Each card is drawn from its own [ThemeSpec] rather than from the active theme,
- * which is the whole point: the surrounding UI stays in the current theme while
- * the cards show what the alternatives would look like.
+ * Every card is resolved through [options], the same dials the live theme is built
+ * from. That matters more than it used to: with light/dark, contrast, hue and
+ * colour intensity all belonging to the user rather than to the theme, a gallery
+ * that rendered each recipe at its defaults would show twelve dark cards to
+ * somebody running the launcher light — twelve accurate previews of a palette none
+ * of them would get.
  */
 @Composable
 fun ThemePreviewRow(
     selected: ThemeId,
+    /** The user's own appearance dials, so each card previews what they would get. */
+    options: ThemeOptions,
     focused: Boolean,
     onSelected: (ThemeId) -> Unit,
     /** Declares this row as one that navigates sideways while it holds the cursor. */
@@ -72,7 +79,14 @@ fun ThemePreviewRow(
 ) {
     val dimens = ThorTheme.dimens
     val colors = ThorTheme.colors
-    val themes = ThemeSpec.ALL
+    /*
+     * Resolved once per change to the dials rather than per card per frame.
+     *
+     * Twelve palettes is a few hundred gamut searches and a few dozen binary
+     * searches for readable text — trivial once, wasteful sixty times a second
+     * while the row is being scrolled past.
+     */
+    val themes = remember(options) { ThemeRecipe.ALL.map { it.resolve(options) } }
     val listState = rememberLazyListState()
 
     /*
@@ -412,7 +426,7 @@ private fun ThemeCard(
  *
  * Deliberately not [com.thor.core.designsystem.modifier.thorSurface], which reads
  * the treatment from the active theme — exactly the wrong source here, where the
- * whole point is to render nineteen themes that are not the active one. It reads
+ * whole point is to render eleven themes that are not the active one. It reads
  * from the passed [spec] instead, and takes the treatment's values raw rather than
  * degraded: a card should show what a theme *is*, not what this device would fall
  * back to if the user picked it.
@@ -486,7 +500,7 @@ private const val CURSOR_SCALE = 1.06f
  * The cursor's ring, deliberately heavier than any other border on the card.
  *
  * The point of the row is choosing by looking, so where the controller is has to be
- * readable at a glance across twenty small cards.
+ * readable at a glance across a row of small cards.
  */
 private const val CURSOR_BORDER = 3
 

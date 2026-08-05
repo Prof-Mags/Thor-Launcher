@@ -205,6 +205,24 @@ fun AnimatedWallpaperBackground(
         if (spec.grain > 0f) {
             GrainOverlay(strength = spec.grain, dark = colors.isDark)
         }
+
+        /*
+         * The user's dim, last of all.
+         *
+         * Over the grain and the vignette rather than under them, because it is
+         * not part of the background's own look — it is the amount by which the
+         * whole background gets out of the way of what is drawn on top. Toward the
+         * theme's ground rather than toward black, so dimming a light theme
+         * brightens the field instead of dropping a grey sheet over it.
+         */
+        val dim = ThorTheme.materials.wallpaperDim
+        if (dim > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(baseColor.copy(alpha = dim.coerceIn(0f, 1f))),
+            )
+        }
     }
 }
 

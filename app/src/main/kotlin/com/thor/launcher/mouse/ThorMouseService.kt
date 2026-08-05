@@ -3,6 +3,7 @@ package com.thor.launcher.mouse
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
+import android.content.res.Configuration
 import android.graphics.Path
 import android.hardware.display.DisplayManager
 import android.os.Build
@@ -25,8 +26,8 @@ import com.thor.core.input.PointerPosition
 import com.thor.core.model.MouseAction
 import com.thor.core.model.MouseButton
 import com.thor.core.model.MouseSettings
-import com.thor.core.model.ThemeId
-import com.thor.core.model.ThemeSpec
+import com.thor.core.model.PersonalizationSettings
+import com.thor.core.model.ThemeMode
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,7 +75,7 @@ class ThorMouseService : AccessibilityService() {
     private var settings = MouseSettings()
 
     /** The theme's cursor colour; the default theme's until settings arrive. */
-    private var cursorArgb: Long = ThemeSpec.of(ThemeId.DARK).cursorArgb
+    private var cursorArgb: Long = PersonalizationSettings().resolveTheme().cursorArgb
 
     /** Buttons of the toggle chord currently held. */
     private var startHeld = false
@@ -112,11 +113,19 @@ class ThorMouseService : AccessibilityService() {
         // Drawn from the shared state rather than from this service's own idea of
         // where the pointer is, so the cursor is in the same place whether the
         // launcher or this service last moved it.
-        // The theme's cursor colour, so the pointer looks like THOR's even while
-        // it is standing over somebody else's app. Read from the spec rather than
-        // from the Compose theme, which does not exist out here.
+        /*
+         * The theme's cursor colour, so the pointer looks like Loki's even while it
+         * is standing over somebody else's app. Resolved from the whole of the
+         * user's appearance settings rather than from the theme id alone: the
+         * cursor follows a hue shift, a colour-intensity change and a picked accent
+         * as well, and out here there is no Compose theme to read it from.
+         *
+         * The system's light/dark setting comes from this service's own
+         * configuration, which is what [ThemeMode.SYSTEM] needs and the only place
+         * to get it without a composition.
+         */
         settingsRepository.personalization
-            .onEach { cursorArgb = ThemeSpec.of(it.themeId).cursorArgb }
+            .onEach { cursorArgb = it.resolveTheme(systemDark = systemInDarkMode()).cursorArgb }
             .launchIn(scope)
 
         mouse.state
@@ -722,6 +731,11 @@ class ThorMouseService : AccessibilityService() {
         KeyEvent.KEYCODE_BUTTON_THUMBR -> MouseButton.R3
         else -> null
     }
+
+    /** Whether Android is currently in its own dark mode, for [ThemeMode.SYSTEM]. */
+    private fun systemInDarkMode(): Boolean =
+        resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
 
     private companion object {
         const val TAG = "Pointer"

@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thor.core.model.AccessibilitySettings
+import com.thor.core.model.ContrastLevel
 import com.thor.core.model.CornerStyle
 import com.thor.core.model.CursorAnimation
 import com.thor.core.model.CursorStyle
@@ -27,6 +28,7 @@ import com.thor.core.model.PerformanceSettings
 import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.SurfaceStyle
 import com.thor.core.model.SurfaceTreatment
+import com.thor.core.model.ThemeRecipe
 import com.thor.core.model.ThemeSpec
 
 /**
@@ -211,6 +213,14 @@ data class ThorMaterials(
     val surface: SurfaceTreatment,
     /** How far the background graduates toward the accent; 0 is flat. */
     val backgroundDepth: Float,
+    /**
+     * How far the wallpaper is dimmed behind the interface, 0..1.
+     *
+     * Resolved here beside the other material values rather than read from
+     * settings at the one place that draws it, so anything else that ever paints
+     * over the wallpaper reads the same number.
+     */
+    val wallpaperDim: Float,
 ) {
     val isBlurActive: Boolean get() = glassEnabled && blurRadius > 0.dp
 }
@@ -246,29 +256,40 @@ fun ThorTheme(
 ) {
     val context = LocalContext.current
     val systemDark = isSystemInDarkTheme()
-    val spec = remember(personalization.themeId) { ThemeSpec.of(personalization.themeId) }
+
+    /*
+     * The whole palette, generated here and nowhere else.
+     *
+     * Every appearance preference the user holds is an *input* to this rather than
+     * a patch applied afterwards, which is what makes them compose: pure black
+     * under a hue shift under maximum contrast is one palette built to satisfy all
+     * three, not three transforms fighting over the same colours in whatever order
+     * they happened to be written.
+     */
+    val spec = remember(personalization, systemDark, accessibility.highContrast) {
+        val options = personalization.themeOptions(systemDark).let {
+            // The accessibility switch is a shortcut to the top of the dial rather
+            // than a separate mechanism. It wins, because someone who has turned it
+            // on has said the default is not enough for them.
+            if (accessibility.highContrast) it.copy(contrast = ContrastLevel.MAXIMUM) else it
+        }
+        ThemeRecipe.of(personalization.themeId).resolve(options)
+    }
 
     val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val useDynamic = personalization.useDynamicColor && supportsDynamicColor
 
-    val colors = remember(
-        spec, personalization.accentOverrideArgb, accessibility.highContrast,
-        accessibility.colorBlindMode, useDynamic, systemDark,
-    ) {
-        buildThorColors(
-            spec = spec,
-            accentOverride = personalization.accentOverrideArgb?.let(::Color),
-            highContrast = accessibility.highContrast,
-            colorBlindMode = accessibility.colorBlindMode,
-        )
+    val colors = remember(spec, accessibility.colorBlindMode) {
+        buildThorColors(spec = spec, colorBlindMode = accessibility.colorBlindMode)
     }
 
     // In performance mode blur and animation are off regardless of the theme,
     // and the reduce-motion switch wins over the user's speed slider.
     val reduceMotion = accessibility.reduceMotion || !performance.animationsEnabled
-    val motion = remember(spec.motion, personalization.transitionSpeed, reduceMotion) {
+    val motionStyle = personalization.motionOverride ?: spec.motion
+    val motion = remember(motionStyle, personalization.transitionSpeed, reduceMotion) {
         ThorMotion(
-            style = spec.motion,
+            style = motionStyle,
             speedMultiplier = personalization.transitionSpeed,
             reduceMotion = reduceMotion,
         )
@@ -276,7 +297,7 @@ fun ThorTheme(
 
     val blurSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val materials = remember(
-        spec, personalization.glassEffects,
+        spec, personalization.glassEffects, personalization.wallpaperDim,
         performance.blurEnabled, performance.performanceMode,
         blurSupported, reduceMotion,
     ) {
@@ -319,6 +340,7 @@ fun ThorTheme(
             // Flattened in performance mode along with everything else that costs
             // a gradient the user did not ask for.
             backgroundDepth = if (performance.performanceMode) 0f else spec.backgroundDepth,
+            wallpaperDim = personalization.wallpaperDim.coerceIn(0f, 1f),
         )
     }
 
@@ -349,7 +371,7 @@ fun ThorTheme(
         )
     }
 
-    val fontChoice = spec.fontFamily
+    val fontChoice = personalization.fontOverride ?: spec.fontFamily
     val fontScale = personalization.fontScale * if (accessibility.largeText) 1.2f else 1f
     val typography = remember(fontChoice, fontScale) {
         ThorTypography.build(ThorTypography.familyFor(fontChoice), fontScale)

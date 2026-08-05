@@ -8,7 +8,7 @@ import com.thor.core.model.ControllerCommand
 import com.thor.core.model.GridSpec
 import com.thor.core.model.LauncherAction
 import com.thor.core.model.ThemeId
-import com.thor.core.model.ThemeSpec
+import com.thor.core.model.ThemeRecipe
 import com.thor.core.model.ThorSettings
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -45,7 +45,7 @@ class SettingsUpgradeTest {
         val legacy = """
             {
               "personalization": {
-                "themeId": "STEAM",
+                "themeId": "ORCHID",
                 "animatedWallpaper": "AURORA",
                 "cursorStyle": "RING",
                 "clockStyle": "DIGITAL_24",
@@ -84,7 +84,7 @@ class SettingsUpgradeTest {
         // Retired field ignored, new fields defaulted, retained values preserved.
         assertThat(read.dock.style).isEqualTo(DockStyle.PILL)
         assertThat(read.audio.soundEffectsEnabled).isTrue()
-        assertThat(read.personalization.themeId).isEqualTo(ThemeId.STEAM)
+        assertThat(read.personalization.themeId).isEqualTo(ThemeId.ORCHID)
         // `cellStyle` was retired; the document still carries it and is ignored.
         assertThat(read.grid.columns).isEqualTo(5)
     }
@@ -115,7 +115,7 @@ class SettingsUpgradeTest {
 
         val read = serializer.readFrom(ByteArrayInputStream(document.toByteArray()))
 
-        assertThat(read.personalization.themeId).isEqualTo(ThemeSpec.DEFAULT)
+        assertThat(read.personalization.themeId).isEqualTo(ThemeRecipe.DEFAULT)
         assertThat(read.personalization.clockStyle).isEqualTo(ClockStyle.DIGITAL_24)
     }
 
@@ -213,15 +213,20 @@ class SettingsUpgradeTest {
         // Touching these in one test catches a class-initialisation cycle between
         // the model's companion objects, which would surface as an
         // ExceptionInInitializerError the moment the first screen composed.
-        assertThat(ThemeSpec.ALL).isNotEmpty()
-        assertThat(ThemeSpec.of(ThemeId.DARK).id).isEqualTo(ThemeId.DARK)
+        assertThat(ThemeRecipe.ALL).isNotEmpty()
+        assertThat(ThemeRecipe.of(ThemeId.NOCTURNE).id).isEqualTo(ThemeId.NOCTURNE)
         assertThat(GridSpec.PRESETS).isNotEmpty()
         assertThat(GridSpec.DEFAULT.preset).isIn(GridSpec.PRESETS)
         assertThat(ThorSettings.DEFAULT.personalization.animatedWallpaper)
             .isIn(AnimatedWallpaper.entries)
         // Every theme's paired wallpaper must be a real mode.
-        ThemeSpec.ALL.forEach { spec ->
-            assertThat(spec.defaultWallpaper).isIn(AnimatedWallpaper.entries)
+        ThemeRecipe.ALL.forEach { recipe ->
+            assertThat(recipe.defaultWallpaper).isIn(AnimatedWallpaper.entries)
         }
+        // And the default settings must resolve to a palette without a device, a
+        // composition or a system dark-mode answer to hand — this is what the
+        // pointer service and any headless caller get.
+        assertThat(ThorSettings.DEFAULT.personalization.resolveTheme().id)
+            .isEqualTo(ThemeRecipe.DEFAULT)
     }
 }

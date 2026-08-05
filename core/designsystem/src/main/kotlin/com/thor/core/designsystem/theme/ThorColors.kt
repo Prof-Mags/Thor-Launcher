@@ -53,66 +53,40 @@ data class ThorColors(
 }
 
 /**
- * Builds the launcher palette for a theme, applying the user's accent override,
- * high-contrast preference and colour-blind correction in that order.
+ * Converts a resolved [ThemeSpec] into the launcher palette.
+ *
+ * Deliberately thin. This used to be where the accent override and the
+ * high-contrast preference were applied — over the top of a finished palette,
+ * which is the wrong end: an overridden accent was pasted in beside surfaces still
+ * tinted toward the colour it replaced, and high contrast worked by discarding the
+ * palette and substituting white on black. Both are now decisions the palette is
+ * *generated* from, in [com.thor.core.model.ThemeRecipe.resolve], so a custom
+ * accent brings the greys with it and maximum contrast is still recognisably the
+ * theme the user chose.
+ *
+ * Colour-vision correction stays here, because it is genuinely a transform over a
+ * finished palette rather than an input to one.
  */
 fun buildThorColors(
     spec: ThemeSpec,
-    accentOverride: Color? = null,
-    highContrast: Boolean = false,
     colorBlindMode: ColorBlindMode = ColorBlindMode.NONE,
-): ThorColors {
-    val primary = accentOverride ?: Color(spec.primaryArgb)
-    val base = ThorColors(
-        primary = primary,
-        secondary = Color(spec.secondaryArgb),
-        // An overridden accent supplies its own far stop by lightening, so a
-        // custom colour still gets a gradient rather than falling back to the
-        // retired theme's second stop and clashing with it.
-        accentEnd = accentOverride?.lighten(ACCENT_END_LIFT) ?: Color(spec.accentEndArgb),
-        background = Color(spec.backgroundArgb),
-        surface = Color(spec.surfaceArgb),
-        surfaceElevated = Color(spec.surfaceElevatedArgb),
-        surfaceHighest = Color(spec.surfaceHighestArgb),
-        onBackground = Color(spec.onBackgroundArgb),
-        onSurface = Color(spec.onSurfaceArgb),
-        onSurfaceVariant = Color(spec.onSurfaceVariantArgb),
-        cursor = accentOverride ?: Color(spec.cursorArgb),
-        glow = accentOverride?.copy(alpha = 0.45f) ?: Color(spec.glowArgb),
-        outline = Color(spec.outlineArgb),
-        error = Color(spec.errorArgb),
-        scrim = Color.Black.copy(alpha = if (spec.isDark) 0.62f else 0.38f),
-    )
-    return base
-        .let { if (highContrast) it.withHighContrast() else it }
-        .let { it.withColorBlindCorrection(colorBlindMode) }
-}
-
-/**
- * Pushes foreground/background apart and hardens outlines.
- *
- * Rather than swapping in a separate palette, this pins text to pure white or
- * black and makes the cursor fully opaque, which keeps every theme recognisable
- * while clearing the WCAG AA contrast bar.
- */
-private fun ThorColors.withHighContrast(): ThorColors {
-    val dark = isDark
-    val foreground = if (dark) Color.White else Color.Black
-    return copy(
-        background = if (dark) Color.Black else Color.White,
-        surface = if (dark) Color(0xFF0A0A0A) else Color(0xFFFAFAFA),
-        surfaceElevated = if (dark) Color(0xFF161616) else Color.White,
-        // The ramp is flattened rather than dropped: high contrast still needs
-        // the three levels to be distinguishable, just by less.
-        surfaceHighest = if (dark) Color(0xFF222222) else Color(0xFFF0F0F0),
-        onBackground = foreground,
-        onSurface = foreground,
-        onSurfaceVariant = foreground.copy(alpha = 0.86f),
-        outline = foreground.copy(alpha = 0.6f),
-        cursor = cursor.copy(alpha = 1f),
-        glow = cursor.copy(alpha = 0.75f),
-    )
-}
+): ThorColors = ThorColors(
+    primary = Color(spec.primaryArgb),
+    secondary = Color(spec.secondaryArgb),
+    accentEnd = Color(spec.accentEndArgb),
+    background = Color(spec.backgroundArgb),
+    surface = Color(spec.surfaceArgb),
+    surfaceElevated = Color(spec.surfaceElevatedArgb),
+    surfaceHighest = Color(spec.surfaceHighestArgb),
+    onBackground = Color(spec.onBackgroundArgb),
+    onSurface = Color(spec.onSurfaceArgb),
+    onSurfaceVariant = Color(spec.onSurfaceVariantArgb),
+    cursor = Color(spec.cursorArgb),
+    glow = Color(spec.glowArgb),
+    outline = Color(spec.outlineArgb),
+    error = Color(spec.errorArgb),
+    scrim = Color.Black.copy(alpha = if (spec.isDark) 0.62f else 0.38f),
+).withColorBlindCorrection(colorBlindMode)
 
 /**
  * Applies a daltonisation-style correction.
@@ -163,11 +137,8 @@ private fun ThorColors.withColorBlindCorrection(mode: ColorBlindMode): ThorColor
     )
 }
 
-/** Lifts a colour toward white, for deriving a gradient's far stop. */
+/** Lifts a colour toward white. */
 fun Color.lighten(fraction: Float): Color = blend(Color.White, fraction)
-
-/** How far an overridden accent is lifted to produce its gradient end. */
-private const val ACCENT_END_LIFT = 0.32f
 
 /** Projects the launcher palette onto a Material 3 scheme. */
 fun ThorColors.toMaterialScheme(): ColorScheme {

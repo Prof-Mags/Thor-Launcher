@@ -98,14 +98,83 @@ data class PersonalizationSettings(
      * explicitly and a changed default here reaches only a device with no file
      * yet.
      */
-    val themeId: ThemeId = ThemeId.MATERIAL_YOU,
-    /** Overrides the theme's own accent when set. */
+    val themeId: ThemeId = ThemeId.MATERIAL,
+    /**
+     * Light or dark, for whichever theme is chosen.
+     *
+     * Every theme resolves both ways — see [ThemeRecipe] — so this is a real
+     * preference rather than a filter over a list. Dark by default because that is
+     * what a handheld games console is read on, and [ThemeMode.SYSTEM] is one
+     * selection away for anyone whose phone already switches at dusk.
+     */
+    val themeMode: ThemeMode = ThemeMode.DARK,
+    /**
+     * How hard the palette separates text from ground.
+     *
+     * Distinct from [AccessibilitySettings.highContrast], which is a switch that
+     * forces the maximum; this is the dial underneath it, and exists because
+     * "slightly more than the default" was previously unreachable — the only
+     * options were the theme as drawn or white text on black.
+     */
+    val contrastLevel: ContrastLevel = ContrastLevel.NORMAL,
+    /**
+     * Scales every chroma in the palette, 0 to 2. 1 is the theme as designed.
+     *
+     * Turned down far enough, any theme becomes a greyscale one with a coloured
+     * cursor; turned up, a restrained one becomes loud. Cheaper than shipping
+     * three versions of each theme, and more useful, because it also reaches the
+     * tint on the surfaces rather than only the accent.
+     */
+    val colorIntensity: Float = 1.0f,
+    /**
+     * Rotates the whole palette in degrees, -180 to 180.
+     *
+     * Applies to the accent and to the tint on the greys together, so the theme
+     * stays coherent — this is the same theme wearing a different colour, not an
+     * accent pasted over somebody else's surfaces.
+     */
+    val accentHueShift: Float = 0f,
+    /**
+     * Draws the darkest surface as true black.
+     *
+     * A property of the screen, not of a theme, which is why it sits over all
+     * twelve of them: the AYN Thor's panels switch pixels off at #000, so this is
+     * both the deepest look available and the only one that costs less power.
+     * Nothing when the palette resolves light.
+     */
+    val pureBlack: Boolean = false,
+    /**
+     * Overrides the theme's own accent when set, as an ARGB long.
+     *
+     * The hue and chroma of it, rather than the colour verbatim — see
+     * [ThemeOptions.accentOverrideArgb] for why a picked colour is a direction
+     * rather than a value.
+     */
     val accentOverrideArgb: Long? = null,
+    /**
+     * Overrides how every panel is built. Null keeps the theme's own.
+     *
+     * The materials were the part of a theme nobody could reach: a user who liked
+     * Terminal's palette but wanted its panels to stop being hard-edged rectangles
+     * had to pick a different theme entirely.
+     */
+    val surfaceStyleOverride: SurfaceStyle? = null,
+    /** Scales the theme's background wash toward its accent. 0 is a flat ground. */
+    val surfaceDepth: Float = 1.0f,
+    /** Scales the theme's film grain. 0 removes it. */
+    val grainAmount: Float = 1.0f,
     /** Follows the system wallpaper/dynamic colour when supported (API 31+). */
     val useDynamicColor: Boolean = false,
     val wallpaperUri: String? = null,
     val topScreenWallpaperUri: String? = null,
     val animatedWallpaper: AnimatedWallpaper = AnimatedWallpaper.WAVES,
+    /**
+     * How far the wallpaper is dimmed behind the interface, 0 to 1.
+     *
+     * A photograph chosen for how it looks is rarely a photograph that content
+     * reads well over, and the alternative was picking a different photograph.
+     */
+    val wallpaperDim: Float = 0f,
     val cursorStyle: CursorStyle = CursorStyle.RING,
     val cursorAnimation: CursorAnimation = CursorAnimation.BREATHE,
     /** 0..1 intensity of the glow behind the cursor. */
@@ -132,6 +201,16 @@ data class PersonalizationSettings(
      * a decoder per dwell is exactly the sort of cost that switch exists to avoid.
      */
     val autoplayTrailers: Boolean = true,
+    /**
+     * Overrides the theme's typeface. Null keeps the theme's own.
+     *
+     * Five faces have shipped since the first theme and none of them were
+     * selectable: the launcher's font was whatever the chosen palette happened to
+     * declare, so reading it in a serif meant living with Linen's colours.
+     */
+    val fontOverride: FontChoice? = null,
+    /** Overrides the theme's motion personality. Null keeps the theme's own. */
+    val motionOverride: MotionStyle? = null,
     val fontScale: Float = 1.0f,
     val transitionSpeed: Float = 1.0f,
     val clockStyle: ClockStyle = ClockStyle.DIGITAL_24,
@@ -152,7 +231,38 @@ data class PersonalizationSettings(
      * else the platform has, not a blank cell.
      */
     val bundledPlatformIcons: Boolean = true,
-)
+) {
+    /**
+     * These preferences in the form the palette generator takes.
+     *
+     * The only place the mapping lives, so nothing has to remember that light/dark
+     * is three-valued or that the intensity slider is a chroma multiplier — and so
+     * that a preview card and the live launcher cannot disagree about what a
+     * setting means.
+     *
+     * @param systemDark what Android's own light/dark setting currently says,
+     *   which is the answer [ThemeMode.SYSTEM] defers to
+     */
+    fun themeOptions(systemDark: Boolean = true): ThemeOptions = ThemeOptions(
+        dark = when (themeMode) {
+            ThemeMode.DARK -> true
+            ThemeMode.LIGHT -> false
+            ThemeMode.SYSTEM -> systemDark
+        },
+        contrast = contrastLevel,
+        colorIntensity = colorIntensity,
+        hueShift = accentHueShift,
+        pureBlack = pureBlack,
+        accentOverrideArgb = accentOverrideArgb,
+        surfaceStyle = surfaceStyleOverride,
+        depthScale = surfaceDepth,
+        grainScale = grainAmount,
+    )
+
+    /** The finished palette: [themeId] resolved against everything else chosen. */
+    fun resolveTheme(systemDark: Boolean = true): ThemeSpec =
+        ThemeRecipe.of(themeId).resolve(themeOptions(systemDark))
+}
 
 /**
  * How every corner in the launcher is drawn.

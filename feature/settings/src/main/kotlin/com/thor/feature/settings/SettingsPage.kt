@@ -24,16 +24,31 @@ enum class SettingsPage(
 ) {
     // ---- Appearance --------------------------------------------------------
     THEME(
-        SettingsCategory.APPEARANCE, "Theme",
-        "Colour scheme and accent",
+        SettingsCategory.APPEARANCE, "Theme & colour",
+        "The gallery, light or dark, accent, contrast and intensity",
+    ),
+
+    /**
+     * What panels are *made of*, as opposed to what colour they are.
+     *
+     * Its own page rather than a section of the theme one, because it is the half
+     * of a theme nobody could previously reach: the material, the corners, the
+     * depth of the ground and the texture over it were all declared by whichever
+     * palette was selected and overridable nowhere. Splitting them says the
+     * quiet part out loud — a theme is a colour *and* a construction, and both are
+     * yours.
+     */
+    SURFACES(
+        SettingsCategory.APPEARANCE, "Surfaces",
+        "Panel material, corners, depth and texture",
     ),
     WALLPAPER(
         SettingsCategory.APPEARANCE, "Wallpaper",
-        "Background image and animated effect",
+        "Background image, animated effect and how far it is dimmed",
     ),
     INTERFACE(
         SettingsCategory.APPEARANCE, "Interface",
-        "Text size, motion, clock and folders",
+        "Typeface, text size, motion, clock and folders",
     ),
 
     // ---- Home screen -------------------------------------------------------

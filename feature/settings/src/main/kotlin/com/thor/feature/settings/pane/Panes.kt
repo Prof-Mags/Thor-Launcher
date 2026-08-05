@@ -1,5 +1,6 @@
 package com.thor.feature.settings.pane
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -12,6 +13,7 @@ import com.thor.core.input.RawKeyPress
 import com.thor.core.model.AnimatedWallpaper
 import com.thor.core.model.ClockStyle
 import com.thor.core.model.ColorBlindMode
+import com.thor.core.model.ContrastLevel
 import com.thor.core.model.CursorAnimation
 import com.thor.core.model.CursorStyle
 import com.thor.core.model.DockStyle
@@ -19,11 +21,15 @@ import com.thor.core.model.DisplaySettings
 import com.thor.core.model.CouchWallpaperStyle
 import com.thor.core.model.DualScreenMode
 import com.thor.core.model.FolderStyle
+import com.thor.core.model.FontChoice
 import com.thor.core.model.GridSpec
 import com.thor.core.model.IconShape
+import com.thor.core.model.MotionStyle
 import com.thor.core.model.Platform
 import com.thor.core.model.RomDirectory
 import com.thor.core.model.SortOrder
+import com.thor.core.model.SurfaceStyle
+import com.thor.core.model.ThemeMode
 import com.thor.core.model.ThorSettings
 import com.thor.data.metadata.ProviderStatus
 import com.thor.data.sync.ScrapeState
@@ -55,6 +61,7 @@ import com.thor.feature.settings.component.DirectoryPickerRow
 import com.thor.feature.settings.component.FilePickerRow
 import com.thor.feature.settings.component.ThemePreviewRow
 import com.thor.feature.settings.component.WallpaperPickerRow
+import kotlin.math.roundToInt
 
 /**
  * The contents of every settings page.
@@ -112,6 +119,7 @@ fun SettingsPageContent(
     ) {
         when (page) {
             SettingsPage.THEME -> ThemePage(settings, focusedRow, viewModel)
+            SettingsPage.SURFACES -> SurfacesPage(settings, focusedRow, viewModel)
             SettingsPage.WALLPAPER -> WallpaperPage(settings, focusedRow, viewModel)
             SettingsPage.GRID -> GridPage(settings, focusedRow, viewModel)
             SettingsPage.DOCK -> DockPage(settings, focusedRow, viewModel)
@@ -183,12 +191,13 @@ fun rowCountFor(
     profileRegistry: ProfileRegistry = ProfileRegistry.EMPTY,
     activeProfileHasAvatar: Boolean = false,
 ): Int = when (page) {
-    SettingsPage.THEME -> 5
-    SettingsPage.WALLPAPER -> 3 + wallpaperClearRows
+    SettingsPage.THEME -> THEME_ROWS
+    SettingsPage.SURFACES -> SURFACES_ROWS
+    SettingsPage.WALLPAPER -> WALLPAPER_FIXED_ROWS + wallpaperClearRows
     SettingsPage.GRID -> 5
     SettingsPage.DOCK -> 6
     SettingsPage.CURSOR -> 3
-    SettingsPage.INTERFACE -> 7
+    SettingsPage.INTERFACE -> INTERFACE_ROWS
     // One card per platform, Add, then Scan when there is something to scan.
     SettingsPage.PLATFORMS -> platformCount + 1 + if (platformCount > 0) 1 else 0
     SettingsPage.ROM_FOLDERS -> extraRomFolderCount + 1
@@ -221,25 +230,64 @@ fun rowCountFor(
 
 // ---------------------------------------------------------------- Appearance
 
+/**
+ * Colour: which theme, which polarity, and the four dials over the top of it.
+ *
+ * The dials are new and they are the point of the page. A theme used to be a fixed
+ * set of colours with one accent swatch over it; every palette is now generated
+ * from a seed — see [com.thor.core.model.ThemeRecipe] — so brightness, contrast,
+ * saturation and hue are all inputs the user can hold rather than decisions the
+ * theme made on their behalf.
+ *
+ * Ordered by how much each one changes: the gallery, then light or dark, then the
+ * adjustments, smallest last. Somebody who only wants a different colour never has
+ * to read past the first two rows.
+ */
 @Composable
 private fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
     val personalization = settings.personalization
 
-    // A gallery rather than a dropdown of names: with twenty themes, choosing
-    // from a list meant leaving Settings to see each one.
+    // A gallery rather than a dropdown of names: choosing from a list meant
+    // leaving Settings to see each one.
     ThemePreviewRow(
         selected = personalization.themeId,
+        // Previewed through the user's own dials rather than at each theme's
+        // defaults, so a card is a promise about what selecting it would give.
+        options = personalization.themeOptions(systemDark = isSystemInDarkTheme()),
         focused = focusedRow == 0,
         onSelected = viewModel::selectTheme,
         onTakesHorizontalInput = { takes -> viewModel.setRowTakesHorizontal(0, takes) },
     )
     RowDivider()
+    ChoiceRow(
+        title = "Light or dark",
+        subtitle = "Every theme is built both ways",
+        options = ThemeMode.entries,
+        selected = personalization.themeMode,
+        label = ThemeMode::label,
+        focused = focusedRow == 1,
+        onSelected = { mode ->
+            viewModel.updatePersonalization { it.copy(themeMode = mode) }
+        },
+    )
+    RowDivider()
+    SwitchRow(
+        title = "Pure black",
+        subtitle = "Draw the darkest surface as true black. Saves power on an OLED " +
+            "panel, and turns off the grain and the background wash with it.",
+        checked = personalization.pureBlack,
+        focused = focusedRow == 2,
+        onCheckedChange = { on ->
+            viewModel.updatePersonalization { it.copy(pureBlack = on) }
+        },
+    )
+    RowDivider()
     ColorRow(
         title = "Accent colour",
-        subtitle = "Overrides the theme's own accent",
+        subtitle = "Replaces the theme's own, and re-tints the surfaces to match",
         colorsToPick = ACCENT_SWATCHES,
         selected = personalization.accentOverrideArgb?.let(::Color),
-        focused = focusedRow == 1,
+        focused = focusedRow == 3,
         onSelected = { color ->
             // Stored as an unsigned 32-bit ARGB value in a Long, matching the
             // representation every other colour in the model uses.
@@ -248,42 +296,195 @@ private fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
         },
     )
     RowDivider()
+    SliderRow(
+        title = "Hue",
+        subtitle = "Rotates the whole palette, accent and surfaces together",
+        value = personalization.accentHueShift,
+        range = -180f..180f,
+        focused = focusedRow == 4,
+        valueLabel = { shift ->
+            if (shift.roundToInt() == 0) "Theme" else "${shift.roundToInt()}°"
+        },
+        onValueChange = { shift ->
+            viewModel.updatePersonalization { it.copy(accentHueShift = shift) }
+        },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Colour intensity",
+        subtitle = "0% is greyscale with a coloured cursor; above 100% saturates",
+        value = personalization.colorIntensity,
+        range = 0f..1.6f,
+        focused = focusedRow == 5,
+        valueLabel = { "${(it * 100).roundToInt()}%" },
+        onValueChange = { intensity ->
+            viewModel.updatePersonalization { it.copy(colorIntensity = intensity) }
+        },
+    )
+    RowDivider()
+    ChoiceRow(
+        title = "Contrast",
+        subtitle = "How far text is pushed from the surface behind it",
+        options = ContrastLevel.entries,
+        selected = personalization.contrastLevel,
+        label = ContrastLevel::label,
+        optionDescription = { level ->
+            "Body text at ${"%.1f".format(level.bodyRatio)}:1 or better"
+        },
+        focused = focusedRow == 6,
+        onSelected = { level ->
+            viewModel.updatePersonalization { it.copy(contrastLevel = level) }
+        },
+    )
+    RowDivider()
     SwitchRow(
         title = "Dynamic colour",
-        subtitle = "Derive the palette from the system wallpaper (Android 12+)",
+        subtitle = "Derive Material components' palette from the system wallpaper " +
+            "(Android 12+)",
         checked = personalization.useDynamicColor,
-        focused = focusedRow == 2,
+        focused = focusedRow == 7,
         onCheckedChange = { on ->
             viewModel.updatePersonalization { it.copy(useDynamicColor = on) }
         },
     )
     RowDivider()
-    SwitchRow(
-        title = "Autoplay trailers",
-        subtitle = "Play a game's trailer on the info panel while it is highlighted; " +
-            "L1 or R1 shows screenshots instead",
-        checked = personalization.autoplayTrailers,
-        focused = focusedRow == 3,
-        onCheckedChange = { on ->
-            viewModel.updatePersonalization { it.copy(autoplayTrailers = on) }
+    ActionRow(
+        title = "Reset colour adjustments",
+        subtitle = "Puts the accent, hue, intensity and contrast back to the theme's own",
+        focused = focusedRow == 8,
+        trailingLabel = "Reset",
+        onClick = {
+            viewModel.updatePersonalization {
+                it.copy(
+                    accentOverrideArgb = null,
+                    accentHueShift = 0f,
+                    colorIntensity = 1f,
+                    contrastLevel = ContrastLevel.NORMAL,
+                )
+            }
+        },
+    )
+}
+
+/** Gallery, mode, pure black, accent, hue, intensity, contrast, dynamic, reset. */
+private const val THEME_ROWS = 9
+
+/**
+ * What panels are made of, and how much texture sits under them.
+ *
+ * These were a theme's private business until now: the material, the corner radius,
+ * the wash under the background and the film grain over it were all declared by
+ * whichever palette was chosen, so liking Terminal's green but not its hard-edged
+ * rectangles meant liking a different theme. The theme still supplies the defaults
+ * — every row here reads "Theme default" until it is touched — but nothing is
+ * locked to it.
+ */
+@Composable
+private fun SurfacesPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    val personalization = settings.personalization
+
+    ChoiceRow(
+        title = "Panel material",
+        subtitle = "How every panel, card and sheet is built",
+        options = SURFACE_STYLE_OPTIONS,
+        selected = personalization.surfaceStyleOverride,
+        label = { it?.label ?: THEME_DEFAULT },
+        optionDescription = { style -> style?.let(::surfaceStyleDescription) },
+        focused = focusedRow == 0,
+        onSelected = { style ->
+            viewModel.updatePersonalization { it.copy(surfaceStyleOverride = style) }
         },
     )
     RowDivider()
-    // One answer for every corner in the launcher. On the Theme page rather than
-    // Interface because it overrides something the theme itself declares, and the
-    // two are only comprehensible next to each other.
+    // One answer for every corner in the launcher, next to the material it is
+    // shaping. The two are only comprehensible together.
     ChoiceRow(
         title = "Corner style",
         subtitle = "Shape of panels, cards, dialogs and tabs",
         options = CornerStyle.entries,
         selected = personalization.cornerStyle,
         label = CornerStyle::label,
-        focused = focusedRow == 4,
+        focused = focusedRow == 1,
         onSelected = { style ->
             viewModel.updatePersonalization { it.copy(cornerStyle = style) }
         },
     )
+    RowDivider()
+    SwitchRow(
+        title = "Glass effects",
+        subtitle = "Translucent panels with a blurred backdrop. Off makes every " +
+            "surface opaque, whatever material is chosen.",
+        checked = personalization.glassEffects,
+        focused = focusedRow == 2,
+        onCheckedChange = { on ->
+            viewModel.updatePersonalization { it.copy(glassEffects = on) }
+        },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Background depth",
+        subtitle = "How far the ground graduates toward the accent. 0% is a flat field.",
+        value = personalization.surfaceDepth,
+        range = 0f..2f,
+        focused = focusedRow == 3,
+        valueLabel = { "${(it * 100).roundToInt()}%" },
+        onValueChange = { depth ->
+            viewModel.updatePersonalization { it.copy(surfaceDepth = depth) }
+        },
+    )
+    RowDivider()
+    SliderRow(
+        title = "Film grain",
+        subtitle = "Fine noise over the background. Hides the banding a large " +
+            "gradient shows on an OLED panel.",
+        value = personalization.grainAmount,
+        range = 0f..2f,
+        focused = focusedRow == 4,
+        valueLabel = { "${(it * 100).roundToInt()}%" },
+        onValueChange = { grain ->
+            viewModel.updatePersonalization { it.copy(grainAmount = grain) }
+        },
+    )
+    RowDivider()
+    ActionRow(
+        title = "Reset surfaces",
+        subtitle = "Back to the material, depth and grain the theme declares",
+        focused = focusedRow == 5,
+        trailingLabel = "Reset",
+        onClick = {
+            viewModel.updatePersonalization {
+                it.copy(
+                    surfaceStyleOverride = null,
+                    surfaceDepth = 1f,
+                    grainAmount = 1f,
+                )
+            }
+        },
+    )
 }
+
+/** Material, corners, glass, depth, grain, reset. */
+private const val SURFACES_ROWS = 6
+
+/**
+ * "Theme default" first, then the four materials.
+ *
+ * Null leads because it is the value every install starts on, and a list whose
+ * default sits at the end asks the reader to walk past four options to find where
+ * they already are.
+ */
+private val SURFACE_STYLE_OPTIONS: List<SurfaceStyle?> = listOf(null) + SurfaceStyle.entries
+
+/** What each material actually looks like, since the names are not self-evident. */
+private fun surfaceStyleDescription(style: SurfaceStyle): String = when (style) {
+    SurfaceStyle.FLAT -> "Opaque, hard-edged, no depth"
+    SurfaceStyle.RAISED -> "Opaque cards with a shadow beneath them"
+    SurfaceStyle.TINTED -> "Slightly translucent, tinted by elevation"
+    SurfaceStyle.GLASS -> "Translucent and blurred, with a lit top edge"
+}
+
+/** Shown wherever an override is unset, so "off" reads as deference, not absence. */
+private const val THEME_DEFAULT = "Theme default"
 
 /**
  * Switch the bundled artwork on, then import, list and remove packs.
@@ -531,6 +732,9 @@ private fun WallpaperPage(settings: ThorSettings, focusedRow: Int, viewModel: Se
     val gridClearRow = 2
     val infoPickerRow = 2 + if (personalization.wallpaperUri != null) 1 else 0
     val infoClearRow = infoPickerRow + 1
+    // Last, and after however many clear buttons the two pickers have put on
+    // screen — a row index that ignored them would land the cursor on a button.
+    val dimRow = infoPickerRow + 1 + if (personalization.topScreenWallpaperUri != null) 1 else 0
 
     ChoiceRow(
         title = "Background effect",
@@ -563,7 +767,23 @@ private fun WallpaperPage(settings: ThorSettings, focusedRow: Int, viewModel: Se
             viewModel.updatePersonalization { it.copy(topScreenWallpaperUri = uri) }
         },
     )
+    RowDivider()
+    SliderRow(
+        title = "Dim",
+        subtitle = "Fades the whole background toward the theme's ground, so a busy " +
+            "image stops competing with what is drawn over it",
+        value = personalization.wallpaperDim,
+        range = 0f..1f,
+        focused = focusedRow == dimRow,
+        valueLabel = { "${(it * 100).roundToInt()}%" },
+        onValueChange = { dim ->
+            viewModel.updatePersonalization { it.copy(wallpaperDim = dim) }
+        },
+    )
 }
+
+/** Effect, two pickers and the dim, before whatever clear buttons are showing. */
+private const val WALLPAPER_FIXED_ROWS = 4
 
 @Composable
 private fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
@@ -716,17 +936,28 @@ private fun CursorPage(settings: ThorSettings, focusedRow: Int, viewModel: Setti
     )
 }
 
+/**
+ * Type, motion and the furniture: everything that is neither colour nor material.
+ *
+ * Typeface and motion style are new here and were previously unreachable — a theme
+ * declared both, so reading the launcher in a serif meant living with Linen's
+ * palette, and wanting stepped, mechanical transitions meant Terminal's green. They
+ * sit next to their own scale sliders, because "which face" and "how big" are one
+ * question asked twice.
+ */
 @Composable
 private fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
     val personalization = settings.personalization
 
-    SwitchRow(
-        title = "Glass effects",
-        subtitle = "Translucent panels with a blurred backdrop",
-        checked = personalization.glassEffects,
+    ChoiceRow(
+        title = "Typeface",
+        subtitle = "Used everywhere in the launcher",
+        options = FONT_OPTIONS,
+        selected = personalization.fontOverride,
+        label = { it?.label ?: THEME_DEFAULT },
         focused = focusedRow == 0,
-        onCheckedChange = { on ->
-            viewModel.updatePersonalization { it.copy(glassEffects = on) }
+        onSelected = { font ->
+            viewModel.updatePersonalization { it.copy(fontOverride = font) }
         },
     )
     RowDivider()
@@ -741,12 +972,24 @@ private fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: Se
         },
     )
     RowDivider()
+    ChoiceRow(
+        title = "Motion style",
+        subtitle = "The character of every transition: its easing and its overshoot",
+        options = MOTION_OPTIONS,
+        selected = personalization.motionOverride,
+        label = { it?.label ?: THEME_DEFAULT },
+        focused = focusedRow == 2,
+        onSelected = { motion ->
+            viewModel.updatePersonalization { it.copy(motionOverride = motion) }
+        },
+    )
+    RowDivider()
     SliderRow(
         title = "Transition speed",
         subtitle = "Higher is faster",
         value = personalization.transitionSpeed,
         range = 0.5f..2f,
-        focused = focusedRow == 2,
+        focused = focusedRow == 3,
         valueLabel = { "${"%.1f".format(it)}x" },
         onValueChange = { speed ->
             viewModel.updatePersonalization { it.copy(transitionSpeed = speed) }
@@ -757,7 +1000,7 @@ private fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: Se
         title = "Clock",
         options = ClockStyle.entries,
         selected = personalization.clockStyle,
-        focused = focusedRow == 3,
+        focused = focusedRow == 4,
         label = ClockStyle::label,
         onSelected = { style -> viewModel.updatePersonalization { it.copy(clockStyle = style) } },
     )
@@ -766,7 +1009,7 @@ private fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: Se
         title = "Status bar",
         subtitle = "Clock and battery above the grid",
         checked = personalization.showStatusBar,
-        focused = focusedRow == 4,
+        focused = focusedRow == 5,
         onCheckedChange = { on ->
             viewModel.updatePersonalization { it.copy(showStatusBar = on) }
         },
@@ -776,7 +1019,7 @@ private fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: Se
         title = "Folder style",
         options = FolderStyle.entries,
         selected = personalization.folderStyle,
-        focused = focusedRow == 5,
+        focused = focusedRow == 6,
         label = FolderStyle::label,
         onSelected = { style -> viewModel.updatePersonalization { it.copy(folderStyle = style) } },
     )
@@ -784,12 +1027,29 @@ private fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: Se
     SwitchRow(
         title = "Page indicators",
         checked = personalization.showPageIndicators,
-        focused = focusedRow == 6,
+        focused = focusedRow == 7,
         onCheckedChange = { on ->
             viewModel.updatePersonalization { it.copy(showPageIndicators = on) }
         },
     )
+    RowDivider()
+    SwitchRow(
+        title = "Autoplay trailers",
+        subtitle = "Play a game's trailer on the info panel while it is highlighted; " +
+            "L1 or R1 shows screenshots instead",
+        checked = personalization.autoplayTrailers,
+        focused = focusedRow == 8,
+        onCheckedChange = { on ->
+            viewModel.updatePersonalization { it.copy(autoplayTrailers = on) }
+        },
+    )
 }
+
+/** Typeface, size, motion, speed, clock, status bar, folders, indicators, trailers. */
+private const val INTERFACE_ROWS = 9
+
+private val FONT_OPTIONS: List<FontChoice?> = listOf(null) + FontChoice.entries
+private val MOTION_OPTIONS: List<MotionStyle?> = listOf(null) + MotionStyle.entries
 
 // ------------------------------------------------------------------- Library
 
@@ -1437,6 +1697,11 @@ private fun AccessibilityPage(
 
     SwitchRow(
         title = "High contrast",
+        // Says what it does now that Contrast is a dial on the Theme page: this is
+        // the top of that dial, reachable from here without hunting for it, and it
+        // wins while it is on — so the two controls cannot appear to disagree.
+        subtitle = "Forces the palette to maximum contrast, overriding the Contrast " +
+            "setting on the Theme page",
         checked = accessibility.highContrast,
         focused = focusedRow == 0,
         onCheckedChange = { on -> viewModel.updateAccessibility { it.copy(highContrast = on) } },
@@ -1504,7 +1769,14 @@ fun AboutPane(
     platformCount: Int,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        InfoRow("Active theme", settings.personalization.themeId.displayName)
+        // Theme and polarity together, because half the answer is misleading:
+        // "Material" alone says nothing about whether this launcher is currently
+        // white or black, which is the first thing anybody reporting a problem with
+        // it would describe.
+        InfoRow(
+            "Active theme",
+            with(settings.personalization) { "${themeId.displayName} · ${themeMode.label}" },
+        )
         RowDivider()
         InfoRow("Grid", "${settings.grid.columns} × ${settings.grid.rows}")
         RowDivider()

@@ -5,127 +5,528 @@ import kotlinx.serialization.Serializable
 /**
  * The bundled themes.
  *
- * A theme is more than a colour swap: each carries its own accent pair, surface
- * ramp, corner radius, motion character, grain and paired wallpaper, which is
- * what makes the presets read as distinct systems rather than as recoloured
- * copies of one another.
+ * Twelve of them, four to a [ThemeFamily], and every one available light or dark —
+ * which is the change that made twelve enough. The set used to be fifteen because
+ * light and dark were different *themes*: five lights that were nobody's first
+ * choice of colour, and ten darks among which the differences were often a single
+ * accent. Brightness is a preference, not an identity, so it moved to
+ * [PersonalizationSettings.themeMode] and the gallery went back to being twelve
+ * distinct answers to "what colour is this launcher".
  *
- * Fifteen of them, five to a [ThemeFamily], and the even split is the point. The
- * set had grown to twenty by accretion and was badly lopsided — sixteen darks
- * against four lights, several of which differed only in accent — so choosing a
- * theme meant scrolling a long row of near-identical dark cards to reach the
- * handful that actually changed anything. Five distinct answers per family is
- * shorter to read and covers more ground than twenty overlapping ones did.
+ * A theme is a [ThemeRecipe] — a seed and a material character — not a table of
+ * hex values. See [ThemeRecipe] for why.
  *
  * Retiring an id is safe: a settings file naming a theme that no longer exists
  * coerces back to the default rather than failing to parse — see
- * `SettingsSerializer` — and [ThemeSpec.of] never throws for an id it cannot
+ * `SettingsSerializer` — and [ThemeRecipe.of] never throws for an id it cannot
  * find.
  */
 @Serializable
 enum class ThemeId(val displayName: String) {
-    // ---- Dark ----------------------------------------------------------
+    // ---- Neutral -------------------------------------------------------
     // Material first, because it is what a fresh install opens on: a gallery
     // whose default sits six cards along asks the reader to hunt for where they
     // already are.
-    MATERIAL_YOU("Material"),
-    DARK("Midnight"),
+    MATERIAL("Material"),
     OBSIDIAN("Obsidian"),
-    OLED_BLACK("OLED"),
-    STEAM("Slate"),
+    SLATE("Slate"),
+    LINEN("Linen"),
 
-    // ---- Colourful -----------------------------------------------------
-    NEON("Neon"),
-    CYBER("Cyber"),
+    // ---- Warm ----------------------------------------------------------
     EMBER("Ember"),
-    LAGOON("Lagoon"),
-    ORCHID("Orchid"),
+    CITRINE("Citrine"),
+    SAKURA("Sakura"),
+    VAPOR("Vapor"),
 
-    // ---- Light ---------------------------------------------------------
-    LIGHT("Daylight"),
-    MERIDIAN("Meridian"),
-    PAPER("Paper"),
-    SWITCH("Cherry"),
-    THREE_DS("Sherbet"),
+    // ---- Cool ----------------------------------------------------------
+    NOCTURNE("Nocturne"),
+    AURORA("Aurora"),
+    ORCHID("Orchid"),
+    TERMINAL("Terminal"),
 }
 
 /**
  * Which shelf of the gallery a theme belongs on.
  *
- * [COLOURFUL] is about chroma rather than brightness — every one of them is
- * dark-grounded, because a saturated accent needs somewhere dim to be saturated
- * against — so it is not a third point on the light/dark axis but a separate
- * question: does this theme lead with a colour, or with a neutral?
+ * Temperature rather than brightness, and that is only possible now that
+ * brightness is the reader's own choice: a "Light" shelf made sense when a theme
+ * dictated its polarity, and became a lie the moment every theme could be either.
+ * What a theme still commits to is its colour — whether it leans warm, leans cool,
+ * or declines to lean at all — so that is what the shelves are.
  */
 @Serializable
 enum class ThemeFamily(val label: String) {
-    /** Leads with a colour: vivid accents over a ground tinted to match. */
-    COLOURFUL("Colourful"),
+    /** Barely-there chroma: the greys are the design and the accent stays quiet. */
+    NEUTRAL("Neutral"),
 
-    /** Leads with a neutral: restrained accents, low-chroma surfaces. */
-    DARK("Dark"),
+    /** Reds through yellows. */
+    WARM("Warm"),
 
-    /** Light-grounded, elevating toward white. */
-    LIGHT("Light"),
+    /** Greens through violets. */
+    COOL("Cool"),
 }
 
 /**
- * The colour and material description of a theme.
+ * Light, dark, or whatever the system is doing.
  *
- * Colours are ARGB longs rather than Compose `Color` so that `:core:model`
- * stays a pure-Kotlin module; `:core:designsystem` converts them.
- *
- * The surface fields form a deliberate ramp — [backgroundArgb] behind
- * [surfaceArgb] behind [surfaceElevatedArgb] behind [surfaceHighestArgb] — so a
- * card on a panel on the background stays legible at every level. Two steps was
- * not enough: the dock, grid cells and dialogs all landed on the same tone and
- * the depth collapsed.
+ * Applies to every theme rather than to some of them, which is the point of
+ * generating palettes instead of writing them down: Ember light and Ember dark are
+ * the same recipe resolved against a different ground, so neither one had to be
+ * drawn by hand and neither can drift from the other.
  */
 @Serializable
-data class ThemeSpec(
+enum class ThemeMode(val label: String) {
+    DARK("Dark"),
+    LIGHT("Light"),
+
+    /** Follows Android's own light/dark setting, including its schedule. */
+    SYSTEM("Follow system"),
+}
+
+/**
+ * How far apart the palette pushes its foreground and its ground.
+ *
+ * A generated palette can be held to a contrast *ratio* rather than checked
+ * against one after the fact, so this is a real dial rather than the single
+ * high-contrast override it replaces. That override worked by pinning text to
+ * pure white or black over a pure black or white ground, which cleared the bar and
+ * threw away the theme; here the same bar is met by moving text only as far as it
+ * has to go, and the ground keeps its colour at every level.
+ *
+ * The ratios are WCAG. [NORMAL] already clears AA for body text with room to
+ * spare — the launcher is read at arm's length on a handheld and across a room on
+ * a television, neither of which is the desk the standard was written for.
+ */
+@Serializable
+enum class ContrastLevel(
+    val label: String,
+    /** Lightness of the darkest surface when the palette resolves dark. */
+    internal val darkGround: Float,
+    /** Gap in lightness between adjacent dark surfaces. */
+    internal val darkStep: Float,
+    /** Lightness of the darkest surface when the palette resolves light. */
+    internal val lightGround: Float,
+    /** Ratio body text must clear against the surface behind it. */
+    val bodyRatio: Float,
+    /** Ratio secondary and metadata text must clear. */
+    val mutedRatio: Float,
+    /** Extra distance the accent is pushed away from the ground. */
+    internal val accentPush: Float,
+) {
+    /** Lower contrast than the default: a softer, flatter, more ambient look. */
+    SOFT("Softened", 0.205f, 0.042f, 0.885f, 6.0f, 3.8f, -0.02f),
+
+    /*
+     * Well past AA, on purpose.
+     *
+     * The bar the standard sets is 4.5, and text generated to sit exactly on it
+     * comes out a mid-grey — measurably readable and visibly dishwater, which is
+     * not what the hand-tuned palettes this replaced looked like. The standard was
+     * written for a document at desk distance; this is read at arm's length on a
+     * handheld and from a sofa on a television, and both of those want more.
+     */
+    NORMAL("Normal", 0.158f, 0.050f, 0.928f, 10.5f, 5.6f, 0f),
+
+    HIGH("High", 0.112f, 0.055f, 0.948f, 14.0f, 7.0f, 0.05f),
+
+    /** As far as the palette can be pushed while still being the same theme. */
+    MAXIMUM("Maximum", 0.045f, 0.060f, 0.968f, 17.5f, 10.0f, 0.09f),
+}
+
+/**
+ * A theme, written as intent rather than as a table of colours.
+ *
+ * Every palette in the launcher used to be about thirty hand-picked ARGB values,
+ * which is thirty chances per theme to write a surface ramp that goes backwards or
+ * body text nobody can read — and the only defence was a test that caught the
+ * mistake after it was made. Worse, it made the set *lopsided by gravity*: adding
+ * a theme meant an evening with a colour picker, so the ones that got added were
+ * the easy ones, near-copies of what was already there, and light themes were
+ * always an afterthought because they are the hardest to hand-tune.
+ *
+ * A recipe is a seed and a character. The ramp, the on-colours, the outline and
+ * the accent gradient are *derived* from it, in OKLCH, where lightness means what
+ * the eye means by it — see [Oklch]. That is what makes contrast a guarantee
+ * rather than a hope, makes light and dark two resolutions of one description
+ * rather than two themes, and makes the user's own dials — hue, intensity,
+ * contrast, pure black — apply to all twelve instead of to none.
+ *
+ * What is left here is only what a theme genuinely disagrees with another about.
+ */
+data class ThemeRecipe(
     val id: ThemeId,
-    val isDark: Boolean,
-    /**
-     * Which shelf of the gallery this sits on.
-     *
-     * Distinct from [isDark], which is a fact about the background and drives
-     * contrast decisions. This is an editorial grouping and drives ordering: a
-     * colourful theme is dark-grounded too, so [isDark] cannot separate the two.
-     */
     val family: ThemeFamily,
-    val primaryArgb: Long,
-    val secondaryArgb: Long,
+    /** Hue of the accent, in OKLCH degrees. See [Oklch] for the landmarks. */
+    val accentHue: Float,
     /**
-     * Far end of the accent gradient.
+     * Chroma of the accent — how colourful the theme is at its loudest point.
      *
-     * Accents are a pair, not a single colour: a cursor, a progress bar or a
-     * badge drawn with a two-stop gradient reads as lit rather than filled, and
-     * a flat accent is the main reason a palette looks cheap.
+     * The single number that separates a [ThemeFamily.NEUTRAL] theme from the
+     * rest, so it is not a free parameter: below [NEUTRAL_CHROMA_CEILING] a theme
+     * belongs on the neutral shelf whatever its hue says.
      */
-    val accentEndArgb: Long,
-    val backgroundArgb: Long,
-    /** Base surface for panels and sheets. */
-    val surfaceArgb: Long,
-    /** Elevated surface for cards, dock and grid cells. */
-    val surfaceElevatedArgb: Long,
-    /** Highest surface, for dialogs and menus sitting over an elevated panel. */
-    val surfaceHighestArgb: Long,
-    val onBackgroundArgb: Long,
-    val onSurfaceArgb: Long,
+    val accentChroma: Float,
+    /** Degrees the secondary accent sits from the primary. */
+    val secondaryHueShift: Float = 34f,
+    /** Degrees the far end of the accent gradient sits from the primary. */
+    val accentSpread: Float = 20f,
     /**
-     * Muted text: metadata labels, secondary rows.
+     * Degrees the selection cursor sits from the primary.
      *
-     * Explicit rather than [onSurfaceArgb] at a fixed alpha. On the translucent
-     * themes that blanket alpha compounded with the surface's own transparency
-     * and left secondary text almost invisible.
+     * Zero on almost every theme — the cursor is the accent, and a launcher whose
+     * highlight disagrees with its own palette looks broken rather than designed.
+     * Non-zero only where the contrast is the character, as on [ThemeId.VAPOR],
+     * whose whole identity is a cyan cursor against magenta furniture.
      */
-    val onSurfaceVariantArgb: Long,
-    /** Colour of the selection ring on the focused grid cell. */
-    val cursorArgb: Long,
-    /** Additive glow drawn behind the cursor. */
-    val glowArgb: Long,
-    val outlineArgb: Long,
-    val errorArgb: Long,
+    val cursorHueShift: Float = 0f,
+    /** Hue the greys are tinted toward. Usually the accent's own. */
+    val neutralHue: Float = accentHue,
+    /**
+     * How far the greys are tinted, 0 being a true neutral.
+     *
+     * Small numbers: past about 0.03 the surfaces stop reading as grey and start
+     * competing with the accent for the same job.
+     */
+    val neutralChroma: Float = 0.018f,
+    val material: ThemeMaterial,
+    val motion: MotionStyle = MotionStyle.SMOOTH,
+    val font: FontChoice = FontChoice.SYSTEM,
+    /** Wallpaper applied when this theme is selected from the gallery. */
+    val defaultWallpaper: AnimatedWallpaper = AnimatedWallpaper.MESH,
+) {
+    /**
+     * Builds the palette.
+     *
+     * The whole of it comes from four decisions: where the ground sits, how far
+     * apart the surfaces step, which direction the colour points, and how hard the
+     * text has to work to be read. Everything else follows, which is why there are
+     * no colours written down anywhere in this file.
+     */
+    fun resolve(options: ThemeOptions = ThemeOptions()): ThemeSpec {
+        val dark = options.dark
+        val contrast = options.contrast
+        val intensity = options.colorIntensity.coerceIn(0f, MAX_INTENSITY)
+
+        /*
+         * A picked accent supplies a direction, not a colour.
+         *
+         * Its chroma is floored rather than taken as given, because a swatch that
+         * is almost grey would otherwise silently turn every theme into Obsidian —
+         * and a user who picks a colour has said they want one.
+         */
+        val override = options.accentOverrideArgb?.let { Oklch.fromArgb(it) }
+        val hue = (override?.h ?: (accentHue + options.hueShift)).mod(360f)
+        val chroma = (override?.c?.coerceAtLeast(MIN_OVERRIDE_CHROMA) ?: accentChroma) * intensity
+        // An overridden accent drags the greys with it. Leaving them tinted toward
+        // the hue that was replaced is what made a custom accent look bolted on.
+        val greyHue = if (override != null) hue else (neutralHue + options.hueShift).mod(360f)
+        val greyChroma = neutralChroma * intensity
+
+        val ramp = surfaceRamp(dark, contrast, options.pureBlack)
+        val taper = if (dark) DARK_TINT_TAPER else LIGHT_TINT_TAPER
+        val surfaces = ramp.mapIndexed { level, lightness ->
+            Oklch(lightness, greyChroma * taper[level], greyHue)
+        }
+        val background = surfaces[0]
+        val panel = surfaces[1]
+
+        val accentLightness = if (dark) {
+            DARK_ACCENT_LIGHTNESS + contrast.accentPush
+        } else {
+            LIGHT_ACCENT_LIGHTNESS - contrast.accentPush
+        }.coerceIn(0.2f, 0.95f)
+        val accent = Oklch(accentLightness, chroma, hue)
+        val cursor = accent.rotate(cursorHueShift)
+
+        // Text chroma is capped well below the greys': a tint that reads as warmth
+        // on a large panel reads as a printing fault on a glyph stroke.
+        val textChroma = minOf(greyChroma, MAX_TEXT_CHROMA)
+
+        return ThemeSpec(
+            id = id,
+            family = family,
+            isDark = dark,
+            primaryArgb = accent.toArgb(),
+            secondaryArgb = accent.rotate(secondaryHueShift).saturate(0.9f).toArgb(),
+            accentEndArgb = accent
+                .rotate(accentSpread)
+                .lighten(if (dark) ACCENT_END_LIFT else -ACCENT_END_LIFT * 0.5f)
+                .saturate(0.95f)
+                .toArgb(),
+            backgroundArgb = background.toArgb(),
+            surfaceArgb = panel.toArgb(),
+            surfaceElevatedArgb = surfaces[2].toArgb(),
+            surfaceHighestArgb = surfaces[3].toArgb(),
+            onBackgroundArgb =
+                readableOn(background, dark, greyHue, textChroma, contrast.bodyRatio).toArgb(),
+            onSurfaceArgb =
+                readableOn(panel, dark, greyHue, textChroma, contrast.bodyRatio).toArgb(),
+            onSurfaceVariantArgb =
+                readableOn(panel, dark, greyHue, textChroma, contrast.mutedRatio).toArgb(),
+            cursorArgb = cursor.toArgb(),
+            glowArgb = cursor.toArgb(alpha = if (dark) DARK_GLOW_ALPHA else LIGHT_GLOW_ALPHA),
+            outlineArgb = Oklch(
+                l = if (dark) panel.l + OUTLINE_LIFT else background.l - OUTLINE_LIFT,
+                c = greyChroma * 0.9f,
+                h = greyHue,
+            ).toArgb(),
+            errorArgb = Oklch(
+                l = if (dark) DARK_ERROR_LIGHTNESS else LIGHT_ERROR_LIGHTNESS,
+                c = ERROR_CHROMA,
+                h = ERROR_HUE,
+            ).toArgb(),
+            cornerRadiusDp = material.cornerRadiusDp,
+            surfaceAlpha = material.surfaceAlpha,
+            blurRadiusDp = material.blurRadiusDp,
+            // Grain and the accent wash both go over true black: noise on #000
+            // reads as sensor dirt, and a gradient on it is banding. The whole
+            // reason to ask for pure black is that the ground is nothing at all.
+            grain = if (options.pureBlack && dark) {
+                0f
+            } else {
+                (material.grain * options.grainScale).coerceIn(0f, 1f)
+            },
+            defaultWallpaper = defaultWallpaper,
+            motion = motion,
+            fontFamily = font,
+            // An overridden style takes its preset whole rather than keeping the
+            // theme's adjustments to the style it replaced: "glass, but with
+            // Terminal's hard 1.5dp border" is not glass, and the label said glass.
+            surface = options.surfaceStyle?.let { SurfaceTreatment.forStyle(it) }
+                ?: material.surface,
+            backgroundDepth = if (options.pureBlack && dark) {
+                0f
+            } else {
+                (material.backgroundDepth * options.depthScale).coerceIn(0f, 1f)
+            },
+        )
+    }
+
+    companion object {
+        /**
+         * Every bundled theme, in gallery order.
+         *
+         * Grouped by [ThemeFamily], four to a shelf, so the row reads as three
+         * groups rather than as one long strip: the neutrals first, because the
+         * default is one of them and the first card should be where the reader
+         * already is.
+         */
+        val ALL: List<ThemeRecipe> = listOf(
+            // ---- Neutral ---------------------------------------------------
+            ThemeRecipe(
+                id = ThemeId.MATERIAL, family = ThemeFamily.NEUTRAL,
+                accentHue = 278f, accentChroma = 0.078f,
+                secondaryHueShift = 34f, neutralChroma = 0.019f,
+                // The strongest elevation tint in the set, which is the idea this
+                // preset is named for. It is also what a fresh install opens on,
+                // so it has to look considered with no wallpaper chosen and
+                // nothing in the library yet.
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.TINTED.copy(elevationTint = 0.11f),
+                    cornerRadiusDp = 24, surfaceAlpha = 0.94f, blurRadiusDp = 18,
+                    grain = 0.03f, backgroundDepth = 0.09f,
+                ),
+                defaultWallpaper = AnimatedWallpaper.MESH,
+            ),
+            ThemeRecipe(
+                // Chroma this low is a deliberate refusal: the accent is a warm
+                // white, so nothing on screen is coloured and the surface ramp
+                // has to carry the whole design on its own.
+                id = ThemeId.OBSIDIAN, family = ThemeFamily.NEUTRAL,
+                accentHue = 264f, accentChroma = 0.013f,
+                secondaryHueShift = 0f, accentSpread = 0f, neutralChroma = 0.005f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.FLAT.copy(borderAlpha = 0.7f),
+                    cornerRadiusDp = 10, surfaceAlpha = 1f, blurRadiusDp = 0,
+                    grain = 0.05f, backgroundDepth = 0.02f,
+                ),
+                motion = MotionStyle.FLUID,
+                defaultWallpaper = AnimatedWallpaper.BOKEH,
+            ),
+            ThemeRecipe(
+                id = ThemeId.SLATE, family = ThemeFamily.NEUTRAL,
+                accentHue = 236f, accentChroma = 0.068f,
+                secondaryHueShift = -24f, neutralHue = 240f, neutralChroma = 0.023f,
+                // Hard corners and a real shadow: a tool rather than a toy.
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.RAISED.copy(shadowElevationDp = 6),
+                    cornerRadiusDp = 6, surfaceAlpha = 0.96f, blurRadiusDp = 12,
+                    grain = 0.04f, backgroundDepth = 0.05f,
+                ),
+                defaultWallpaper = AnimatedWallpaper.GRADIENT_DRIFT,
+            ),
+            ThemeRecipe(
+                id = ThemeId.LINEN, family = ThemeFamily.NEUTRAL,
+                accentHue = 76f, accentChroma = 0.064f,
+                secondaryHueShift = 62f, neutralHue = 78f, neutralChroma = 0.021f,
+                // Visible grain and a short, soft shadow: paper stock lying on
+                // paper stock, not a card floating over a page.
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.RAISED.copy(
+                        shadowElevationDp = 4,
+                        borderAlpha = 0.5f,
+                    ),
+                    cornerRadiusDp = 14, surfaceAlpha = 0.97f, blurRadiusDp = 10,
+                    grain = 0.085f, backgroundDepth = 0.03f,
+                ),
+                font = FontChoice.SERIF,
+                defaultWallpaper = AnimatedWallpaper.NONE,
+            ),
+
+            // ---- Warm ------------------------------------------------------
+            ThemeRecipe(
+                id = ThemeId.EMBER, family = ThemeFamily.WARM,
+                accentHue = 44f, accentChroma = 0.155f,
+                secondaryHueShift = -20f, neutralHue = 52f, neutralChroma = 0.023f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.GLASS,
+                    cornerRadiusDp = 18, surfaceAlpha = 0.88f, blurRadiusDp = 24,
+                    grain = 0.055f, backgroundDepth = 0.17f,
+                ),
+                defaultWallpaper = AnimatedWallpaper.AURORA,
+            ),
+            ThemeRecipe(
+                id = ThemeId.CITRINE, family = ThemeFamily.WARM,
+                accentHue = 88f, accentChroma = 0.145f,
+                secondaryHueShift = -32f, neutralHue = 84f, neutralChroma = 0.021f,
+                // Opaque tiles with generous shadows under them, and no blur to
+                // pay for: the one theme in the set built for a weak GPU.
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.RAISED.copy(
+                        shadowElevationDp = 10,
+                        borderAlpha = 0.3f,
+                    ),
+                    cornerRadiusDp = 20, surfaceAlpha = 1f, blurRadiusDp = 0,
+                    grain = 0.03f, backgroundDepth = 0.12f,
+                ),
+                motion = MotionStyle.SNAPPY, font = FontChoice.ROUNDED,
+                defaultWallpaper = AnimatedWallpaper.BOKEH,
+            ),
+            ThemeRecipe(
+                id = ThemeId.SAKURA, family = ThemeFamily.WARM,
+                accentHue = 355f, accentChroma = 0.118f,
+                secondaryHueShift = 26f, neutralHue = 350f, neutralChroma = 0.021f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.GLASS.copy(specularAlpha = 0.3f),
+                    cornerRadiusDp = 28, surfaceAlpha = 0.9f, blurRadiusDp = 30,
+                    grain = 0.035f, backgroundDepth = 0.14f,
+                ),
+                motion = MotionStyle.FLUID, font = FontChoice.ROUNDED,
+                defaultWallpaper = AnimatedWallpaper.MESH,
+            ),
+            ThemeRecipe(
+                id = ThemeId.VAPOR, family = ThemeFamily.WARM,
+                accentHue = 335f, accentChroma = 0.2f,
+                // Magenta furniture, cyan cursor: the two-colour clash is the
+                // whole theme, so the cursor is thrown to the far side of the
+                // wheel rather than sitting beside the accent.
+                secondaryHueShift = -140f, cursorHueShift = -140f,
+                neutralHue = 315f, neutralChroma = 0.03f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.FLAT.copy(
+                        borderWidthDp = 1.5f,
+                        specularAlpha = 0.1f,
+                    ),
+                    cornerRadiusDp = 2, surfaceAlpha = 0.9f, blurRadiusDp = 20,
+                    grain = 0.075f, backgroundDepth = 0.22f,
+                ),
+                motion = MotionStyle.SNAPPY, font = FontChoice.MONO,
+                defaultWallpaper = AnimatedWallpaper.WAVES,
+            ),
+
+            // ---- Cool ------------------------------------------------------
+            ThemeRecipe(
+                id = ThemeId.NOCTURNE, family = ThemeFamily.COOL,
+                accentHue = 256f, accentChroma = 0.135f,
+                secondaryHueShift = 46f, neutralHue = 262f, neutralChroma = 0.025f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.GLASS,
+                    cornerRadiusDp = 22, surfaceAlpha = 0.86f, blurRadiusDp = 28,
+                    grain = 0.035f, backgroundDepth = 0.16f,
+                ),
+                defaultWallpaper = AnimatedWallpaper.STARFIELD,
+            ),
+            ThemeRecipe(
+                id = ThemeId.AURORA, family = ThemeFamily.COOL,
+                accentHue = 168f, accentChroma = 0.14f,
+                secondaryHueShift = 76f, neutralHue = 176f, neutralChroma = 0.025f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.GLASS.copy(specularAlpha = 0.28f),
+                    cornerRadiusDp = 20, surfaceAlpha = 0.88f, blurRadiusDp = 26,
+                    grain = 0.04f, backgroundDepth = 0.16f,
+                ),
+                motion = MotionStyle.FLUID,
+                defaultWallpaper = AnimatedWallpaper.WAVES,
+            ),
+            ThemeRecipe(
+                id = ThemeId.ORCHID, family = ThemeFamily.COOL,
+                accentHue = 302f, accentChroma = 0.15f,
+                secondaryHueShift = 42f, neutralHue = 298f, neutralChroma = 0.027f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.GLASS,
+                    cornerRadiusDp = 26, surfaceAlpha = 0.88f, blurRadiusDp = 30,
+                    grain = 0.04f, backgroundDepth = 0.18f,
+                ),
+                motion = MotionStyle.FLUID,
+                defaultWallpaper = AnimatedWallpaper.PARTICLES,
+            ),
+            ThemeRecipe(
+                id = ThemeId.TERMINAL, family = ThemeFamily.COOL,
+                accentHue = 148f, accentChroma = 0.19f,
+                secondaryHueShift = 50f, neutralHue = 150f, neutralChroma = 0.028f,
+                // Square, hard-edged, heavily grained and unblurred. The only
+                // theme in the set with a zero corner radius, and it means it.
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.FLAT.copy(borderWidthDp = 1.5f),
+                    cornerRadiusDp = 0, surfaceAlpha = 0.94f, blurRadiusDp = 0,
+                    grain = 0.11f, backgroundDepth = 0.2f,
+                ),
+                motion = MotionStyle.MECHANICAL, font = FontChoice.MONO,
+                defaultWallpaper = AnimatedWallpaper.PARTICLES,
+            ),
+        )
+
+        val BY_ID: Map<ThemeId, ThemeRecipe> = ALL.associateBy(ThemeRecipe::id)
+
+        /** What a fresh install opens on, and the fallback for a retired id. */
+        val DEFAULT: ThemeId = ThemeId.MATERIAL
+
+        /**
+         * The recipe for an id, falling back to the default theme.
+         *
+         * Never throws: an id can outlive its recipe if a theme is retired while a
+         * user has it selected, and a launcher that cannot build a palette cannot
+         * draw anything at all.
+         */
+        fun of(id: ThemeId): ThemeRecipe = BY_ID[id] ?: BY_ID.getValue(DEFAULT)
+
+        /** The themes on one shelf of the gallery, in gallery order. */
+        fun family(family: ThemeFamily): List<ThemeRecipe> = ALL.filter { it.family == family }
+
+        /**
+         * At or below this a theme is neutral whatever its hue claims.
+         *
+         * A hue is only a direction; with no chroma to travel along it, it points
+         * nowhere. Enforced rather than documented — see `ThemeSpecTest`.
+         */
+        const val NEUTRAL_CHROMA_CEILING = 0.085f
+
+        /** At or above this a theme is genuinely leading with a colour. */
+        const val COLOURED_CHROMA_FLOOR = 0.1f
+    }
+}
+
+/**
+ * How a theme's panels are built, independent of what colour they are.
+ *
+ * Colour alone was never what separated the presets. A raised panel is an opaque
+ * card with a shadow under it, a glass panel is a lit sheet, and a flat one is a
+ * rectangle with a hard edge — and with only a radius and an alpha to describe
+ * them, all three came out as the same rounded box in different colours.
+ */
+data class ThemeMaterial(
+    /** How panels composite over what is behind them. */
+    val surface: SurfaceTreatment,
     /** Corner radius applied to panels, in dp. */
     val cornerRadiusDp: Int,
     /** Alpha applied to translucent surfaces, 0..1. */
@@ -140,380 +541,235 @@ data class ThemeSpec(
      * compression artefact.
      */
     val grain: Float,
-    /** Wallpaper applied when this theme is selected from the gallery. */
-    val defaultWallpaper: AnimatedWallpaper,
-    /** Motion personality; drives easing and duration multipliers. */
-    val motion: MotionStyle,
-    val fontFamily: FontChoice,
-    val soundPack: SoundPack,
-    /**
-     * How this theme's panels are actually drawn.
-     *
-     * Colour alone was never what separated these presets. A Switch panel is an
-     * opaque card with a shadow under it, a Vision panel is a lit sheet of glass,
-     * and a Retro panel is a flat rectangle with a hard edge — and with only a
-     * radius and an alpha to describe them, all three came out as the same
-     * rounded box in different colours. This is the part that makes them read as
-     * different systems.
-     */
-    val surface: SurfaceTreatment = SurfaceTreatment.TINTED,
     /**
      * How far the background graduates toward the accent, 0..1. Zero is flat.
      *
-     * A single number rather than a hand-written gradient per theme: the wash is
-     * always the same shape — darker at the top, lifted toward [primaryArgb] at
-     * the bottom — and only its strength differs, so twenty literal gradients
-     * would be twenty chances to get one subtly wrong. Sits *under* the wallpaper
-     * rather than instead of it, so a theme still has ground of its own when
-     * every effect is switched off.
-     *
-     * Zero on the themes whose whole point is a flat field: a wash over true
-     * black is banding, and over the CRT preset it is a gradient nobody's CRT had.
+     * One number rather than a hand-written gradient per theme: the wash is always
+     * the same shape — darker at one end, lifted toward the accent at the other —
+     * and only its strength differs. Sits *under* the wallpaper rather than
+     * instead of it, so a theme still has ground of its own when every effect is
+     * switched off.
      */
-    val backgroundDepth: Float = 0.07f,
-) {
-    companion object {
-        /**
-         * Every bundled theme, in menu order.
-         *
-         * Ordered by [ThemeFamily] and five to each, so the gallery reads as
-         * three shelves rather than as one long row: the neutrals first, because
-         * the default is one of them and the first card should be where the
-         * reader already is, then the colourful ones, then the lights.
-         */
-        val ALL: List<ThemeSpec> = listOf(
-            // ---- Dark ----------------------------------------------------
-            ThemeSpec(
-                id = ThemeId.MATERIAL_YOU, isDark = true, family = ThemeFamily.DARK,
-                primaryArgb = 0xFFB6C6FF, secondaryArgb = 0xFFC6C8DE,
-                accentEndArgb = 0xFFDCE1FF,
-                backgroundArgb = 0xFF101218, surfaceArgb = 0xFF181A20,
-                surfaceElevatedArgb = 0xFF22242B, surfaceHighestArgb = 0xFF2D2F37,
-                onBackgroundArgb = 0xFFE5E4E9, onSurfaceArgb = 0xFFD2D1D7,
-                onSurfaceVariantArgb = 0xFF9594A0,
-                cursorArgb = 0xFFB6C6FF, glowArgb = 0x5CB6C6FF,
-                outlineArgb = 0xFF474751, errorArgb = 0xFFFFB4AB,
-                cornerRadiusDp = 24, surfaceAlpha = 0.94f, blurRadiusDp = 18,
-                grain = 0.03f, defaultWallpaper = AnimatedWallpaper.MESH,
-                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.SOFT,
-                // The strongest elevation tint in the set, which is the whole
-                // idea this preset is named for. It is also what a fresh install
-                // opens on, so it is the one that has to look considered with no
-                // wallpaper chosen and nothing in the library yet.
-                surface = SurfaceTreatment.TINTED.copy(elevationTint = 0.11f),
-                backgroundDepth = 0.09f,
-            ),
-            ThemeSpec(
-                id = ThemeId.DARK, isDark = true, family = ThemeFamily.DARK,
-                primaryArgb = 0xFF5B93FF, secondaryArgb = 0xFF9D7BFF,
-                accentEndArgb = 0xFF7FD4FF,
-                backgroundArgb = 0xFF0B0E14, surfaceArgb = 0xFF12161F,
-                surfaceElevatedArgb = 0xFF1A2029, surfaceHighestArgb = 0xFF232A35,
-                onBackgroundArgb = 0xFFEDF1F8, onSurfaceArgb = 0xFFDCE3EE,
-                onSurfaceVariantArgb = 0xFF98A3B5,
-                cursorArgb = 0xFF6BA4FF, glowArgb = 0x705B93FF,
-                outlineArgb = 0xFF2B3543, errorArgb = 0xFFFF6B6B,
-                cornerRadiusDp = 20, surfaceAlpha = 0.88f, blurRadiusDp = 28,
-                grain = 0.035f, defaultWallpaper = AnimatedWallpaper.MESH,
-                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.SOFT,
-            ),
-            ThemeSpec(
-                id = ThemeId.OBSIDIAN, isDark = true, family = ThemeFamily.DARK,
-                primaryArgb = 0xFFC8CEDA, secondaryArgb = 0xFF8E97A8,
-                accentEndArgb = 0xFFFFFFFF,
-                backgroundArgb = 0xFF0C0D10, surfaceArgb = 0xFF14161A,
-                surfaceElevatedArgb = 0xFF1D2025, surfaceHighestArgb = 0xFF272B32,
-                onBackgroundArgb = 0xFFF2F4F8, onSurfaceArgb = 0xFFE0E4EB,
-                onSurfaceVariantArgb = 0xFF9AA1AE,
-                cursorArgb = 0xFFE8ECF3, glowArgb = 0x55FFFFFF,
-                outlineArgb = 0xFF2C3037, errorArgb = 0xFFFF7A7A,
-                cornerRadiusDp = 18, surfaceAlpha = 0.9f, blurRadiusDp = 24,
-                grain = 0.05f, defaultWallpaper = AnimatedWallpaper.BOKEH,
-                motion = MotionStyle.FLUID, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.MINIMAL,
-            ),
-            ThemeSpec(
-                id = ThemeId.OLED_BLACK, isDark = true, family = ThemeFamily.DARK,
-                primaryArgb = 0xFF25E0FF, secondaryArgb = 0xFF8A6BFF,
-                accentEndArgb = 0xFF6BFFE0,
-                backgroundArgb = 0xFF000000, surfaceArgb = 0xFF060708,
-                surfaceElevatedArgb = 0xFF0E1012, surfaceHighestArgb = 0xFF16191C,
-                onBackgroundArgb = 0xFFF4F6F8, onSurfaceArgb = 0xFFE2E6EA,
-                onSurfaceVariantArgb = 0xFF8C949C,
-                cursorArgb = 0xFF25E0FF, glowArgb = 0x9025E0FF,
-                outlineArgb = 0xFF1C2024, errorArgb = 0xFFFF5C5C,
-                cornerRadiusDp = 14, surfaceAlpha = 1.0f, blurRadiusDp = 0,
-                // No grain on a true-black theme: noise over #000 is the one
-                // place it reads as sensor dirt rather than as texture.
-                grain = 0f, defaultWallpaper = AnimatedWallpaper.STARFIELD,
-                motion = MotionStyle.SNAPPY, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.MINIMAL,
-                // Flat and unlit, for the same reason it carries no grain: any
-                // wash or sheen over #000 is banding on an OLED panel.
-                surface = SurfaceTreatment.FLAT, backgroundDepth = 0f,
-            ),
-            ThemeSpec(
-                id = ThemeId.STEAM, isDark = true, family = ThemeFamily.DARK,
-                primaryArgb = 0xFF6FC3F7, secondaryArgb = 0xFF4E7BA8,
-                accentEndArgb = 0xFF9BE0FF,
-                backgroundArgb = 0xFF0E141C, surfaceArgb = 0xFF161F2B,
-                surfaceElevatedArgb = 0xFF1F2C3C, surfaceHighestArgb = 0xFF2A3A4E,
-                onBackgroundArgb = 0xFFDCE7F0, onSurfaceArgb = 0xFFC5D4E2,
-                onSurfaceVariantArgb = 0xFF8497A9,
-                cursorArgb = 0xFF6FC3F7, glowArgb = 0x7A6FC3F7,
-                outlineArgb = 0xFF2D3F53, errorArgb = 0xFFE07A6B,
-                cornerRadiusDp = 8, surfaceAlpha = 0.94f, blurRadiusDp = 16,
-                grain = 0.045f, defaultWallpaper = AnimatedWallpaper.GRADIENT_DRIFT,
-                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.MINIMAL,
-            ),
+    val backgroundDepth: Float,
+)
 
-            // ---- Colourful -----------------------------------------------
-            // All five are dark-grounded and carry a heavy `backgroundDepth`:
-            // the ground is washed toward the theme's own accent, which is what
-            // makes them read as coloured rather than as a neutral dark with a
-            // coloured cursor on it.
-            ThemeSpec(
-                id = ThemeId.NEON, isDark = true, family = ThemeFamily.COLOURFUL,
-                primaryArgb = 0xFF4BFF37, secondaryArgb = 0xFFFF31E4,
-                accentEndArgb = 0xFFD8FF3C,
-                backgroundArgb = 0xFF04060A, surfaceArgb = 0xFF0A0F16,
-                surfaceElevatedArgb = 0xFF111823, surfaceHighestArgb = 0xFF1A2331,
-                onBackgroundArgb = 0xFFEEFFEC, onSurfaceArgb = 0xFFD4EDD1,
-                onSurfaceVariantArgb = 0xFF8AA588,
-                cursorArgb = 0xFF4BFF37, glowArgb = 0xB04BFF37,
-                outlineArgb = 0xFF1F2E1E, errorArgb = 0xFFFF3560,
-                cornerRadiusDp = 10, surfaceAlpha = 0.9f, blurRadiusDp = 22,
-                grain = 0.07f, defaultWallpaper = AnimatedWallpaper.PARTICLES,
-                motion = MotionStyle.SNAPPY, fontFamily = FontChoice.MONO,
-                soundPack = SoundPack.ARCADE,
-                surface = SurfaceTreatment.FLAT.copy(
-                    borderWidthDp = 1.5f,
-                    specularAlpha = 0.08f,
-                ),
-                backgroundDepth = 0.18f,
-            ),
-            ThemeSpec(
-                id = ThemeId.CYBER, isDark = true, family = ThemeFamily.COLOURFUL,
-                primaryArgb = 0xFFFF3D8B, secondaryArgb = 0xFF1BE7FF,
-                accentEndArgb = 0xFFFFA23D,
-                backgroundArgb = 0xFF08030F, surfaceArgb = 0xFF120823,
-                surfaceElevatedArgb = 0xFF1B0F33, surfaceHighestArgb = 0xFF261648,
-                onBackgroundArgb = 0xFFF8ECFF, onSurfaceArgb = 0xFFE2CFF6,
-                onSurfaceVariantArgb = 0xFFA189BE,
-                cursorArgb = 0xFF1BE7FF, glowArgb = 0xA01BE7FF,
-                outlineArgb = 0xFF3A1F60, errorArgb = 0xFFFF4470,
-                cornerRadiusDp = 4, surfaceAlpha = 0.88f, blurRadiusDp = 20,
-                grain = 0.075f, defaultWallpaper = AnimatedWallpaper.WAVES,
-                motion = MotionStyle.SNAPPY, fontFamily = FontChoice.MONO,
-                soundPack = SoundPack.ARCADE,
-                // Hard-edged rather than soft: a 4dp corner with a full-strength
-                // outline and no shadow is what makes this read as a terminal
-                // instead of as a rounded card that happens to be magenta.
-                surface = SurfaceTreatment.FLAT.copy(
-                    borderWidthDp = 1.5f,
-                    specularAlpha = 0.1f,
-                ),
-                backgroundDepth = 0.2f,
-            ),
-            ThemeSpec(
-                id = ThemeId.EMBER, isDark = true, family = ThemeFamily.COLOURFUL,
-                primaryArgb = 0xFFFF8A3D, secondaryArgb = 0xFFE0483C,
-                accentEndArgb = 0xFFFFC46B,
-                backgroundArgb = 0xFF120A07, surfaceArgb = 0xFF1B0F0A,
-                surfaceElevatedArgb = 0xFF261710, surfaceHighestArgb = 0xFF332018,
-                onBackgroundArgb = 0xFFFFF2E8, onSurfaceArgb = 0xFFF0DDCE,
-                onSurfaceVariantArgb = 0xFFB09384,
-                cursorArgb = 0xFFFF8A3D, glowArgb = 0x8AFF8A3D,
-                outlineArgb = 0xFF3D281D, errorArgb = 0xFFFF5044,
-                cornerRadiusDp = 16, surfaceAlpha = 0.9f, blurRadiusDp = 22,
-                grain = 0.055f, defaultWallpaper = AnimatedWallpaper.AURORA,
-                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.SOFT,
-                backgroundDepth = 0.17f,
-            ),
-            ThemeSpec(
-                id = ThemeId.LAGOON, isDark = true, family = ThemeFamily.COLOURFUL,
-                primaryArgb = 0xFF2FD9C4, secondaryArgb = 0xFF3D8BFF,
-                accentEndArgb = 0xFF8BF5E4,
-                backgroundArgb = 0xFF05110F, surfaceArgb = 0xFF0A1B19,
-                surfaceElevatedArgb = 0xFF102724, surfaceHighestArgb = 0xFF183531,
-                onBackgroundArgb = 0xFFE8FBF8, onSurfaceArgb = 0xFFCFE9E5,
-                onSurfaceVariantArgb = 0xFF83A5A0,
-                cursorArgb = 0xFF2FD9C4, glowArgb = 0x7A2FD9C4,
-                outlineArgb = 0xFF1D3E39, errorArgb = 0xFFFF6E6E,
-                cornerRadiusDp = 20, surfaceAlpha = 0.9f, blurRadiusDp = 26,
-                grain = 0.04f, defaultWallpaper = AnimatedWallpaper.WAVES,
-                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.SOFT,
-                backgroundDepth = 0.16f,
-            ),
-            ThemeSpec(
-                id = ThemeId.ORCHID, isDark = true, family = ThemeFamily.COLOURFUL,
-                primaryArgb = 0xFFB57BFF, secondaryArgb = 0xFFFF7BD0,
-                accentEndArgb = 0xFFE0B0FF,
-                backgroundArgb = 0xFF0C0814, surfaceArgb = 0xFF150F22,
-                surfaceElevatedArgb = 0xFF1F1730, surfaceHighestArgb = 0xFF2B2141,
-                onBackgroundArgb = 0xFFF6F0FF, onSurfaceArgb = 0xFFE3D9F2,
-                onSurfaceVariantArgb = 0xFF9F92B8,
-                cursorArgb = 0xFFC79BFF, glowArgb = 0x7AB57BFF,
-                outlineArgb = 0xFF33284A, errorArgb = 0xFFFF6B8A,
-                cornerRadiusDp = 22, surfaceAlpha = 0.9f, blurRadiusDp = 30,
-                grain = 0.04f, defaultWallpaper = AnimatedWallpaper.MESH,
-                motion = MotionStyle.FLUID, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.SOFT,
-                backgroundDepth = 0.16f,
-            ),
+/**
+ * Everything outside the recipe that changes what a theme resolves to.
+ *
+ * All of it is the user's, which is the other half of the redesign: a theme used
+ * to own its brightness, its contrast, its saturation, its material and its
+ * texture outright, and the only dial over the top of them was a single accent
+ * swatch. These are the same properties, handed over.
+ */
+data class ThemeOptions(
+    /** Resolve against a dark ground. Comes from [ThemeMode] plus the system. */
+    val dark: Boolean = true,
+    val contrast: ContrastLevel = ContrastLevel.NORMAL,
+    /** Scales every chroma in the palette. 1 is the theme as designed. */
+    val colorIntensity: Float = 1f,
+    /** Rotates the whole palette, accent and tinted greys together. */
+    val hueShift: Float = 0f,
+    /**
+     * Pins the dark ground to true black.
+     *
+     * A property of the *screen* rather than of any theme, which is why it is here
+     * and not a preset of its own: an OLED panel draws #000 by switching pixels
+     * off, and that is worth having under every theme rather than under one.
+     * Ignored when the palette resolves light, where it would mean nothing.
+     */
+    val pureBlack: Boolean = false,
+    /**
+     * Replaces the recipe's accent hue and chroma, as an ARGB long.
+     *
+     * Hue and chroma only — the lightness is still the ground's business. A picked
+     * colour used to be dropped in as the primary verbatim, so a deep navy chosen
+     * on a light theme became an accent nobody could see, and the greys around it
+     * went on being tinted toward the accent it had replaced. Taking the direction
+     * and leaving the brightness is what makes an arbitrary swatch produce a whole
+     * palette rather than one wrong colour in an old one.
+     */
+    val accentOverrideArgb: Long? = null,
+    /** Replaces the recipe's panel treatment. Null keeps the theme's own. */
+    val surfaceStyle: SurfaceStyle? = null,
+    /** Scales [ThemeMaterial.backgroundDepth]. */
+    val depthScale: Float = 1f,
+    /** Scales [ThemeMaterial.grain]. */
+    val grainScale: Float = 1f,
+)
 
-            // ---- Light ---------------------------------------------------
-            // Light themes elevate by getting whiter — a white card over an
-            // off-white page — so the ramp ascends exactly as a dark one does,
-            // and they lean on a shadow for depth because there is nowhere
-            // brighter to go above white.
-            ThemeSpec(
-                id = ThemeId.LIGHT, isDark = false, family = ThemeFamily.LIGHT,
-                primaryArgb = 0xFF2563EB, secondaryArgb = 0xFF7C3AED,
-                accentEndArgb = 0xFF4F9BFF,
-                backgroundArgb = 0xFFEEF1F7, surfaceArgb = 0xFFF6F8FC,
-                surfaceElevatedArgb = 0xFFFBFCFE, surfaceHighestArgb = 0xFFFFFFFF,
-                onBackgroundArgb = 0xFF0F1420, onSurfaceArgb = 0xFF1E2634,
-                onSurfaceVariantArgb = 0xFF5F6B7D,
-                cursorArgb = 0xFF2563EB, glowArgb = 0x452563EB,
-                outlineArgb = 0xFFD3DAE5, errorArgb = 0xFFD32F2F,
-                cornerRadiusDp = 20, surfaceAlpha = 0.94f, blurRadiusDp = 20,
-                grain = 0.02f, defaultWallpaper = AnimatedWallpaper.MESH,
-                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.SOFT,
-                surface = SurfaceTreatment.RAISED, backgroundDepth = 0.05f,
-            ),
-            ThemeSpec(
-                // The cool light the set was missing: every other one is either
-                // blue-neutral or warm, so a green-grounded page is the only
-                // light here that changes the temperature rather than the accent.
-                id = ThemeId.MERIDIAN, isDark = false, family = ThemeFamily.LIGHT,
-                primaryArgb = 0xFF0F8A6A, secondaryArgb = 0xFF3E7CA8,
-                accentEndArgb = 0xFF4FC59B,
-                backgroundArgb = 0xFFE9F0EC, surfaceArgb = 0xFFF2F7F4,
-                surfaceElevatedArgb = 0xFFF9FCFA, surfaceHighestArgb = 0xFFFFFFFF,
-                onBackgroundArgb = 0xFF16211C, onSurfaceArgb = 0xFF26332C,
-                onSurfaceVariantArgb = 0xFF5E6F66,
-                cursorArgb = 0xFF0F8A6A, glowArgb = 0x400F8A6A,
-                outlineArgb = 0xFFCEDCD5, errorArgb = 0xFFC0392B,
-                cornerRadiusDp = 18, surfaceAlpha = 0.95f, blurRadiusDp = 18,
-                grain = 0.02f, defaultWallpaper = AnimatedWallpaper.WAVES,
-                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SYSTEM,
-                soundPack = SoundPack.SOFT,
-                surface = SurfaceTreatment.RAISED, backgroundDepth = 0.06f,
-            ),
-            ThemeSpec(
-                id = ThemeId.PAPER, isDark = false, family = ThemeFamily.LIGHT,
-                primaryArgb = 0xFFB4643C, secondaryArgb = 0xFF7A8C5A,
-                accentEndArgb = 0xFFD99A6C,
-                backgroundArgb = 0xFFEFE9DA, surfaceArgb = 0xFFF6F1E7,
-                surfaceElevatedArgb = 0xFFFBF7EF, surfaceHighestArgb = 0xFFFFFCF6,
-                onBackgroundArgb = 0xFF2A2419, onSurfaceArgb = 0xFF3B3427,
-                onSurfaceVariantArgb = 0xFF7A7060,
-                cursorArgb = 0xFFB4643C, glowArgb = 0x40B4643C,
-                outlineArgb = 0xFFDED5C4, errorArgb = 0xFFC0442F,
-                cornerRadiusDp = 14, surfaceAlpha = 0.96f, blurRadiusDp = 12,
-                // Visible grain: this theme is meant to read as paper stock.
-                grain = 0.08f, defaultWallpaper = AnimatedWallpaper.NONE,
-                motion = MotionStyle.SMOOTH, fontFamily = FontChoice.SERIF,
-                soundPack = SoundPack.MINIMAL,
-                // A softer, shorter shadow than the other lights: paper stock
-                // sitting on paper stock, not a card floating over a page.
-                surface = SurfaceTreatment.RAISED.copy(
-                    shadowElevationDp = 4,
-                    borderAlpha = 0.5f,
-                ),
-                backgroundDepth = 0.04f,
-            ),
-            ThemeSpec(
-                id = ThemeId.SWITCH, isDark = false, family = ThemeFamily.LIGHT,
-                primaryArgb = 0xFFE8323C, secondaryArgb = 0xFF00B8DE,
-                accentEndArgb = 0xFFFF6B72,
-                backgroundArgb = 0xFFE8EAED, surfaceArgb = 0xFFF3F5F7,
-                surfaceElevatedArgb = 0xFFFAFBFC, surfaceHighestArgb = 0xFFFFFFFF,
-                onBackgroundArgb = 0xFF23262B, onSurfaceArgb = 0xFF33373D,
-                onSurfaceVariantArgb = 0xFF6E747C,
-                cursorArgb = 0xFF00B8DE, glowArgb = 0x5000B8DE,
-                outlineArgb = 0xFFCFD4DA, errorArgb = 0xFFE8323C,
-                cornerRadiusDp = 10, surfaceAlpha = 1.0f, blurRadiusDp = 0,
-                grain = 0f, defaultWallpaper = AnimatedWallpaper.NONE,
-                motion = MotionStyle.SNAPPY, fontFamily = FontChoice.ROUNDED,
-                soundPack = SoundPack.CONSOLE,
-                // Crisp opaque cards on a flat grey field, which is the console
-                // this is named after almost exactly.
-                surface = SurfaceTreatment.RAISED.copy(shadowElevationDp = 6),
-                backgroundDepth = 0f,
-            ),
-            ThemeSpec(
-                id = ThemeId.THREE_DS, isDark = false, family = ThemeFamily.LIGHT,
-                primaryArgb = 0xFFF25C7A, secondaryArgb = 0xFF5FC5E8,
-                accentEndArgb = 0xFFFFB38A,
-                backgroundArgb = 0xFFEDF2F7, surfaceArgb = 0xFFF5F8FB,
-                surfaceElevatedArgb = 0xFFFBFCFE, surfaceHighestArgb = 0xFFFFFFFF,
-                onBackgroundArgb = 0xFF2E353C, onSurfaceArgb = 0xFF41494F,
-                onSurfaceVariantArgb = 0xFF77828C,
-                cursorArgb = 0xFFFFAF2B, glowArgb = 0x66FFAF2B,
-                outlineArgb = 0xFFCBD6E0, errorArgb = 0xFFE8455F,
-                cornerRadiusDp = 14, surfaceAlpha = 1.0f, blurRadiusDp = 0,
-                grain = 0f, defaultWallpaper = AnimatedWallpaper.BOKEH,
-                motion = MotionStyle.MECHANICAL, fontFamily = FontChoice.ROUNDED,
-                soundPack = SoundPack.CONSOLE,
-                // Soft, generous shadows under rounded plastic tiles.
-                surface = SurfaceTreatment.RAISED.copy(
-                    shadowElevationDp = 10,
-                    borderAlpha = 0.25f,
-                ),
-                backgroundDepth = 0.06f,
-            ),
-        )
+/**
+ * A theme resolved against a set of options: the actual colours, ready to draw.
+ *
+ * Nothing constructs one of these by hand any more — it is the output of
+ * [ThemeRecipe.resolve] and nothing else, which is what lets its guarantees be
+ * guarantees. The surface fields form a ramp, [backgroundArgb] behind
+ * [surfaceArgb] behind [surfaceElevatedArgb] behind [surfaceHighestArgb], and the
+ * three on-colours are each computed to clear a contrast ratio against the surface
+ * they will be drawn on rather than chosen to look about right.
+ *
+ * Colours are ARGB longs rather than Compose `Color` so that `:core:model` stays a
+ * pure-Kotlin module; `:core:designsystem` converts them.
+ */
+data class ThemeSpec(
+    val id: ThemeId,
+    val family: ThemeFamily,
+    val isDark: Boolean,
+    val primaryArgb: Long,
+    val secondaryArgb: Long,
+    /**
+     * Far end of the accent gradient.
+     *
+     * Accents are a pair, not a single colour: a cursor, a progress bar or a badge
+     * drawn with a two-stop gradient reads as lit rather than filled, and a flat
+     * accent is the main reason a palette looks cheap.
+     */
+    val accentEndArgb: Long,
+    val backgroundArgb: Long,
+    /** Base surface for panels and sheets. */
+    val surfaceArgb: Long,
+    /** Elevated surface for cards, dock and grid cells. */
+    val surfaceElevatedArgb: Long,
+    /** Highest surface, for dialogs and menus sitting over an elevated panel. */
+    val surfaceHighestArgb: Long,
+    val onBackgroundArgb: Long,
+    val onSurfaceArgb: Long,
+    /** Muted text: metadata labels, secondary rows. */
+    val onSurfaceVariantArgb: Long,
+    /** Colour of the selection ring on the focused grid cell. */
+    val cursorArgb: Long,
+    /** Additive glow drawn behind the cursor. */
+    val glowArgb: Long,
+    val outlineArgb: Long,
+    val errorArgb: Long,
+    val cornerRadiusDp: Int,
+    val surfaceAlpha: Float,
+    val blurRadiusDp: Int,
+    val grain: Float,
+    val defaultWallpaper: AnimatedWallpaper,
+    val motion: MotionStyle,
+    val fontFamily: FontChoice,
+    val surface: SurfaceTreatment,
+    val backgroundDepth: Float,
+)
 
-        val BY_ID: Map<ThemeId, ThemeSpec> = ALL.associateBy(ThemeSpec::id)
-
-        /**
-         * The spec for an id, falling back to the default theme.
-         *
-         * Never throws: an id can outlive its spec if a theme is retired while a
-         * user has it selected, and a launcher that cannot build a palette cannot
-         * draw anything at all.
-         *
-         * Falls back to [DEFAULT] rather than to any particular preset, so the
-         * one place that decides what "no theme" looks like is the same one a
-         * fresh install uses.
-         */
-        fun of(id: ThemeId): ThemeSpec = BY_ID[id] ?: BY_ID.getValue(DEFAULT)
-
-        /** What a fresh install opens on, and the fallback for a retired id. */
-        val DEFAULT: ThemeId = ThemeId.MATERIAL_YOU
-
-        /** The themes on one shelf of the gallery, in menu order. */
-        fun family(family: ThemeFamily): List<ThemeSpec> = ALL.filter { it.family == family }
+/**
+ * The four surface lightnesses, darkest first.
+ *
+ * Always ascending, in both polarities: a light theme elevates by getting whiter,
+ * a white card over an off-white page, which is the conventional cue and the one
+ * the eye reads as "nearer". Two steps was not enough — the dock, grid cells and
+ * dialogs all landed on the same tone and the depth collapsed.
+ */
+private fun surfaceRamp(dark: Boolean, contrast: ContrastLevel, pureBlack: Boolean): List<Float> =
+    if (dark) {
+        val ground = contrast.darkGround
+        val step = contrast.darkStep
+        val ramp = listOf(ground, ground + step, ground + 2 * step, ground + 3.1f * step)
+        // Only the ground goes to black; the panels above it keep their own
+        // lightness, so the ramp gets *deeper* rather than being flattened into it.
+        if (pureBlack) listOf(0f) + ramp.drop(1) else ramp
+    } else {
+        val ground = contrast.lightGround
+        val step = (1f - ground) / 3f
+        listOf(ground, ground + step, ground + 2 * step, 1f)
     }
+
+/**
+ * The least extreme text lightness that still clears [targetRatio] on [surface].
+ *
+ * Binary search rather than pure white or black. Contrast rises monotonically as
+ * the text moves away from its backdrop, so there is exactly one boundary to find,
+ * and stopping at it matters: white body text on a dark panel is harsh to read for
+ * any length of time and is well past what the standard asks for. If even the
+ * extreme cannot clear the bar — which the ramp is built to prevent — this returns
+ * the extreme, because the closest possible is still the right answer.
+ */
+private fun readableOn(
+    surface: Oklch,
+    dark: Boolean,
+    hue: Float,
+    chroma: Float,
+    targetRatio: Float,
+): Oklch {
+    val backdrop = surface.toArgb()
+    // `near` always fails the target and `far` always meets it, so the search can
+    // only converge on the boundary between them.
+    var near = surface.l
+    var far = if (dark) 1f else 0f
+    repeat(CONTRAST_SEARCH_STEPS) {
+        val mid = (near + far) / 2f
+        if (Oklch.contrastRatio(Oklch(mid, chroma, hue).toArgb(), backdrop) >= targetRatio) {
+            far = mid
+        } else {
+            near = mid
+        }
+    }
+    return Oklch(far, chroma, hue)
 }
+
+/** Lightness of the accent against a dark ground, before the contrast push. */
+private const val DARK_ACCENT_LIGHTNESS = 0.775f
+
+/** And against a light one, where it has to go darker rather than brighter. */
+private const val LIGHT_ACCENT_LIGHTNESS = 0.52f
+
+/** How far the gradient's far stop is lifted from the accent. */
+private const val ACCENT_END_LIFT = 0.09f
+
+/** How far the outline sits from the surface it edges. */
+private const val OUTLINE_LIFT = 0.115f
+
+private const val DARK_GLOW_ALPHA = 0.55f
+private const val LIGHT_GLOW_ALPHA = 0.34f
+
+private const val ERROR_HUE = 27f
+private const val ERROR_CHROMA = 0.17f
+private const val DARK_ERROR_LIGHTNESS = 0.72f
+private const val LIGHT_ERROR_LIGHTNESS = 0.52f
+
+/** Past this the greys stop reading as grey; the sliders are clamped to it. */
+private const val MAX_TEXT_CHROMA = 0.014f
+
+/** Below this a picked accent would be a grey, which is not what picking one means. */
+private const val MIN_OVERRIDE_CHROMA = 0.045f
+
+/** The ceiling on the colour-intensity dial. */
+private const val MAX_INTENSITY = 2f
+
+/**
+ * How the grey tint grows with elevation on a dark ramp.
+ *
+ * Material's observation, and it holds for every theme: a panel that is nearer
+ * carries a little more of the theme's colour, which separates a stack of surfaces
+ * without any of them needing a hand-picked tone.
+ */
+private val DARK_TINT_TAPER = listOf(0.85f, 1f, 1.15f, 1.3f)
+
+/** And shrinks with it on a light one, because the top of a light ramp is white. */
+private val LIGHT_TINT_TAPER = listOf(1f, 0.78f, 0.5f, 0.22f)
+
+private const val CONTRAST_SEARCH_STEPS = 18
 
 /**
  * How a panel composites over whatever is behind it.
  *
  * The style is the *character*; [SurfaceTreatment] carries the numbers. Keeping
  * them apart means a theme can say "glass, but with a heavier edge" without a new
- * enum entry for every combination.
+ * enum entry for every combination — and means the user can be offered the four
+ * characters without being offered eleven numbers.
  */
 @Serializable
 enum class SurfaceStyle(val label: String) {
-    /** Opaque, hard-edged, no depth. The flat presets: Retro, Minimal, OLED. */
+    /** Opaque, hard-edged, no depth. */
     FLAT("Flat"),
 
-    /** Opaque with a real drop shadow — a card lying on a page. Switch, 3DS. */
+    /** Opaque with a real drop shadow — a card lying on a page. */
     RAISED("Raised"),
 
-    /** Slightly translucent, tinted upward by elevation. Material, Steam. */
+    /** Slightly translucent, tinted upward by elevation. */
     TINTED("Tinted"),
 
-    /** Translucent, blurred, with a lit top edge. Glass, Vision. */
+    /** Translucent, blurred, with a lit top edge. */
     GLASS("Glass"),
 }
 
@@ -522,8 +778,8 @@ enum class SurfaceStyle(val label: String) {
  *
  * Every value is a fraction or a dp rather than a colour, because all of them are
  * resolved against the theme's own palette at draw time — a border is the theme's
- * outline at [borderAlpha], not a colour of its own. That is what stops a
- * treatment from fighting the palette it is applied to.
+ * outline at [borderAlpha], not a colour of its own. That is what stops a treatment
+ * from fighting the palette it is applied to.
  */
 @Serializable
 data class SurfaceTreatment(
@@ -535,9 +791,9 @@ data class SurfaceTreatment(
     /**
      * A brighter hairline along the top edge, 0..1.
      *
-     * The single cheapest thing that makes a translucent panel read as a lit
-     * sheet rather than as reduced opacity, which is what glass looked like
-     * before this: flat, grey and slightly see-through.
+     * The single cheapest thing that makes a translucent panel read as a lit sheet
+     * rather than as reduced opacity, which is what glass looked like before this:
+     * flat, grey and slightly see-through.
      */
     val specularAlpha: Float,
     /** Drop-shadow depth in dp; 0 draws none. */
@@ -545,9 +801,9 @@ data class SurfaceTreatment(
     /**
      * How strongly the accent tints each elevation step, 0..1.
      *
-     * Material's idea, and it is the reason a stack of panels stays legible
-     * without every level needing its own hand-picked colour: each step up
-     * carries a little more of the primary.
+     * Distinct from the ramp's own tint, which colours the greys themselves: this
+     * is applied at draw time over whatever is behind the panel, so it reaches the
+     * translucent case where the ramp cannot.
      */
     val elevationTint: Float,
 ) {
@@ -575,7 +831,7 @@ data class SurfaceTreatment(
             elevationTint = 0.02f,
         )
 
-        /** The default: a faint edge, a little accent tint, almost no shadow. */
+        /** A faint edge, a little accent tint, almost no shadow. */
         val TINTED = SurfaceTreatment(
             style = SurfaceStyle.TINTED,
             borderWidthDp = 1f,
@@ -594,6 +850,14 @@ data class SurfaceTreatment(
             shadowElevationDp = 0,
             elevationTint = 0.04f,
         )
+
+        /** The preset for a style, for when the user picks one over the theme's. */
+        fun forStyle(style: SurfaceStyle): SurfaceTreatment = when (style) {
+            SurfaceStyle.FLAT -> FLAT
+            SurfaceStyle.RAISED -> RAISED
+            SurfaceStyle.TINTED -> TINTED
+            SurfaceStyle.GLASS -> GLASS
+        }
     }
 }
 
@@ -605,11 +869,14 @@ data class SurfaceTreatment(
 enum class MotionStyle(val label: String, val durationScale: Float) {
     /** Long, soft, overlapping transitions. */
     FLUID("Fluid", 1.25f),
-    /** The default: quick but eased. */
+
+    /** Quick but eased. */
     SMOOTH("Smooth", 1.0f),
+
     /** Short and sharp, minimal overshoot. */
     SNAPPY("Snappy", 0.75f),
-    /** Stepped, slightly stiff — suits the retro presets. */
+
+    /** Stepped, slightly stiff. */
     MECHANICAL("Mechanical", 0.9f),
 }
 
@@ -620,13 +887,4 @@ enum class FontChoice(val label: String) {
     MONO("Monospace"),
     PIXEL("Pixel"),
     SERIF("Serif"),
-}
-
-@Serializable
-enum class SoundPack(val label: String) {
-    NONE("Silent"),
-    MINIMAL("Minimal"),
-    SOFT("Soft"),
-    CONSOLE("Console"),
-    ARCADE("Arcade"),
 }
