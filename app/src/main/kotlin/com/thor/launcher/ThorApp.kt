@@ -489,18 +489,34 @@ fun ThorApp(
     val couchModeNow = rememberUpdatedState(mode == DualScreenMode.COUCH)
 
     /*
-     * The bar follows the catalogue, as well as setting it.
+     * Films and Shows are two tabs over one section, and either end can move
+     * first.
      *
-     * Couch mode draws Films and Shows as two tabs over one section, and the
-     * bumpers still switch media type from inside it - so a press of RB has to
-     * light the other tab, or the bar ends up saying Films over a screen of
-     * television. Quietly: `showSection` moves the selection without parking the
-     * cursor on the bar, which is what a press *on* the bar means and not what a
-     * press inside a section should do.
+     * LB and RB step the bar onto a tab; L2 and R2 switch the media type from
+     * inside the section. So whichever of the two moved is the one that leads,
+     * and the other follows it. Making the catalogue lead unconditionally is
+     * what stopped the bumpers reaching Shows at all: stepping onto the tab left
+     * the type still saying films for a frame, and the follow put the selection
+     * straight back where it came from.
+     *
+     * The tab leads quietly. `showSection` moves the selection without parking
+     * the cursor on the bar, which is what a press *on* the bar means and not
+     * what a press inside a section should do.
      */
+    var lastMediaType by remember { mutableStateOf(moviesState.type) }
     LaunchedEffect(mode, moviesState.type, selectedTab) {
-        if (mode != DualScreenMode.COUCH || !selectedTab.isMoviesSection) return@LaunchedEffect
-        viewModel.showSection(LauncherTab.forMediaType(moviesState.type))
+        if (mode != DualScreenMode.COUCH || !selectedTab.isMoviesSection) {
+            lastMediaType = moviesState.type
+            return@LaunchedEffect
+        }
+        if (moviesState.type != lastMediaType) {
+            viewModel.showSection(LauncherTab.forMediaType(moviesState.type))
+        } else {
+            // Arriving on a tab - from the bumpers, from the bar, or from another
+            // section - the tab is the request.
+            selectedTab.mediaType?.let(moviesViewModel::switchType)
+        }
+        lastMediaType = moviesState.type
     }
 
     /*

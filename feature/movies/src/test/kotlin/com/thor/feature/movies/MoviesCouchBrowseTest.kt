@@ -113,11 +113,18 @@ class MoviesCouchBrowseTest {
         assertThat(couchHeroHeight(0.dp).value).isAtLeast(166f)
     }
 
+    /**
+     * The card's ceiling is the posters' floor.
+     *
+     * Everything the shelves get is what the featured card leaves, so a card
+     * allowed to take all the room it could would be paid for in artwork nobody
+     * can make out from a sofa.
+     */
     @Test
     fun `a very tall panel stops either region swallowing the other`() {
         val hero = couchHeroHeight(2_000.dp)
 
-        assertThat(hero.value).isAtMost(300f)
+        assertThat(hero.value).isAtMost(260f)
         assertThat(couchShelfHeight(2_000.dp, hero).value).isAtMost(250f)
     }
 
@@ -179,16 +186,39 @@ class MoviesCouchBrowseTest {
     }
 
     /**
-     * A still never towers over the posters beside it.
+     * A still stands shorter than the posters beside it, by a margin.
      *
-     * On a wide screen the four would otherwise grow until the shelf with the
-     * fewest things on it was the tallest thing in the catalogue.
+     * It is two and a half times as wide as a poster of the same height, so one
+     * drawn to the posters' own height makes the shelf with the fewest titles on
+     * it the loudest thing on the screen - and on a television it is this ceiling
+     * that binds, not the four-across width, so it is the number that decides how
+     * big a resume card looks.
      */
     @Test
     fun `a very wide shelf stops the resume cards outgrowing the posters`() {
         val poster = 130.dp
 
-        assertThat(couchStillHeight(poster, rowWidth = 4_000.dp).value).isAtMost(poster.value)
+        val still = couchStillHeight(poster, rowWidth = 4_000.dp)
+
+        assertThat(still.value).isLessThan(poster.value)
+        // Shorter, not shrunken away: it is still the artwork you resume from.
+        assertThat(still.value).isAtLeast(poster.value * 0.6f)
+    }
+
+    /**
+     * And the shelf under it is shorter too.
+     *
+     * Every shelf used to be given the poster height whatever it held, which left
+     * the slack under a shorter card reading as one enormous gap between that
+     * category and the next.
+     */
+    @Test
+    fun `the resume shelf is shorter than a shelf of posters`() {
+        val poster = 130.dp
+        val still = couchStillHeight(poster, rowWidth = 1_200.dp)
+
+        assertThat(couchShelfHeightFor(still).value)
+            .isLessThan(couchShelfHeightFor(poster).value)
     }
 
     /**
@@ -238,9 +268,10 @@ class MoviesCouchBrowseTest {
         assertThat(couchOverviewLines(120.dp)).isEqualTo(0)
     }
 
+    /** The whole synopsis is one press away; a hero strip is for deciding to look. */
     @Test
     fun `a very tall card stops short of a wall of text`() {
-        assertThat(couchOverviewLines(1_200.dp)).isAtMost(4)
+        assertThat(couchOverviewLines(1_200.dp)).isAtMost(3)
     }
 
     // ---- What the rail reports ----------------------------------------------

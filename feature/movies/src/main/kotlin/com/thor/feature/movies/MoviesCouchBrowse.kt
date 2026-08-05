@@ -462,65 +462,6 @@ private fun RailCategory(
 }
 
 @Composable
-private fun RailDestination(
-    icon: ImageVector,
-    label: String,
-    hint: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val colors = ThorTheme.colors
-    val hover = rememberPointerHover()
-    val lit = selected || hover.isHovered
-    val shape = ThorTheme.shapes.small
-    val content = if (selected) contrastingContentColor(colors.cursor) else colors.onSurface
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .pointerHover(hover)
-            .thorCursor(focused = hover.isHovered && !selected, shape = shape)
-            .clip(shape)
-            .background(
-                when {
-                    selected -> colors.cursor
-                    lit -> colors.surfaceHighest
-                    else -> Color.Transparent
-                },
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = RAIL_ROW_PADDING.dp, vertical = RAIL_ROW_PADDING_V.dp),
-        horizontalArrangement = Arrangement.spacedBy(RAIL_ICON_GAP.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (selected) content else colors.onSurfaceVariant,
-            modifier = Modifier.size(RAIL_ICON.dp),
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleSmall,
-            color = if (selected) content else colors.onSurface,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1,
-            modifier = Modifier.weight(1f),
-        )
-        // The bumper that does this without the pointer. Both switch media type
-        // from anywhere in the section, so the rail says so rather than being the
-        // only route anybody finds.
-        Text(
-            text = hint,
-            style = MaterialTheme.typography.labelSmall,
-            color = (if (selected) content else colors.onSurfaceVariant).copy(alpha = HINT_ALPHA),
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-        )
-    }
-}
-
-@Composable
 private fun StatLine(icon: ImageVector, value: String, label: String) {
     val colors = ThorTheme.colors
 
@@ -579,7 +520,7 @@ private fun CouchFeaturedCard(
     val colors = ThorTheme.colors
     val shape = ThorTheme.shapes.panel
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .clip(shape)
             .background(colors.surface)
@@ -593,30 +534,47 @@ private fun CouchFeaturedCard(
                     color = colors.onSurfaceVariant,
                 )
             }
-            return@Box
+            return@BoxWithConstraints
         }
 
+        /*
+         * The picture at something near its own shape, on the side the words
+         * leave free.
+         *
+         * The card is four times as wide as it is tall, and filling it with a
+         * backdrop meant cropping away more than half the frame - which on a
+         * poster or a portrait still is the half with the faces in it. The left
+         * of the card is under a near-opaque scrim in any case, so nothing is
+         * lost by letting the art keep most of its shape and fading it into the
+         * field, rather than showing a band cut out of the middle of it.
+         */
         val art = item.backdropUrl ?: item.posterUrl
         if (art != null) {
-            ArtworkImage(
-                model = art,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .width(minOf(maxWidth, maxHeight * HERO_ART_ASPECT))
+                    .fillMaxHeight(),
+            ) {
+                ArtworkImage(
+                    model = art,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                // The seam, dissolved - and on a panel too narrow for the art to
+                // move out of the way, the same gradient is what keeps the words
+                // over it legible.
+                Box(
+                    modifier = Modifier.fillMaxSize().background(
+                        Brush.horizontalGradient(
+                            0f to colors.surface,
+                            ART_FADE to Color.Transparent,
+                        ),
+                    ),
+                )
+            }
         }
-
-        // One scrim, across. The card is its own frame, so the picture needs
-        // darkening only where the words are.
-        Box(
-            modifier = Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(
-                    0f to colors.background.copy(alpha = 0.95f),
-                    HERO_SCRIM_KNEE to colors.background.copy(alpha = 0.68f),
-                    1f to Color.Transparent,
-                ),
-            ),
-        )
 
         Column(
             modifier = Modifier
@@ -1168,18 +1126,26 @@ internal fun couchShelfHeightFor(artHeight: Dp): Dp = artHeight + SHELF_FURNITUR
  * the screen is. Working back from the width pins it at [target] however wide the
  * panel turns out to be.
  *
- * Never taller than the posters: on a wide screen the four would otherwise grow
- * until the resume shelf was the tallest thing in the catalogue.
+ * Always shorter than the posters, and by a margin rather than by a hair. A still
+ * is two and a half times as wide as a poster of the same height, so one drawn to
+ * the posters' own height is the largest thing in the catalogue by a wide margin
+ * and the shelf with the fewest titles on it dominates the screen. This ceiling is
+ * what binds on a television - the width is only the constraint on a narrow panel -
+ * so it is the number that decides how big a resume card looks.
  */
 internal fun couchStillHeight(
     posterHeight: Dp,
     rowWidth: Dp,
     target: Int = RESUME_CARDS_ON_SCREEN,
 ): Dp {
-    if (target <= 0) return posterHeight
+    val ceiling = posterHeight * STILL_OF_POSTER
+    if (target <= 0) return ceiling
     val gaps = CARD_GAP.dp * (target - 1)
     val usable = (rowWidth - SCREEN_INSET.dp * 2 - gaps).coerceAtLeast(0.dp)
-    return (usable / target / STILL_ASPECT).coerceIn(MIN_STILL.dp, posterHeight)
+    // The floor gives way to the ceiling rather than crossing it: on a panel too
+    // small for either, a card that is merely small beats one that is inverted.
+    return (usable / target / STILL_ASPECT)
+        .coerceIn(minOf(MIN_STILL.dp, ceiling), ceiling)
 }
 
 /**
@@ -1343,7 +1309,16 @@ private const val VISIBLE_SHELVES = 2
 
 private const val HERO_FRACTION = 0.42f
 private const val MIN_HERO = 172
-private const val MAX_HERO = 300
+/**
+ * The featured card's ceiling, and with it the posters' floor.
+ *
+ * Everything the shelves get is what this leaves, so the two numbers are one
+ * decision. Capping the card lower than the room it could take is what puts the
+ * artwork back at a size worth reading from a sofa - and it costs the card
+ * nothing now that the picture on it keeps its own shape rather than being
+ * stretched to whatever height the card happens to have.
+ */
+private const val MAX_HERO = 260
 private const val MIN_SHELF = 118
 private const val MAX_SHELF = 250
 private const val MIN_POSTER = 68
@@ -1356,6 +1331,14 @@ private const val STILL_ASPECT = 16f / 9f
 /** How many resume cards should be reachable without scrolling the shelf. */
 private const val RESUME_CARDS_ON_SCREEN = 4
 private const val MIN_STILL = 62
+/**
+ * How tall a continue-watching still stands beside a poster.
+ *
+ * Under one, and not by much less: a still at the posters' own height is nearly
+ * three times their width, which makes the resume shelf the loudest thing on the
+ * screen whatever is on it. Shorter than this and it stops reading as artwork.
+ */
+private const val STILL_OF_POSTER = 0.7f
 
 private const val SCREEN_INSET = 22
 private const val LEGEND_HEIGHT = 24
@@ -1369,7 +1352,6 @@ private const val RAIL_INSET = 12
 private const val RAIL_TOP_INSET = 16
 private const val RAIL_GAP = 6
 private const val RAIL_ROW_PADDING = 12
-private const val RAIL_ROW_PADDING_V = 10
 private const val RAIL_ICON_GAP = 10
 private const val RAIL_ICON = 20
 private const val RAIL_SECTION_GAP = 8
@@ -1406,7 +1388,16 @@ private const val SUBTITLE_ALPHA = 0.74f
 private const val HERO_PADDING = 16
 private const val HERO_WIDTH_FRACTION = 0.56f
 private const val HERO_GAP = 7
-private const val HERO_SCRIM_KNEE = 0.5f
+/**
+ * The widest the featured card's picture is allowed to be cut to.
+ *
+ * A backdrop is 16:9 and the card is nearer 4:1, so something has to give. Held
+ * to this the picture loses about a quarter of its height instead of over half of
+ * it, and the rest of the card is the flat field the words already sit on.
+ */
+private const val HERO_ART_ASPECT = 2.4f
+/** How far across the picture the field fades out, hiding where it begins. */
+private const val ART_FADE = 0.55f
 private const val LOGO_WIDTH_FRACTION = 0.66f
 private const val LOGO_HEIGHT = 40
 /**
@@ -1418,7 +1409,11 @@ private const val LOGO_HEIGHT = 40
  */
 private const val HERO_FURNITURE = 166f
 private const val OVERVIEW_LINE_HEIGHT = 20f
-private const val MAX_OVERVIEW_LINES = 4
+/**
+ * Three, because the card is shorter than it was and the full synopsis is one
+ * press away on the title page. A hero strip is for deciding whether to look.
+ */
+private const val MAX_OVERVIEW_LINES = 3
 private const val SCORE_ICON = 20
 private const val ACTION_GAP = 10
 private const val ACTION_PADDING_H = 16
