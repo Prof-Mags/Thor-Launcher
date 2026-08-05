@@ -204,6 +204,7 @@ fun ThorApp(
      * of its windows exists, which is exactly as long as this composition does.
      */
     val state by viewModel.uiState.collectAsState()
+    val showEditTutorial by viewModel.editModeTutorial.collectAsState()
     val selectedScreenshot by viewModel.screenshotIndex.collectAsState()
     val settingsViewModel: com.thor.feature.settings.SettingsViewModel = hiltViewModel()
     val loadedSettings by settingsViewModel.loadedSettings.collectAsState()
@@ -2176,6 +2177,8 @@ fun ThorApp(
             ) {
             BottomScreen(
                 state = state,
+                showEditTutorial = showEditTutorial,
+                onDismissEditTutorial = viewModel::dismissEditModeTutorial,
                 dockSettings = settings.dock,
                 wallpaper = settings.personalization.animatedWallpaper,
                 wallpaperUri = settings.personalization.wallpaperUri,

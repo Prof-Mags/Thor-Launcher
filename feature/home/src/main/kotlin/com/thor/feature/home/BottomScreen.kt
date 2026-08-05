@@ -1,5 +1,6 @@
 package com.thor.feature.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -76,6 +78,9 @@ import com.thor.feature.home.shell.icon
 @Composable
 fun BottomScreen(
     state: LauncherUiState,
+    /** Whether this is the first time edit mode has been entered; see [EditModeTutorial]. */
+    showEditTutorial: Boolean = false,
+    onDismissEditTutorial: () -> Unit = {},
     dockSettings: DockSettings,
     wallpaper: AnimatedWallpaper,
     wallpaperUri: String?,
@@ -157,7 +162,7 @@ fun BottomScreen(
      * of all of it. Only the grid, the wallpaper and the section bar differ.
      */
     couchMode: Boolean = false,
-    /** Profile and notifications for couch mode.s corner. */
+    /** Profile and notifications for couch mode's corner. */
     status: ShellStatus? = null,
     statusActions: ShellStatusActions = ShellStatusActions(),
     couchDashboardActions: CouchDashboardActions = CouchDashboardActions(),
@@ -389,6 +394,15 @@ fun BottomScreen(
             )
         }
 
+        // The first time only, and over the banner rather than instead of it:
+        // the banner is the reminder, this is the explanation.
+        if (showEditTutorial) {
+            EditModeTutorial(
+                onDismiss = onDismissEditTutorial,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+
         // Above the grid but below the menus, so a long press in the drawer can
         // still raise a context menu over it.
         //
@@ -530,6 +544,95 @@ fun BottomScreen(
         )
     }
 }
+
+/**
+ * Explains the arranging gestures, once, the first time edit mode is entered.
+ *
+ * The banner above it is a reminder and reads as one — a single line of button
+ * names, useful to somebody who already knows what they are for. None of these
+ * gestures are discoverable from it: a pinch resizes the whole grid rather than
+ * the cell under the fingers, dragging a cell onto another makes a folder, and
+ * the way out is a button rather than anything on screen. Each of those is
+ * obvious afterwards and impossible to guess before, which is the definition of
+ * something that has to be said once.
+ *
+ * Shown at the moment it becomes answerable rather than during the first-run
+ * walkthrough, which happens before there is a library to arrange.
+ */
+@Composable
+private fun EditModeTutorial(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = ThorTheme.colors
+    val dimens = ThorTheme.dimens
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.scrim)
+            // Anywhere at all, because the one thing every reader wants is for
+            // it to go away and the whole card is the target.
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center,
+    ) {
+        GlassSurface(
+            shape = ThorTheme.shapes.large,
+            modifier = modifier
+                .fillMaxWidth(TUTORIAL_WIDTH_FRACTION)
+                .widthIn(max = TUTORIAL_MAX_WIDTH.dp),
+        ) {
+            Column(
+                modifier = Modifier.padding(dimens.spacingLarge),
+                verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
+            ) {
+                Text(
+                    text = "Arranging the grid",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.onSurface,
+                )
+                EDIT_MODE_GESTURES.forEach { (gesture, effect) ->
+                    Row(verticalAlignment = Alignment.Top) {
+                        Text(
+                            text = gesture,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.cursor,
+                            modifier = Modifier.width(TUTORIAL_GESTURE_WIDTH.dp),
+                        )
+                        Text(
+                            text = effect,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                Text(
+                    text = "Press anywhere to start",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(top = dimens.spacingSmall),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * What edit mode can do, in the order somebody discovers they want it.
+ *
+ * Moving first because it is why edit mode was entered at all; resizing second
+ * because it is the one nobody finds on their own; leaving last because a card
+ * that does not say how to get out of a mode is how a mode becomes a trap.
+ */
+private val EDIT_MODE_GESTURES = listOf(
+    "A" to "Pick a cell up, then D-pad to move it and A again to drop it.",
+    "Pinch" to "Two fingers on the grid resizes every cell — more per page, or fewer and larger.",
+    "Drag" to "Drop one game onto another to make a folder from the pair.",
+    "Y" to "Opens the same menu a long press does, on the cell under the cursor.",
+    "B" to "Finishes arranging and puts the grid back to normal.",
+)
+
+private const val TUTORIAL_WIDTH_FRACTION = 0.86f
+private const val TUTORIAL_MAX_WIDTH = 420
+private const val TUTORIAL_GESTURE_WIDTH = 52
 
 /** Tells the user edit mode is active and what the buttons do. */
 @Composable

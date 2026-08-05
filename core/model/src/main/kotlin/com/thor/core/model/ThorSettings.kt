@@ -48,6 +48,21 @@ data class ThorSettings(
      */
     val tutorialCompleted: Boolean = false,
     /**
+     * Whether the edit-mode gestures have been explained once.
+     *
+     * Its own flag rather than part of [tutorialCompleted], because the two are
+     * read at different moments and only one of them is asked for. The
+     * walkthrough runs before the user has a library to arrange, so anything it
+     * said about resizing a cell would be about a screen they had not seen; this
+     * is shown the first time they actually enter edit mode, which is the moment
+     * the gestures become answerable questions.
+     *
+     * Recorded rather than counted. Edit mode is entered by holding a cell, and
+     * a card that reappeared every session would be in the way of the gesture it
+     * describes.
+     */
+    val editModeTutorialSeen: Boolean = false,
+    /**
      * Whether the first-run list of permissions has been shown.
      *
      * Separate from [tutorialCompleted] because they are asked at different

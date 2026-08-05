@@ -120,19 +120,15 @@ fun SideMenu(
                 ) {
                     Column(modifier = Modifier.fillMaxSize().padding(vertical = dimens.spacing)) {
                         /*
-                         * The same heading Settings uses, for the same reason.
+                         * No wordmark above the heading.
                          *
-                         * These are the two drawers the launcher has, they open
-                         * the same way and are read the same way, and a panel
-                         * that titles itself differently reads as another app.
+                         * It was there to match Settings, which is a fair
+                         * instinct and the wrong one here: this drawer is opened
+                         * from the launcher's own home screen, so the only
+                         * question it can answer is one nobody was asking. A
+                         * launcher naming itself on top of itself is the sort of
+                         * thing an app does when it is trying to be remembered.
                          */
-                        Text(
-                            text = "LOKI",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = colors.cursor,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = dimens.spacingLarge),
-                        )
                         Text(
                             text = "Start",
                             style = MaterialTheme.typography.headlineSmall,

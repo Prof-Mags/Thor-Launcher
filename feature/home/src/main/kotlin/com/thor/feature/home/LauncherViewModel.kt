@@ -1166,6 +1166,30 @@ class LauncherViewModel @Inject constructor(
         initialValue = LauncherUiState(),
     )
 
+    /**
+     * Whether to explain edit mode, which is only ever true once.
+     *
+     * Its own flow rather than a field on [LauncherUiState]: the two combines
+     * that build that state are both at the five-flow limit, and widening one of
+     * them to carry a boolean that is false for the rest of the install's life
+     * would be paid for on every cursor move.
+     */
+    val editModeTutorial: StateFlow<Boolean> =
+        combine(editMode, settingsRepository.settings) { mode, settings ->
+            mode.isActive && !settings.editModeTutorialSeen
+        }
+            .distinctUntilChanged()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = false,
+            )
+
+    /** Records that the edit-mode gestures have been explained. */
+    fun dismissEditModeTutorial() {
+        viewModelScope.launchSafely(TAG) { settingsRepository.setEditModeTutorialSeen(true) }
+    }
+
     /** Screenshot index for [LauncherUiState.selection], 0 for any other entry. */
     val screenshotIndex: StateFlow<Int> = combine(
         uiState,

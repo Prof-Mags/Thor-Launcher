@@ -166,6 +166,11 @@ class SettingsRepository @Inject constructor(
         edit { it.copy(permissionsPromptSeen = seen) }
     }
 
+    /** Records that the edit-mode gestures have been explained. */
+    suspend fun setEditModeTutorialSeen(seen: Boolean) {
+        edit { it.copy(editModeTutorialSeen = seen) }
+    }
+
 
     /** Records that an extension's own short walkthrough has been played. */
     suspend fun setExtensionTourSeen(id: String) {

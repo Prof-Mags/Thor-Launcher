@@ -420,10 +420,20 @@ fun EntryContextMenu(
                 exit = scaleOut(motion.tweenSpec(motion.selectionMillis)),
             ) {
                 GlassSurface(
-                    shape = RoundedCornerShape(dimens.cornerRadiusLarge),
-                    // Highest surface: these sit over an already-elevated panel, and
-                    // reusing the base surface made them read as part of it.
-                    color = ThorTheme.colors.surfaceHighest,
+                    shape = ThorTheme.shapes.large,
+                    /*
+                     * The surface the side menu uses, which is `GlassSurface`'s
+                     * own default.
+                     *
+                     * This card asked for `surfaceHighest` on the reasoning that
+                     * it sits over an already-raised panel. That put it at the
+                     * top of the ramp and left nothing above it for the tiles,
+                     * which is how they ended up filled with the darkest colour
+                     * in the palette. The side menu is the same kind of object —
+                     * raised over the grid, holding a list of actions — and it
+                     * simply takes the default, so this does too and the two
+                     * drawers read as one launcher.
+                     */
                     modifier = Modifier
                         // Capped rather than fixed: a flat width had no answer for a
                         // panel narrower than itself — the card would simply have run
@@ -494,7 +504,8 @@ private fun ContextHeader(entry: GridEntry) {
             modifier = Modifier
                 .size(HEADER_ICON.dp)
                 .clip(ThorTheme.shapes.small)
-                .background(colors.onSurface.copy(alpha = TILE_FILL_ALPHA)),
+                // The plate a side-menu row puts behind its own icon.
+                .background(colors.surfaceElevated),
             contentAlignment = Alignment.Center,
         ) {
             ContextEntryIcon(entry)
@@ -659,21 +670,20 @@ private fun ContextTile(
             .height(height)
             .clip(shape)
             /*
-             * A lift off the card, not a hole in it.
+             * Exactly what a side-menu row does: the cursor's tint when lit,
+             * nothing at all when it is not.
              *
-             * `surface` is near the bottom of the ramp and this card is drawn at
-             * the top of it, so filling the tiles with it put the darkest colour
-             * in the palette inside the lightest — eleven dark rectangles on a
-             * pale card. Tinting with `onSurface` instead gets the direction
-             * right in both polarities without asking which one is in use: on a
-             * dark theme the text colour is light and lifts the tile, on a light
-             * theme it is dark and settles it, and either way it is a step away
-             * from the card rather than a plunge past it.
+             * Filling a resting tile with any surface colour was the mistake
+             * behind them reading as dark blocks. A row in the side menu is
+             * transparent until the cursor arrives, so the card shows through
+             * and the only thing carrying colour is the one the user is on —
+             * which is also what makes the highlight legible rather than one
+             * shade among twelve.
              */
-            .background(
-                if (lit) accent.copy(alpha = TILE_LIT_ALPHA)
-                else colors.onSurface.copy(alpha = TILE_FILL_ALPHA),
-            )
+            .background(if (lit) accent.copy(alpha = TILE_LIT_ALPHA) else Color.Transparent)
+            // A hairline the side menu has no use for: its rows are stacked and
+            // separated by their own spacing, whereas these are a grid and need
+            // an edge to sit in columns rather than float.
             .border(1.dp, colors.outline.copy(alpha = TILE_EDGE_ALPHA), shape)
             .thorCursor(focused = lit, shape = shape)
             .pointerHover(hover)
@@ -681,16 +691,26 @@ private fun ContextTile(
             .clickable(onClick = onClick)
             .padding(horizontal = TILE_INSET.dp),
     ) {
+        // Both follow the side menu's rule: the tint when lit, the variant when
+        // resting, and the error colour throughout for anything destructive.
         Icon(
             imageVector = action.iconFor(entry),
             contentDescription = null,
-            tint = if (action.isDestructive) colors.error else colors.onSurface,
+            tint = when {
+                action.isDestructive -> colors.error
+                lit -> accent
+                else -> colors.onSurfaceVariant
+            },
             modifier = Modifier.size(TILE_GLYPH.dp),
         )
         Text(
             text = action.shortFor(entry),
             style = MaterialTheme.typography.labelLarge,
-            color = if (action.isDestructive) colors.error else colors.onSurface,
+            color = when {
+                action.isDestructive -> colors.error
+                lit -> colors.onSurface
+                else -> colors.onSurfaceVariant
+            },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = TILE_GAP.dp),
@@ -836,15 +856,8 @@ private const val TILE_GAP = 6
 private const val TILE_INSET = 10
 private const val TILE_GLYPH = 18
 
-/**
- * How far a resting tile stands off the card, and how visible its edge is.
- *
- * Both are alphas over `onSurface` and `outline` rather than named surfaces, so
- * they work out to a lift on a dark theme and a settle on a light one without
- * either being asked for by name.
- */
-private const val TILE_FILL_ALPHA = 0.07f
-private const val TILE_EDGE_ALPHA = 0.5f
+/** How visible a resting tile's edge is; the fill itself is transparent. */
+private const val TILE_EDGE_ALPHA = 0.45f
 
 /**
  * The range a tile is allowed to be squeezed into.
@@ -857,5 +870,5 @@ private const val TILE_EDGE_ALPHA = 0.5f
 private const val TILE_MIN = 34
 private const val TILE_MAX = 52
 
-/** Tint under a tile the cursor or the pointer is on. */
-private const val TILE_LIT_ALPHA = 0.18f
+/** Tint under a tile the cursor or the pointer is on; the side menu's own value. */
+private const val TILE_LIT_ALPHA = 0.14f
