@@ -47,6 +47,15 @@ fun AppDrawerScreen(
     onCellLongPressed: (row: Int, column: Int) -> Unit,
     onPageChanged: (Int) -> Unit,
     onPinch: (Float) -> Unit,
+    /**
+     * The user's own preference, obeyed here as it is on the home grid.
+     *
+     * Not cosmetic: the dots live *in* the column, so a surface that draws them
+     * when the grid does not gives its pager a shorter box and lays the same
+     * matrix out at a smaller cell size. Sharing the setting is what keeps a
+     * grid and a drawer at the same size at every preset.
+     */
+    showPageIndicators: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val pageCount = pageCountFor(apps.size, spec.cellsPerPage)
@@ -88,13 +97,15 @@ fun AppDrawerScreen(
 
             // The same dots, in the same place, as the home grid — the drawer
             // used to draw its own at a different size.
-            PageIndicators(
-                pageCount = pageCount,
-                currentPage = currentPage,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = ThorTheme.dimens.spacingTiny),
-            )
+            if (showPageIndicators) {
+                PageIndicators(
+                    pageCount = pageCount,
+                    currentPage = currentPage,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = ThorTheme.dimens.spacingTiny),
+                )
+            }
 
             Spacer(modifier = Modifier.height(dockClearance))
         }

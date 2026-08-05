@@ -35,7 +35,7 @@ internal fun PlatformsPage(
         if (index > 0) RowDivider()
         SystemRow(
             platform = option.platform,
-            installedEmulators = option.installed,
+            emulators = option.emulators,
             romFolder = settings.library.romDirectoryUris
                 .firstOrNull { it.platformId == option.platform.id }
                 ?.displayName,

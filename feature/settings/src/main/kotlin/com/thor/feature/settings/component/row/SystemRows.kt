@@ -44,6 +44,7 @@ import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.Platform
+import com.thor.feature.settings.EmulatorChoice
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.component.THOR_MENU_ICON_TILE
 import com.thor.core.ui.component.ThorMenuRow
@@ -301,7 +302,8 @@ private fun PickerRow(
 @Composable
 fun SystemRow(
     platform: Platform,
-    installedEmulators: List<Pair<String, String>>,
+    /** Every emulator known for this system, installed or not. */
+    emulators: List<EmulatorChoice>,
     romFolder: String?,
     focused: Boolean = false,
     /** Current completed/total count when this platform is being scraped. */
@@ -315,13 +317,17 @@ fun SystemRow(
     val selected = platform.emulatorPackages
     val accent = Color(platform.accentArgb)
     val ready = romFolder != null && selected.isNotEmpty()
-    val controlCount = installedEmulators.size + PLATFORM_ACTION_COUNT
+    // Only the installed ones are steppable: an uninstalled chip that took the
+    // cursor would be a stop on the way round that does nothing when pressed.
+    val assignable = emulators.filter { it.installed }
+    val missing = emulators.filterNot { it.installed }
+    val controlCount = assignable.size + PLATFORM_ACTION_COUNT
     var highlightedControl by remember(platform.id) { mutableIntStateOf(0) }
     val emulatorSummary = when {
-        installedEmulators.isEmpty() -> "No compatible emulator installed"
+        assignable.isEmpty() -> "No compatible emulator installed"
         selected.isEmpty() -> "No emulator assigned"
-        else -> installedEmulators.firstOrNull { it.first == selected.first() }
-            ?.second ?: selected.first()
+        else -> assignable.firstOrNull { it.packageName == selected.first() }
+            ?.displayName ?: selected.first()
     }
 
     LaunchedEffect(controlCount) {
@@ -333,11 +339,11 @@ fun SystemRow(
     }
     ActivateOnConfirm(focused) {
         when (highlightedControl) {
-            in installedEmulators.indices ->
-                onToggleEmulator(installedEmulators[highlightedControl].first)
+            in assignable.indices ->
+                onToggleEmulator(assignable[highlightedControl].packageName)
 
-            installedEmulators.size -> onScrape()
-            installedEmulators.size + 1 -> onRemove()
+            assignable.size -> onScrape()
+            assignable.size + 1 -> onRemove()
         }
     }
 
@@ -432,49 +438,48 @@ fun SystemRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (installedEmulators.isNotEmpty()) {
-                    FlowRow(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp),
-                    ) {
-                        installedEmulators.forEachIndexed {
-                                emulatorIndex, (packageName, displayName) ->
-                            val index = selected.indexOf(packageName)
-                            PlatformEmulatorChip(
-                                displayName = displayName,
-                                isSelected = index >= 0,
-                                isDefault = index == 0,
-                                controllerFocused = focused &&
-                                    highlightedControl == emulatorIndex,
-                                onClick = { onToggleEmulator(packageName) },
-                            )
-                        }
+                FlowRow(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    assignable.forEachIndexed { emulatorIndex, choice ->
+                        val index = selected.indexOf(choice.packageName)
+                        PlatformEmulatorChip(
+                            displayName = choice.displayName,
+                            isSelected = index >= 0,
+                            isDefault = index == 0,
+                            controllerFocused = focused &&
+                                highlightedControl == emulatorIndex,
+                            onClick = { onToggleEmulator(choice.packageName) },
+                        )
                     }
-                } else {
-                    Text(
-                        text = "No compatible emulator installed",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.error,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(ThorTheme.shapes.small)
-                            .background(colors.error.copy(alpha = 0.08f))
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                    )
+                    /*
+                     * The rest of what would work, greyed.
+                     *
+                     * This row used to say "No compatible emulator installed"
+                     * and leave it there, which answers the question the user
+                     * did not ask. Naming them turns a dead end into a
+                     * shopping list — and a system whose emulator is installed
+                     * but under a package the registry does not recognise now
+                     * shows the name it was looking for.
+                     */
+                    missing.forEach { choice ->
+                        MissingEmulatorChip(displayName = choice.displayName)
+                    }
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     PlatformAction(
                         label = scrapeProgress ?: "SCRAPE",
                         icon = Icons.Rounded.Refresh,
-                        focused = focused && highlightedControl == installedEmulators.size,
+                        focused = focused && highlightedControl == assignable.size,
                         onClick = onScrape,
                     )
                     PlatformAction(
                         label = "REMOVE",
                         icon = Icons.Rounded.Close,
-                        focused = focused && highlightedControl == installedEmulators.size + 1,
+                        focused = focused && highlightedControl == assignable.size + 1,
                         destructive = true,
                         onClick = onRemove,
                     )
@@ -507,6 +512,28 @@ private fun PlatformEmulatorChip(
         focused = controllerFocused,
         reactToHover = true,
         onClick = onClick,
+    )
+}
+
+/**
+ * An emulator that would run this system, if it were installed.
+ *
+ * Deliberately not a button. It cannot be assigned, and a chip that looks
+ * pressable and refuses is worse than one that plainly says it is not there.
+ */
+@Composable
+private fun MissingEmulatorChip(displayName: String) {
+    val colors = ThorTheme.colors
+    Text(
+        text = "$displayName · NOT INSTALLED",
+        style = MaterialTheme.typography.labelSmall,
+        color = colors.onSurfaceVariant.copy(alpha = 0.7f),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .clip(ThorTheme.shapes.small)
+            .background(colors.surfaceElevated.copy(alpha = 0.5f))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
     )
 }
 

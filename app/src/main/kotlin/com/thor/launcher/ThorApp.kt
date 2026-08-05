@@ -2307,7 +2307,6 @@ fun ThorApp(
                 foldersExist = state.entriesById.values.any { it is FolderEntry && !it.isSmart },
                 entryInFolder = state.contextMenuEntry
                     ?.let { viewModel.folderContaining(it.id) != null } == true,
-                onFolderClosed = viewModel::closeFolder,
                 selectedTab = selectedTab,
                 navCursor = navCursor,
                 onTabSelected = { tab ->

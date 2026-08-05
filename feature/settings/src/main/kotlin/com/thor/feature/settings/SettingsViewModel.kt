@@ -84,11 +84,30 @@ import javax.inject.Inject
  * than writing a whole settings object, so two panes edited in quick succession
  * cannot overwrite one another.
  */
-/** A platform paired with the emulators actually installed for it. */
+/** A platform paired with every emulator known to run it. */
 data class PlatformEmulatorOption(
     val platform: Platform,
-    /** Package name to display name, in registry order. */
-    val installed: List<Pair<String, String>>,
+    /** In registry order, installed ones first; see [EmulatorChoice]. */
+    val emulators: List<EmulatorChoice>,
+) {
+    /** The ones that can actually be assigned, which is what the row steps through. */
+    val assignable: List<EmulatorChoice> get() = emulators.filter { it.installed }
+}
+
+/**
+ * One emulator this launcher knows how to drive for a system.
+ *
+ * Uninstalled ones are listed too, which they were not before. Hiding them made
+ * the settings screen say "No compatible emulator installed" and stop — which is
+ * true and useless, because the next question is always *which* one to install,
+ * and the launcher is the only thing that knows the answer. They are shown as
+ * unavailable rather than offered: assigning one would produce a launch failure
+ * nobody could act on, which is why they were hidden in the first place.
+ */
+data class EmulatorChoice(
+    val packageName: String,
+    val displayName: String,
+    val installed: Boolean,
 )
 
 @HiltViewModel
@@ -579,21 +598,27 @@ class SettingsViewModel @Inject constructor(
     /**
      * Platforms with their installable emulators resolved.
      *
-     * Only emulators actually present on the device are offered — listing one
-     * that is not installed produces a launch failure the user cannot act on
-     * from the settings screen.
+     * Every emulator the registry knows for each system, installed or not. Only
+     * the installed ones can be assigned — see [EmulatorChoice] — but all of
+     * them are listed, because "which emulator does this system need" is a
+     * question the settings screen is uniquely able to answer.
      */
     val platformOptions: StateFlow<List<PlatformEmulatorOption>> = libraryRepository.addedPlatforms
         .map { platforms ->
             platforms.map { platform ->
                 PlatformEmulatorOption(
                     platform = platform,
-                    installed = entryLauncher.installedEmulatorsFor(platform.id)
-                        .map { packageName ->
-                            packageName to (
-                                EmulatorRegistry.specFor(packageName)?.displayName ?: packageName
-                                )
-                        },
+                    emulators = EmulatorRegistry.candidatesFor(platform.id)
+                        .map { spec ->
+                            EmulatorChoice(
+                                packageName = spec.packageName,
+                                displayName = spec.displayName,
+                                installed = entryLauncher.isInstalled(spec.packageName),
+                            )
+                        }
+                        // Installed first, so the ones that can be pressed are
+                        // together and the rest read as a list of suggestions.
+                        .sortedByDescending { it.installed },
                 )
             }
         }

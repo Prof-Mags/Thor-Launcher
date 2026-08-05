@@ -16,9 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -27,9 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.theme.ThorTheme
@@ -43,11 +39,9 @@ import com.thor.core.model.LauncherAction
 import com.thor.core.model.LauncherFeatures.DOCK_ENABLED
 import com.thor.core.model.LauncherTab
 import com.thor.core.model.PanelLayout
-import com.thor.core.model.PlatformFolders
 import com.thor.core.model.SortOrder
 import com.thor.core.model.WidgetEntry
 import com.thor.core.ui.component.AnimatedWallpaperBackground
-import com.thor.core.ui.component.ArtworkImage
 import com.thor.core.ui.component.ModeChangeVeil
 import com.thor.core.ui.profile.ShellStatus
 import com.thor.core.ui.profile.ShellStatusActions
@@ -133,8 +127,6 @@ fun BottomScreen(
     foldersExist: Boolean,
     /** Whether the context-menu entry currently sits inside a folder. */
     entryInFolder: Boolean,
-    /** Leaves the open folder and returns the grid to the page it came from. */
-    onFolderClosed: () -> Unit,
     /** The section the launcher is showing. */
     selectedTab: LauncherTab,
     /** The tab the controller cursor is on, or null when it is in the content. */
@@ -318,23 +310,19 @@ fun BottomScreen(
              * that is left, and nothing overlaps.
              */
             if (selectedTab.isHome) {
-                state.openFolder?.let { folder ->
-                    OpenFolderBanner(
-                        title = folder.title,
-                        count = state.openFolderContents.size,
-                        onClose = onFolderClosed,
-                        // A platform folder wears its system's wordmark when an
-                        // installed pack supplied one.
-                        logoUri = PlatformFolders.platformIdOf(folder.id)
-                            ?.let { state.platformsById[it] }
-                            ?.artwork
-                            ?.logoUri,
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .padding(top = dimens.spacingSmall, bottom = dimens.spacingTiny),
-                    )
-                }
-
+                /*
+                 * No banner over an open folder.
+                 *
+                 * It named the folder and counted what was in it, over a grid of
+                 * that folder's contents — so it was captioning something already
+                 * on screen. What it cost was height: it sat *in* the column, so
+                 * the grid below it got a shorter box and laid the same matrix
+                 * out at a smaller cell size. Opening a folder visibly shrank
+                 * every icon, which is the one thing a folder must not do.
+                 *
+                 * Back closes a folder, from the B button and from the system
+                 * gesture alike — see `ControllerProfiles`, which maps both.
+                 */
                 LauncherGrid(
                     state = state,
                     onCellTapped = onCellTapped,
@@ -466,6 +454,11 @@ fun BottomScreen(
                 onCellLongPressed = onDrawerCellLongPressed,
                 onPageChanged = onDrawerPageChanged,
                 onPinch = onPinch,
+                // The same setting the home grid obeys. The drawer used to draw
+                // its dots unconditionally, so with indicators turned off it
+                // reserved a strip the grid behind it did not — and the same
+                // matrix came out a few pixels smaller in the drawer.
+                showPageIndicators = showPageIndicators,
             )
         }
 
@@ -734,91 +727,6 @@ private fun EditModeBanner(mode: EditMode, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * Names the folder the grid is showing, and offers the way out.
- *
- * The close chip is here because Back is a *button*, and this panel is a
- * touchscreen: without it, a folder opened with a finger could only be left with
- * the controller.
- */
-@Composable
-private fun OpenFolderBanner(
-    title: String,
-    count: Int,
-    onClose: () -> Unit,
-    /**
-     * The platform's wordmark, when this folder is a platform's and a pack
-     * supplied one. Drawn instead of the title, not beside it — a logo *is* the
-     * name, and showing both reads as a rendering mistake.
-     */
-    logoUri: String? = null,
-    modifier: Modifier = Modifier,
-) {
-    val colors = ThorTheme.colors
-    val dimens = ThorTheme.dimens
-
-    GlassSurface(
-        // Capped, so a long folder name ellipsizes instead of stretching the banner
-        // to the width of the panel.
-        modifier = modifier.widthIn(max = BANNER_MAX_WIDTH.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-            modifier = Modifier.padding(
-                start = dimens.spacing,
-                end = dimens.spacingTiny,
-                top = 6.dp,
-                bottom = 6.dp,
-            ),
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.FolderOpen,
-                contentDescription = null,
-                tint = colors.cursor,
-                modifier = Modifier.size(15.dp),
-            )
-            if (logoUri != null) {
-                ArtworkImage(
-                    model = logoUri,
-                    // The title is still the accessible name; the logo is how it
-                    // is drawn.
-                    contentDescription = title,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .height(LOGO_HEIGHT.dp)
-                        .widthIn(max = LOGO_MAX_WIDTH.dp),
-                )
-            } else {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    // Shrinks to fit rather than pushing the count and the close
-                    // chip off the end of a capped row.
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-            }
-            Text(
-                text = count.toString(),
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant,
-            )
-            Text(
-                text = "Close",
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.cursor,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(percent = 50))
-                    .clickable(onClick = onClose)
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
-            )
-        }
-    }
-}
-
 @Composable
 private fun ScanBanner(label: String?, modifier: Modifier = Modifier) {
     val colors = ThorTheme.colors
@@ -836,16 +744,3 @@ private fun ScanBanner(label: String?, modifier: Modifier = Modifier) {
     }
 }
 
-/** Keeps a long folder name from stretching its banner across the panel. */
-private const val BANNER_MAX_WIDTH = 300
-
-/**
- * The platform wordmark's box in the banner.
- *
- * Fitted rather than cropped, and capped in both directions: pack logos come at
- * wildly different aspect ratios — a tall Nintendo seal next to a very wide
- * PlayStation wordmark — and either would set the banner's height on its own
- * without a ceiling.
- */
-private const val LOGO_HEIGHT = 16
-private const val LOGO_MAX_WIDTH = 120
