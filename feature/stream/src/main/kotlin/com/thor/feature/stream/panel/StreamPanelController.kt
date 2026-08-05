@@ -1,5 +1,4 @@
-package com.thor.feature.stream
-
+package com.thor.feature.stream.panel
 import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.compose.runtime.getValue

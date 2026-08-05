@@ -1,5 +1,4 @@
-package com.thor.feature.topscreen
-
+package com.thor.feature.topscreen.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

@@ -1,5 +1,4 @@
-package com.thor.feature.topscreen
-
+package com.thor.feature.topscreen.component
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier

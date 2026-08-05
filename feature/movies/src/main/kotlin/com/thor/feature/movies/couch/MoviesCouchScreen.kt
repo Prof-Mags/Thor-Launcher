@@ -1,4 +1,4 @@
-package com.thor.feature.movies
+package com.thor.feature.movies.couch
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -7,6 +7,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.MediaType
+import com.thor.feature.movies.DetailState
+import com.thor.feature.movies.MoviesMode
+import com.thor.feature.movies.MoviesUiState
+import com.thor.feature.movies.Playback
+import com.thor.feature.movies.player.PlayerAction
+import com.thor.feature.movies.player.PlayerStatus
+import com.thor.feature.movies.player.ThorPlayer
+import com.thor.feature.movies.SourceState
 
 /**
  * Movies as a complete one-screen couch experience.

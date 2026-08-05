@@ -1,43 +1,34 @@
-package com.thor.feature.topscreen
-
-import androidx.compose.foundation.background
+package com.thor.feature.topscreen.panel
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.theme.ThorTheme
-import com.thor.core.model.AnimatedWallpaper
-import com.thor.core.model.AppEntry
-import com.thor.core.ui.component.AnimatedWallpaperBackground
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
 import com.thor.core.model.Platform
 import com.thor.core.ui.component.ArtworkImage
-import androidx.compose.ui.layout.ContentScale
 
 /**
  * The wordmark's box on the detail panel.
@@ -162,72 +153,4 @@ fun FolderDetailPanel(
             }
         }
     }
-}
-
-/** Detail view for a highlighted application. */
-@Composable
-fun AppDetailPanel(app: AppEntry, modifier: Modifier = Modifier) {
-    val colors = ThorTheme.colors
-    val dimens = ThorTheme.dimens
-
-    Column(
-        modifier = modifier.fillMaxSize().padding(dimens.spacingHuge),
-        verticalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-    ) {
-        Text(
-            text = app.title,
-            style = MaterialTheme.typography.displaySmall,
-            color = colors.onBackground,
-        )
-        Text(
-            text = app.packageName,
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.onSurfaceVariant,
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(dimens.spacingLarge)) {
-            app.versionName?.let { LabelledValue("Version", it) }
-            LabelledValue("Times opened", app.launchCount.toString())
-            app.lastPlayedEpochMs?.let { LabelledValue("Last opened", formatRelative(it)) }
-            if (app.isEmulator) LabelledValue("Type", "Emulator")
-        }
-    }
-}
-
-@Composable
-private fun LabelledValue(label: String, value: String) {
-    val colors = ThorTheme.colors
-    Column {
-        Text(
-            text = label.uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.onSurface,
-        )
-    }
-}
-
-/**
- * Shown when nothing is highlighted.
- *
- * Delegates to the shared wallpaper renderer so the info screen and the grid
- * screen show the same effect — previously this drew its own private gradient,
- * which meant changing the wallpaper setting visibly altered one screen and not
- * the other.
- */
-@Composable
-fun IdleWallpaperPanel(
-    wallpaper: AnimatedWallpaper,
-    wallpaperUri: String?,
-    modifier: Modifier = Modifier,
-) {
-    AnimatedWallpaperBackground(
-        wallpaper = wallpaper,
-        imageUri = wallpaperUri,
-        modifier = modifier.fillMaxSize(),
-    )
 }

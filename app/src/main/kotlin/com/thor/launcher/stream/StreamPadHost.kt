@@ -22,8 +22,8 @@ import com.thor.core.model.PerformanceSettings
 import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.SessionQuality
 import com.thor.data.stream.StreamPad
-import com.thor.feature.stream.StreamPadPanel
-import com.thor.feature.stream.StreamPanelController
+import com.thor.feature.stream.panel.StreamPadPanel
+import com.thor.feature.stream.panel.StreamPanelController
 
 /**
  * Puts the trackpad and keyboard on the second screen for as long as a stream is

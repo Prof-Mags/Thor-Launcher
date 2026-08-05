@@ -1,19 +1,21 @@
 package com.thor.feature.movies
 
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
-import androidx.compose.runtime.collectAsState
 import com.thor.core.model.ControllerCommand
 import com.thor.core.model.MediaType
 import com.thor.data.media.SourceResult
+import com.thor.feature.movies.player.PlayerAction
+import com.thor.feature.movies.player.ThorPlayer
 
 /**
  * Everything the Movies section needs, in one object the shell can hold.

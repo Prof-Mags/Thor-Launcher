@@ -1,9 +1,15 @@
-package com.thor.feature.stream
+package com.thor.feature.stream.couch
 
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import com.thor.core.model.HostStatus
 import com.thor.core.model.StreamHost
+import com.thor.feature.stream.streamActionLabel
+import com.thor.feature.stream.StreamCouchPage
+import com.thor.feature.stream.streamGridTarget
+import com.thor.feature.stream.StreamHeaderAction
+import com.thor.feature.stream.StreamHostAction
+import com.thor.feature.stream.StreamUiState
 import org.junit.Test
 
 /**

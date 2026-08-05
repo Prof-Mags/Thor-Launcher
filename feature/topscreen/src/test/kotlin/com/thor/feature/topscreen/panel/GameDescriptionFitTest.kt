@@ -1,4 +1,4 @@
-package com.thor.feature.topscreen
+package com.thor.feature.topscreen.panel
 
 import com.google.common.truth.Truth.assertThat
 import androidx.compose.ui.unit.Constraints

@@ -1,22 +1,22 @@
-package com.thor.feature.movies
+package com.thor.feature.movies.panel
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -27,27 +27,25 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.modifier.thorCursor
-import com.thor.core.designsystem.theme.ThorTheme
-import com.thor.core.ui.component.ThorDropdownItem
-import com.thor.core.ui.component.ThorDropdownMenu
 import com.thor.core.designsystem.theme.contrastingContentColor
+import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.CacheStatus
 import com.thor.core.model.Episode
 import com.thor.core.model.MediaItem
@@ -56,10 +54,14 @@ import com.thor.core.model.Season
 import com.thor.core.model.StreamSource
 import com.thor.core.model.WatchProgress
 import com.thor.core.ui.component.ArtworkImage
+import com.thor.core.ui.component.ThorDropdownItem
+import com.thor.core.ui.component.ThorDropdownMenu
 import com.thor.core.ui.pointer.pointerHover
 import com.thor.core.ui.pointer.rememberPointerHover
 import com.thor.data.media.ProviderOutcome
 import com.thor.data.media.SourceResult
+import com.thor.feature.movies.DetailState
+import com.thor.feature.movies.SourceState
 
 /** Selected-title details and playback choices on the companion display. */
 @Composable

@@ -25,7 +25,7 @@ import com.thor.data.stream.SessionState
 import com.thor.core.model.SessionQuality
 import com.thor.data.stream.StreamInput
 import com.thor.data.stream.StreamPad
-import com.thor.feature.stream.StreamPanelController
+import com.thor.feature.stream.panel.StreamPanelController
 import com.thor.data.stream.StreamPresence
 import com.thor.data.stream.StreamSessionManager
 import com.thor.data.stream.StreamTouch

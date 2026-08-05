@@ -1,4 +1,4 @@
-package com.thor.feature.movies
+package com.thor.feature.movies.couch
 
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat

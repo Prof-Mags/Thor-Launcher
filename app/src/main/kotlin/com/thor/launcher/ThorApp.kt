@@ -106,13 +106,13 @@ import com.thor.feature.home.LauncherViewModel
 import com.thor.feature.home.component.EditEntryDialog
 import com.thor.feature.home.component.EmptySection
 import com.thor.feature.movies.MoviesBottomPanel
-import com.thor.feature.movies.MoviesCouchScreen
+import com.thor.feature.movies.couch.MoviesCouchScreen
 import com.thor.feature.movies.MoviesMode
 import com.thor.feature.movies.MoviesTopPanel
 import com.thor.feature.movies.MoviesViewModel
-import com.thor.feature.stream.StreamBottomPanel
-import com.thor.feature.stream.StreamCouchScreen
-import com.thor.feature.stream.StreamTopPanel
+import com.thor.feature.stream.panel.StreamBottomPanel
+import com.thor.feature.stream.couch.StreamCouchScreen
+import com.thor.feature.stream.panel.StreamTopPanel
 import com.thor.feature.stream.StreamEffect
 import com.thor.feature.stream.StreamViewModel
 import com.thor.feature.movies.rememberMoviesSection

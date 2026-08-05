@@ -12,17 +12,19 @@ import com.thor.data.stream.LaunchStage
 import com.thor.data.stream.PairingState
 import com.thor.data.stream.StreamRepository
 import com.thor.data.stream.StreamSessionManager
+import com.thor.feature.stream.couch.STREAM_COUCH_COLUMNS
+import com.thor.feature.stream.couch.STREAM_HELP_SECTIONS
 import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import javax.inject.Inject
 
 /**
  * Something the section needs the shell to do.

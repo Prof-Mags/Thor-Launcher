@@ -17,18 +17,20 @@ import com.thor.data.media.MediaRepository
 import com.thor.data.media.ResolvedStream
 import com.thor.data.media.SourceResult
 import com.thor.data.media.WatchProgressRepository
+import com.thor.feature.movies.player.PlayerStatus
+import com.thor.feature.movies.player.ThorPlayer
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
+import javax.inject.Inject
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import javax.inject.Inject
+import kotlinx.coroutines.Job
 
 /** Where the cursor is in the browse grid: which shelf, and how far along it. */
 data class BrowseCursor(val row: Int = 0, val column: Int = 0) {
