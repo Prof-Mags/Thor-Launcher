@@ -3,9 +3,11 @@ package com.thor.feature.movies
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,11 +23,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.theme.ThorTheme
@@ -77,37 +81,66 @@ internal fun MoviesCouchTitlePage(
             return@Box
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = PAGE_INSET.dp, vertical = PAGE_TOP_INSET.dp),
-            horizontalArrangement = Arrangement.spacedBy(COLUMN_GAP.dp),
-        ) {
-            TitleIdentity(
-                item = item,
-                detail = detail,
-                onPlay = onPlay,
-                modifier = Modifier.weight(IDENTITY_WEIGHT).fillMaxHeight(),
-            )
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val panelHeight = couchActionPanelHeight(maxHeight, showSeriesSelector)
 
-            GlassSurface(
-                modifier = Modifier.weight(1f - IDENTITY_WEIGHT).fillMaxHeight(),
-                shape = ThorTheme.shapes.panel,
-            ) {
-                PlaybackPanel(
+            Column(modifier = Modifier.fillMaxSize().padding(bottom = PAGE_INSET.dp)) {
+                TitleIdentity(
+                    item = item,
                     detail = detail,
-                    sources = sources,
-                    focusedSource = focusedSource,
-                    selectorFocused = selectorFocused,
-                    showSeriesSelector = showSeriesSelector,
-                    onSourcePicked = onSourcePicked,
-                    onSeasonSelected = onSeasonSelected,
-                    onEpisodeSelected = onEpisodeSelected,
-                    modifier = Modifier.fillMaxSize(),
+                    onPlay = onPlay,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = PAGE_INSET.dp, vertical = PAGE_TOP_INSET.dp),
                 )
+
+                /*
+                 * The choice sits along the bottom, under the picture it is about.
+                 *
+                 * It was a column beside the picture, which gave the artwork half a
+                 * television and the list a shape it never wanted - a source is one
+                 * line of text and a season is a strip of episodes, and both were
+                 * being drawn in a tall narrow box. Along the bottom the list is
+                 * short and scrolls, and everything above it is the title.
+                 */
+                GlassSurface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(panelHeight)
+                        .padding(horizontal = PAGE_INSET.dp),
+                    shape = ThorTheme.shapes.panel,
+                ) {
+                    PlaybackPanel(
+                        detail = detail,
+                        sources = sources,
+                        focusedSource = focusedSource,
+                        selectorFocused = selectorFocused,
+                        showSeriesSelector = showSeriesSelector,
+                        onSourcePicked = onSourcePicked,
+                        onSeasonSelected = onSeasonSelected,
+                        onEpisodeSelected = onEpisodeSelected,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }
+}
+
+/**
+ * How much of the screen the choice at the foot of the page takes.
+ *
+ * A series needs more of it than a film: a film's panel is a ranked list of one
+ * line each, where a series has to fit a season control and a strip of episodes
+ * above the same list. Clamped shares rather than fixed heights, because couch
+ * mode composes through a scaled density and a height in dp is not a fixed share
+ * of the panel.
+ */
+internal fun couchActionPanelHeight(available: Dp, series: Boolean): Dp {
+    val fraction = if (series) SERIES_PANEL_FRACTION else SOURCE_PANEL_FRACTION
+    val floor = if (series) MIN_SERIES_PANEL else MIN_SOURCE_PANEL
+    return (available * fraction).coerceIn(floor.dp, MAX_PANEL.dp)
 }
 
 /**
@@ -164,7 +197,12 @@ private fun CouchBackdrop(item: MediaItem?) {
 }
 
 /**
- * What the title is, at the size of a room.
+ * The artwork and what it is, filling the top of the page.
+ *
+ * The poster is drawn as well as the backdrop behind it, and they are not the
+ * same picture doing the same job: the backdrop is the scene and the poster is
+ * the thing the viewer has been scrolling past on the shelf, so putting it here
+ * is what makes the page read as the card they just pressed.
  *
  * The story scrolls and everything else does not. A synopsis is the one part of
  * this that has no length limit — some run to a paragraph, some to a page — and
@@ -173,6 +211,45 @@ private fun CouchBackdrop(item: MediaItem?) {
  */
 @Composable
 private fun TitleIdentity(
+    item: MediaItem,
+    detail: DetailState,
+    onPlay: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(COLUMN_GAP.dp),
+    ) {
+        // Height first, so the poster is as tall as the region and only as wide
+        // as that makes it. Taken from the width instead, a wide television would
+        // give it half the page.
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .aspectRatio(POSTER_ASPECT, matchHeightConstraintsFirst = true)
+                .clip(ThorTheme.shapes.small)
+                .background(ThorTheme.colors.surface),
+        ) {
+            ArtworkImage(
+                model = item.posterUrl ?: item.backdropUrl,
+                contentDescription = item.title,
+                fallbackText = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        TitleFacts(
+            item = item,
+            detail = detail,
+            onPlay = onPlay,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        )
+    }
+}
+
+@Composable
+private fun TitleFacts(
     item: MediaItem,
     detail: DetailState,
     onPlay: () -> Unit,
@@ -301,10 +378,15 @@ private fun TitleIdentity(
 }
 
 private const val PAGE_INSET = 26
-private const val PAGE_TOP_INSET = 18
+private const val PAGE_TOP_INSET = 16
 private const val COLUMN_GAP = 20
-private const val IDENTITY_WEIGHT = 0.46f
-private const val IDENTITY_GAP = 10
+private const val IDENTITY_GAP = 9
+private const val POSTER_ASPECT = 2f / 3f
+private const val SOURCE_PANEL_FRACTION = 0.38f
+private const val SERIES_PANEL_FRACTION = 0.48f
+private const val MIN_SOURCE_PANEL = 150
+private const val MIN_SERIES_PANEL = 180
+private const val MAX_PANEL = 300
 private const val LOGO_WIDTH_FRACTION = 0.66f
 private const val LOGO_HEIGHT = 74
 private const val ACTION_GAP = 12

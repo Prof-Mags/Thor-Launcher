@@ -142,6 +142,51 @@ class MoviesCouchBrowseTest {
     }
 
     /**
+     * A still is shorter than the posters beside it, so it is narrower too.
+     *
+     * At matching heights a 16:9 card is two and a half times the width of a 2:3
+     * one, which made the resume shelf by far the largest thing on the screen -
+     * three cards filling a row that holds seven elsewhere, for the shelf with
+     * the fewest things on it. Taking the height down takes the width with it.
+     */
+    @Test
+    fun `a resume card is smaller than one matching the posters beside it`() {
+        val atMatchingHeight = 150f * 16f / 9f
+
+        val still = couchCardWidth(150.dp, landscape = true)
+
+        assertThat(couchStillHeight(150.dp).value).isLessThan(150f)
+        assertThat(still.value).isLessThan(atMatchingHeight)
+        // Shrunk, not shrunk away: it is still the shelf you resume from.
+        assertThat(still.value).isGreaterThan(atMatchingHeight * 0.6f)
+    }
+
+    /**
+     * A series needs more of the foot of the page than a film.
+     *
+     * A film's panel is a ranked list of one line each. A series has to fit a
+     * season control and a strip of episodes above that same list, and squeezing
+     * both into a film's height leaves one episode visible at a time.
+     */
+    @Test
+    fun `the panel at the foot of a title page makes room for episodes`() {
+        val television = 476.dp
+
+        val film = couchActionPanelHeight(television, series = false)
+        val series = couchActionPanelHeight(television, series = true)
+
+        assertThat(series.value).isGreaterThan(film.value)
+        // Whatever it takes, the artwork above it keeps the greater share.
+        assertThat(series.value).isLessThan(television.value / 2f)
+    }
+
+    @Test
+    fun `a short panel still leaves the sources somewhere to be`() {
+        assertThat(couchActionPanelHeight(200.dp, series = false).value).isAtLeast(150f)
+        assertThat(couchActionPanelHeight(200.dp, series = true).value).isAtLeast(180f)
+    }
+
+    /**
      * The story is measured, not assumed.
      *
      * A television at the usual interface size leaves the card a couple of hundred

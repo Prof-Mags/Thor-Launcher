@@ -144,11 +144,16 @@ internal fun MoviesCouchBrowse(
             CouchMediaRail(
                 type = state.type,
                 stats = stats,
+                rows = rows,
+                selectedRow = rowIndex,
                 query = query,
                 onQueryChanged = onQueryChanged,
                 searchRequested = searchRequested,
                 onSearchFocused = onSearchFocused,
                 onTypeSelected = onTypeSelected,
+                // The head of the shelf, not wherever its cursor was left. A
+                // category picked from a list is a request to start reading it.
+                onCategorySelected = { index -> onItemFocused(index, 0) },
                 modifier = Modifier.width(RAIL_WIDTH.dp).fillMaxHeight(),
             )
 
@@ -242,14 +247,27 @@ private fun browseMessage(state: MoviesUiState): String? = when {
 private fun CouchMediaRail(
     type: MediaType,
     stats: CouchMediaStats,
+    rows: List<MediaRow>,
+    selectedRow: Int,
     query: String,
     onQueryChanged: (String) -> Unit,
     searchRequested: Boolean,
     onSearchFocused: () -> Unit,
     onTypeSelected: (MediaType) -> Unit,
+    onCategorySelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
+    val railState = rememberLazyListState()
+
+    // The rail is a map of where the cursor is, so it follows the cursor. A list
+    // that has to be scrolled by hand to find out which shelf you are on is a
+    // second thing to navigate rather than an answer.
+    LaunchedEffect(selectedRow, rows.size) {
+        if (rows.isNotEmpty()) {
+            railState.animateScrollToItem(selectedRow.coerceIn(0, rows.lastIndex))
+        }
+    }
 
     Column(
         modifier = modifier
@@ -290,7 +308,47 @@ private fun CouchMediaRail(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        Spacer(modifier = Modifier.weight(1f))
+        if (rows.isNotEmpty()) {
+            Text(
+                text = "CATEGORIES",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                modifier = Modifier.padding(
+                    start = RAIL_ROW_PADDING.dp,
+                    top = RAIL_SECTION_GAP.dp,
+                ),
+            )
+
+            /*
+             * The shelves, listed.
+             *
+             * The screen below shows them one after another and there can be a
+             * dozen from a single addon, so the only way to know what is further
+             * down used to be to walk there. Listing them makes the rail a
+             * contents page: it says what the catalogue holds, marks where in it
+             * the cursor is, and lets a pointer jump straight to a shelf that
+             * would otherwise be several presses away.
+             */
+            LazyColumn(
+                state = railState,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                verticalArrangement = Arrangement.spacedBy(RAIL_CATEGORY_GAP.dp),
+            ) {
+                itemsIndexed(rows, key = { _, row -> row.id }) { index, row ->
+                    RailCategory(
+                        icon = couchRowIcon(row),
+                        label = row.title,
+                        count = row.items.size,
+                        selected = index == selectedRow,
+                        onClick = { onCategorySelected(index) },
+                    )
+                }
+            }
+        } else {
+            Spacer(modifier = Modifier.weight(1f))
+        }
 
         Column(
             modifier = Modifier
@@ -310,12 +368,60 @@ private fun CouchMediaRail(
                 value = stats.continueWatching.toString(),
                 label = "Continue watching",
             )
-            StatLine(
-                icon = Icons.Rounded.GridView,
-                value = stats.categories.toString(),
-                label = "Categories",
-            )
         }
+    }
+}
+
+/** One shelf, named in the rail, with how much is on it. */
+@Composable
+private fun RailCategory(
+    icon: ImageVector,
+    label: String,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = ThorTheme.colors
+    val hover = rememberPointerHover()
+    val lit = selected || hover.isHovered
+    val shape = ThorTheme.shapes.small
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerHover(hover)
+            .thorCursor(focused = hover.isHovered && !selected, shape = shape)
+            .clip(shape)
+            .background(if (lit) colors.surfaceHighest else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(
+                horizontal = RAIL_ROW_PADDING.dp,
+                vertical = RAIL_CATEGORY_PADDING_V.dp,
+            ),
+        horizontalArrangement = Arrangement.spacedBy(RAIL_ICON_GAP.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (selected) colors.cursor else colors.onSurfaceVariant,
+            modifier = Modifier.size(RAIL_CATEGORY_ICON.dp),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) colors.cursor else colors.onSurface,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurfaceVariant.copy(alpha = HINT_ALPHA),
+            maxLines = 1,
+        )
     }
 }
 
@@ -680,6 +786,7 @@ private fun CouchShelf(
 ) {
     val colors = ThorTheme.colors
     val listState = rememberLazyListState()
+    val artHeight = if (row.landscape) couchStillHeight(posterHeight) else posterHeight
     val cardWidth = couchCardWidth(posterHeight, row.landscape)
 
     /*
@@ -774,7 +881,7 @@ private fun CouchShelf(
                     landscape = row.landscape,
                     focused = index == focusedColumn,
                     width = cardWidth,
-                    posterHeight = posterHeight,
+                    artHeight = artHeight,
                     onFocus = { onItemFocused(index) },
                     onClick = { onItemSelected(index) },
                 )
@@ -799,7 +906,7 @@ private fun CouchTitleCard(
     landscape: Boolean,
     focused: Boolean,
     width: Dp,
-    posterHeight: Dp,
+    artHeight: Dp,
     onFocus: () -> Unit,
     onClick: () -> Unit,
 ) {
@@ -828,7 +935,7 @@ private fun CouchTitleCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(posterHeight)
+                .height(artHeight)
                 .zIndex(if (focused) 1f else 0f)
                 // Before the scale, so the hover target stays the card's resting
                 // box and the highlight cannot enlarge the test that produced it.
@@ -838,11 +945,23 @@ private fun CouchTitleCard(
                 .clip(shape)
                 .background(colors.surface),
         ) {
+            /*
+             * A resume card wants the still it was recorded with.
+             *
+             * When the record has none - a title stopped before its details ever
+             * arrived carries only what the shelf it came from had - the poster is
+             * all there is, and a poster cropped into a letterbox is a thin band
+             * through somebody's chin. Anchoring that crop to the top keeps the
+             * part a poster puts its face and its title on, which is the
+             * difference between a wide still and a picture that looks cut off.
+             */
+            val still = landscape && item.backdropUrl == null
             ArtworkImage(
                 model = if (landscape) (item.backdropUrl ?: item.posterUrl) else item.posterUrl,
                 contentDescription = item.title,
                 fallbackText = item.title,
                 contentScale = ContentScale.Crop,
+                alignment = if (still) Alignment.TopCenter else Alignment.Center,
                 modifier = Modifier.fillMaxSize().alpha(artAlpha),
             )
 
@@ -866,6 +985,9 @@ private fun CouchTitleCard(
                 Column(
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                 ) {
+                    // A band across the foot rather than a chip: the time left is
+                    // the reason this shelf exists, and the gradient keeps it
+                    // legible over a still without hiding much of one.
                     Text(
                         text = couchResumeLabel(progress),
                         style = MaterialTheme.typography.labelSmall,
@@ -877,10 +999,10 @@ private fun CouchTitleCard(
                             .fillMaxWidth()
                             .background(
                                 Brush.verticalGradient(
-                                    listOf(Color.Transparent, Color.Black.copy(alpha = 0.88f)),
+                                    listOf(Color.Transparent, Color.Black.copy(alpha = 0.86f)),
                                 ),
                             )
-                            .padding(horizontal = 7.dp, vertical = 4.dp),
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
                     )
                     LinearProgressIndicator(
                         progress = { progress.fraction },
@@ -976,6 +1098,16 @@ internal fun couchPosterHeight(shelfHeight: Dp): Dp {
 }
 
 /**
+ * How tall a continue-watching still is, given the posters beside it.
+ *
+ * Shorter than they are, on purpose. A still is nearly three times the width of a
+ * poster at the same height, so matching heights made the resume shelf twice the
+ * area of every other one - three cards filling a row that holds seven elsewhere,
+ * for the shelf with the fewest things on it.
+ */
+internal fun couchStillHeight(posterHeight: Dp): Dp = posterHeight * STILL_HEIGHT_SCALE
+
+/**
  * The card's width, taken from its height rather than set on its own.
  *
  * Cards inside a `LazyRow` are measured with no width limit, so a card that does
@@ -985,7 +1117,7 @@ internal fun couchPosterHeight(shelfHeight: Dp): Dp {
  * continue-watching stills stay stills instead of being cropped into portraits.
  */
 internal fun couchCardWidth(posterHeight: Dp, landscape: Boolean): Dp =
-    posterHeight * if (landscape) STILL_ASPECT else POSTER_ASPECT
+    if (landscape) couchStillHeight(posterHeight) * STILL_ASPECT else posterHeight * POSTER_ASPECT
 
 /**
  * How much of the story fits inside the featured card, in lines.
@@ -1134,6 +1266,7 @@ private const val MIN_CONTENT_HEIGHT = 240
 
 private const val POSTER_ASPECT = 2f / 3f
 private const val STILL_ASPECT = 16f / 9f
+private const val STILL_HEIGHT_SCALE = 0.78f
 
 private const val SCREEN_INSET = 22
 private const val LEGEND_HEIGHT = 24
@@ -1150,6 +1283,10 @@ private const val RAIL_ROW_PADDING = 12
 private const val RAIL_ROW_PADDING_V = 10
 private const val RAIL_ICON_GAP = 10
 private const val RAIL_ICON = 20
+private const val RAIL_SECTION_GAP = 8
+private const val RAIL_CATEGORY_GAP = 2
+private const val RAIL_CATEGORY_PADDING_V = 7
+private const val RAIL_CATEGORY_ICON = 16
 private const val WORDMARK_TRACKING = 3
 /** The wide setting a film's name is given on a poster, when it has no wordmark. */
 private const val TITLE_TRACKING = 2
