@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -308,7 +310,8 @@ fun SystemRow(
     focused: Boolean = false,
     /** Current completed/total count when this platform is being scraped. */
     scrapeProgress: String? = null,
-    onToggleEmulator: (String) -> Unit,
+    /** Opens the emulator list; see [EmulatorPickerDialog] for why it moved. */
+    onEditEmulators: () -> Unit,
     /** Re-scrapes just this system's games. */
     onScrape: () -> Unit,
     onRemove: () -> Unit,
@@ -317,11 +320,11 @@ fun SystemRow(
     val selected = platform.emulatorPackages
     val accent = Color(platform.accentArgb)
     val ready = romFolder != null && selected.isNotEmpty()
-    // Only the installed ones are steppable: an uninstalled chip that took the
-    // cursor would be a stop on the way round that does nothing when pressed.
     val assignable = emulators.filter { it.installed }
-    val missing = emulators.filterNot { it.installed }
-    val controlCount = assignable.size + PLATFORM_ACTION_COUNT
+    // Emulators, scrape, remove. One stop for the whole list rather than one per
+    // emulator: a well-served console has a dozen, and stepping through all of
+    // them to reach Remove made the two actions on this card hard to get to.
+    val controlCount = EMULATOR_CONTROL + PLATFORM_ACTION_COUNT
     var highlightedControl by remember(platform.id) { mutableIntStateOf(0) }
     val emulatorSummary = when {
         assignable.isEmpty() -> "No compatible emulator installed"
@@ -339,11 +342,9 @@ fun SystemRow(
     }
     ActivateOnConfirm(focused) {
         when (highlightedControl) {
-            in assignable.indices ->
-                onToggleEmulator(assignable[highlightedControl].packageName)
-
-            assignable.size -> onScrape()
-            assignable.size + 1 -> onRemove()
+            EMULATOR_CONTROL -> onEditEmulators()
+            EMULATOR_CONTROL + 1 -> onScrape()
+            EMULATOR_CONTROL + 2 -> onRemove()
         }
     }
 
@@ -438,48 +439,42 @@ fun SystemRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                FlowRow(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    assignable.forEachIndexed { emulatorIndex, choice ->
-                        val index = selected.indexOf(choice.packageName)
-                        PlatformEmulatorChip(
-                            displayName = choice.displayName,
-                            isSelected = index >= 0,
-                            isDefault = index == 0,
-                            controllerFocused = focused &&
-                                highlightedControl == emulatorIndex,
-                            onClick = { onToggleEmulator(choice.packageName) },
-                        )
-                    }
-                    /*
-                     * The rest of what would work, greyed.
-                     *
-                     * This row used to say "No compatible emulator installed"
-                     * and leave it there, which answers the question the user
-                     * did not ask. Naming them turns a dead end into a
-                     * shopping list — and a system whose emulator is installed
-                     * but under a package the registry does not recognise now
-                     * shows the name it was looking for.
-                     */
-                    missing.forEach { choice ->
-                        MissingEmulatorChip(displayName = choice.displayName)
-                    }
-                }
+                /*
+                 * One control for the whole list, not one per emulator.
+                 *
+                 * Every emulator this launcher knows for a console belongs on
+                 * offer — that part was right — but on a well-served system that
+                 * is a dozen chips wrapping across a card which also carries a
+                 * ROM folder, a default, a scrape button and a remove button. The
+                 * list was never the problem; this row was the wrong place for
+                 * it. It opens in a dialog now, which also has room for the
+                 * installed applications this table has never heard of.
+                 */
+                PlatformAction(
+                    label = when {
+                        assignable.isEmpty() -> "CHOOSE EMULATOR"
+                        selected.isEmpty() -> "ASSIGN EMULATOR"
+                        selected.size == 1 -> "EMULATOR"
+                        else -> "EMULATORS (${selected.size})"
+                    },
+                    icon = Icons.Rounded.Tune,
+                    focused = focused && highlightedControl == EMULATOR_CONTROL,
+                    onClick = onEditEmulators,
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     PlatformAction(
                         label = scrapeProgress ?: "SCRAPE",
                         icon = Icons.Rounded.Refresh,
-                        focused = focused && highlightedControl == assignable.size,
+                        focused = focused && highlightedControl == EMULATOR_CONTROL + 1,
                         onClick = onScrape,
                     )
                     PlatformAction(
                         label = "REMOVE",
                         icon = Icons.Rounded.Close,
-                        focused = focused && highlightedControl == assignable.size + 1,
+                        focused = focused && highlightedControl == EMULATOR_CONTROL + 2,
                         destructive = true,
                         onClick = onRemove,
                     )
@@ -489,7 +484,6 @@ fun SystemRow(
     }
 }
 
-/** One emulator choice, with separate assigned and controller/hover states. */
 @Composable
 private fun PlatformEmulatorChip(
     displayName: String,
@@ -515,12 +509,6 @@ private fun PlatformEmulatorChip(
     )
 }
 
-/**
- * An emulator that would run this system, if it were installed.
- *
- * Deliberately not a button. It cannot be assigned, and a chip that looks
- * pressable and refuses is worse than one that plainly says it is not there.
- */
 @Composable
 private fun MissingEmulatorChip(displayName: String) {
     val colors = ThorTheme.colors
@@ -589,7 +577,10 @@ private fun PlatformAction(
     )
 }
 
-private const val PLATFORM_ACTION_COUNT = 2
+/** The emulator control comes first, then Scrape and Remove. */
+private const val EMULATOR_CONTROL = 0
+
+private const val PLATFORM_ACTION_COUNT = 3
 
 /**
  * Nearly the whole panel.

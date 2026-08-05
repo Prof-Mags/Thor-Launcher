@@ -41,9 +41,7 @@ internal fun PlatformsPage(
                 ?.displayName,
             focused = focusedRow == index,
             scrapeProgress = scrapeProgress,
-            onToggleEmulator = { packageName ->
-                viewModel.togglePlatformEmulator(option.platform.id, packageName)
-            },
+            onEditEmulators = { viewModel.openEmulatorPicker(option.platform.id) },
             onScrape = { viewModel.scrapePlatform(option.platform.id) },
             onRemove = { viewModel.removePlatform(option.platform.id) },
         )

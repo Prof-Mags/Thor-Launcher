@@ -204,6 +204,8 @@ class MetadataSyncManager @Inject constructor(
         }
         val canFetchDescriptions = !trailersOnly && aggregator.hasDescriptionProvider()
         val askForMatches = settings.metadata.first().askForMatches
+        // Naming a system is itself a request to be asked; see below.
+        val alwaysAsk = platformId != null && !trailersOnly
 
         val platforms = platformDao.getAll().associateBy { it.id }
 
@@ -298,13 +300,20 @@ class MetadataSyncManager @Inject constructor(
             // the artwork it was run to change.
             val replaceArtwork = !onlyMissing
 
-            // Only where there is something to decide. One candidate is not a
-            // choice, and none is not either.
-            val chosen = if (askForMatches && candidates.size > 1) {
-                askForMatch(game, candidates)
-            } else {
-                null
-            }
+            /*
+             * Asked on every game with an answer when one system was named.
+             *
+             * A library-wide pass only asks where the providers disagree,
+             * because a prompt offering a single answer is a press charged for
+             * nothing across a few thousand files. Scraping one console is a
+             * different act: it is short, it is deliberate, and it is what
+             * somebody does when the artwork they already have is wrong — so
+             * there the menu appears whether or not the machine thinks the
+             * choice is obvious, since it thinking so is exactly what is being
+             * disputed.
+             */
+            val ask = if (alwaysAsk) candidates.isNotEmpty() else askForMatches && candidates.size > 1
+            val chosen = if (ask) askForMatch(game, candidates) else null
 
             val merged = if (chosen != null) {
                 aggregator.applyChosen(game.metadata, chosen)

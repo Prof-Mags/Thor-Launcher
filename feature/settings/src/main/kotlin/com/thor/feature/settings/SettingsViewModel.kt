@@ -68,6 +68,7 @@ import com.thor.data.scanner.EmulatorRegistry
 import com.thor.data.sync.LibrarySyncManager
 import com.thor.data.sync.MetadataSyncManager
 import com.thor.data.sync.PendingMatch
+import com.thor.feature.settings.component.EmulatorPickerState
 import com.thor.data.sync.ScrapeState
 import com.thor.data.sync.SyncState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -1378,6 +1379,84 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launchSafely(TAG) {
             achievementRepository.forgetMatches()
             achievementSyncManager.acknowledge()
+        }
+    }
+
+    // --------------------------------------------------------- emulator picker
+
+    private val _emulatorPicker = MutableStateFlow(EmulatorPickerState())
+    val emulatorPicker: StateFlow<EmulatorPickerState> = _emulatorPicker.asStateFlow()
+
+    /**
+     * Opens the emulator list for one system.
+     *
+     * The "other apps" half is what makes an unrecognised emulator assignable at
+     * all. This launcher's table can only name builds somebody added to it, so a
+     * fork or a rename it has not heard of was unassignable no matter that it was
+     * installed — the fault the user meets as "it says Cemu is not installed".
+     * Filtered to what the scanner marked as an emulator, so the list is short
+     * enough to read.
+     */
+    fun openEmulatorPicker(platformId: String) {
+        val option = platformOptions.value.firstOrNull { it.platform.id == platformId } ?: return
+        val known = option.emulators.mapTo(mutableSetOf()) { it.packageName }
+
+        viewModelScope.launchSafely(TAG) {
+            val others = libraryRepository.apps.first()
+                .filter { it.isEmulator && it.packageName !in known }
+                .sortedBy { it.sortTitle }
+                .map { app ->
+                    EmulatorChoice(
+                        packageName = app.packageName,
+                        displayName = app.title,
+                        installed = true,
+                    )
+                }
+
+            _emulatorPicker.value = EmulatorPickerState(
+                visible = true,
+                platformId = platformId,
+                platformName = option.platform.name,
+                choices = option.emulators,
+                otherApps = others,
+                assigned = option.platform.emulatorPackages,
+                focusedIndex = 0,
+            )
+        }
+    }
+
+    val isChoosingEmulator: Boolean get() = _emulatorPicker.value.visible
+
+    fun closeEmulatorPicker() {
+        _emulatorPicker.value = EmulatorPickerState()
+    }
+
+    fun focusEmulatorRow(index: Int) {
+        _emulatorPicker.update { picker ->
+            picker.copy(focusedIndex = index.coerceIn(0, (picker.rowCount - 1).coerceAtLeast(0)))
+        }
+    }
+
+    /**
+     * Toggles a package and keeps the open dialog in step.
+     *
+     * The dialog holds its own copy of the assignment so the tick appears on the
+     * press rather than a frame or two later when the settings document has been
+     * written and read back — which on a list somebody is stepping through with a
+     * controller reads as the press not having registered.
+     */
+    fun toggleEmulatorFor(platformId: String, packageName: String) {
+        togglePlatformEmulator(platformId, packageName)
+        _emulatorPicker.update { picker ->
+            if (!picker.visible || picker.platformId != platformId) return@update picker
+            val assigned = picker.assigned
+            picker.copy(
+                assigned = if (packageName in assigned) {
+                    assigned - packageName
+                } else {
+                    assigned + packageName
+                },
+            )
         }
     }
 

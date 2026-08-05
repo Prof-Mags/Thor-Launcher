@@ -45,6 +45,7 @@ import com.thor.core.designsystem.modifier.thorCursor
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.data.sync.ScrapeState
 import com.thor.feature.settings.component.AddPlatformDialog
+import com.thor.feature.settings.component.EmulatorPickerDialog
 import com.thor.feature.settings.component.row.LocalRowActivation
 import com.thor.feature.settings.component.row.LocalHorizontalRowRegistration
 import com.thor.feature.settings.component.row.LocalRowStep
@@ -89,6 +90,7 @@ fun SettingsScreen(
     val scrapeState by viewModel.scrapeState.collectAsStateWithLifecycle()
     val focusOnRail by viewModel.focusOnRail.collectAsStateWithLifecycle()
     val pendingPlatform by viewModel.pendingPlatform.collectAsStateWithLifecycle()
+    val emulatorPicker by viewModel.emulatorPicker.collectAsStateWithLifecycle()
     val activationTick by viewModel.activationTick.collectAsStateWithLifecycle()
     val horizontalStep by viewModel.horizontalStep.collectAsStateWithLifecycle()
     val providerStatus by viewModel.providerStatus.collectAsStateWithLifecycle()
@@ -137,6 +139,8 @@ fun SettingsScreen(
     // Derived as one value so dynamic pages update their controller bounds as
     // soon as a platform, folder, wallpaper, addon, indexer, or icon pack changes.
     val visibleRowCount = when {
+        // Open dialogs own the cursor; the page beneath must not move under them.
+        emulatorPicker.visible -> emulatorPicker.rowCount
         pendingPlatform != null -> if (pendingPlatformEmulators.isEmpty()) 4 else 5
         openPage != null -> rowCountFor(
             page = openPage!!,
@@ -374,7 +378,9 @@ fun SettingsScreen(
                             SettingsPageContent(
                                 page = openPage!!,
                                 settings = settings,
-                                focusedRow = focusedRow.takeIf { pendingPlatform == null } ?: -1,
+                                focusedRow = focusedRow
+                                    .takeIf { pendingPlatform == null && !emulatorPicker.visible }
+                                    ?: -1,
                                 viewModel = viewModel,
                                 platformOptions = platformOptions,
                                 availablePlatforms = availablePlatforms,
@@ -429,6 +435,14 @@ fun SettingsScreen(
                     .padding(dimens.spacingLarge),
             )
         }
+
+        EmulatorPickerDialog(
+            state = emulatorPicker.copy(focusedIndex = focusedRow.coerceAtLeast(0)),
+            onToggle = { packageName ->
+                viewModel.toggleEmulatorFor(emulatorPicker.platformId, packageName)
+            },
+            onDismiss = viewModel::closeEmulatorPicker,
+        )
 
         // Above everything so it is not clipped by the detail scroll container.
         pendingPlatform?.let { platform ->

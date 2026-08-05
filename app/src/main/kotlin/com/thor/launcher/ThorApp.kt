@@ -1303,7 +1303,9 @@ fun ThorApp(
                             // Back unwinds one level at a time: an open page
                             // first, then the overlay. Closing outright from a
                             // page would lose the user's place in the rail.
-                            if (settingsViewModel.isAddingPlatform) {
+                            if (settingsViewModel.isChoosingEmulator) {
+                                settingsViewModel.closeEmulatorPicker()
+                            } else if (settingsViewModel.isAddingPlatform) {
                                 settingsViewModel.cancelAddPlatform()
                             } else if (settingsViewModel.isAtTopLevel) {
                                 overlay = Overlay.NONE
