@@ -68,50 +68,57 @@ class MoviesCouchBrowseTest {
     // ---- Regions ------------------------------------------------------------
 
     /**
-     * The featured card and the first shelf under it are the screen.
+     * Two categories on screen at once, not one.
      *
-     * The shelves scroll, so they do not all have to fit - but the top one has to
-     * be at least partly on screen beside the card describing it, or moving along
-     * it describes something the viewer cannot see.
+     * A catalogue that shows one shelf at a time can only be surveyed by walking
+     * it, which is the one thing a screen read from across a room should not
+     * require. This is the constraint the whole layout is arranged around.
      */
     @Test
-    fun `the featured card and the first shelf share a television`() {
-        val available = 400.dp
+    fun `the featured card and two shelves share a television`() {
+        val available = 480.dp
 
         val hero = couchHeroHeight(available)
-        val shelf = couchShelfHeight(available)
+        val shelf = couchShelfHeight(available, hero)
 
-        assertThat((hero + shelf).value).isAtMost(available.value)
+        assertThat((hero + shelf * 2).value).isAtMost(available.value)
     }
 
     /**
      * A panel that is not the shape of a television still has to be usable.
      *
      * Couch mode is chosen by the viewer, not detected, so it can be running on
-     * the handheld's own short panel while a cable is found.
+     * the handheld's own short panel while a cable is found. Two shelves stop
+     * being the promise there - a card nobody can make out is worth less than a
+     * shelf nobody can see - so the clamps take over and the list scrolls.
      */
     @Test
     fun `a short panel keeps a usable card and shelf`() {
-        assertThat(couchHeroHeight(180.dp).value).isAtLeast(200f)
-        assertThat(couchShelfHeight(180.dp).value).isAtLeast(148f)
+        val hero = couchHeroHeight(180.dp)
+
+        assertThat(hero.value).isAtLeast(172f)
+        assertThat(couchShelfHeight(180.dp, hero).value).isAtLeast(118f)
     }
 
     /**
      * The card is never shorter than the things printed inside it.
      *
-     * This is the constraint the two clamps exist to hold, and it is the one that
-     * was quietly broken: a floor of 180 under furniture measuring 216 meant every
-     * panel small enough to hit the floor drew a card its own contents overflowed.
+     * This is the constraint the hero clamps exist to hold, and it is the one that
+     * was quietly broken once already: a floor of 180 under furniture measuring
+     * 216 meant every panel small enough to hit the floor drew a card its own
+     * contents overflowed.
      */
     @Test
     fun `the smallest featured card still holds its furniture`() {
-        assertThat(couchHeroHeight(0.dp).value).isAtLeast(180f)
+        assertThat(couchHeroHeight(0.dp).value).isAtLeast(166f)
     }
 
     @Test
     fun `a very tall panel stops either region swallowing the other`() {
-        assertThat(couchHeroHeight(2_000.dp).value).isAtMost(340f)
-        assertThat(couchShelfHeight(2_000.dp).value).isAtMost(300f)
+        val hero = couchHeroHeight(2_000.dp)
+
+        assertThat(hero.value).isAtMost(300f)
+        assertThat(couchShelfHeight(2_000.dp, hero).value).isAtMost(250f)
     }
 
     /**
@@ -123,13 +130,13 @@ class MoviesCouchBrowseTest {
      */
     @Test
     fun `a card leaves room for its header and its caption`() {
-        val shelf = couchShelfHeight(400.dp)
+        val shelf = couchShelfHeight(480.dp, couchHeroHeight(480.dp))
 
         val poster = couchPosterHeight(shelf)
 
         assertThat(poster.value).isLessThan(shelf.value)
         // Header, gap, two-line caption, caption gap and the growth allowance.
-        assertThat((shelf - poster).value).isAtLeast(60f)
+        assertThat((shelf - poster).value).isAtLeast(55f)
     }
 
     @Test
@@ -218,7 +225,7 @@ class MoviesCouchBrowseTest {
      */
     @Test
     fun `the story is cut to the room inside the card`() {
-        val onTelevision = couchOverviewLines(couchHeroHeight(400.dp))
+        val onTelevision = couchOverviewLines(couchHeroHeight(480.dp))
         val onHandheld = couchOverviewLines(couchHeroHeight(200.dp))
 
         assertThat(onTelevision).isAtLeast(1)

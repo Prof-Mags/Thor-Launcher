@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.Sensors
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -250,6 +251,7 @@ private val LauncherTab.icon: ImageVector
         LauncherTab.STREAM -> Icons.Rounded.Sensors
         LauncherTab.HOME -> Icons.Rounded.Home
         LauncherTab.MOVIES -> Icons.Rounded.Movie
+        LauncherTab.SHOWS -> Icons.Rounded.Tv
     }
 
 private val LauncherTab.indexLabel: String
@@ -257,6 +259,9 @@ private val LauncherTab.indexLabel: String
         LauncherTab.HOME -> "01"
         LauncherTab.MOVIES -> "02"
         LauncherTab.STREAM -> "03"
+        // This bar never draws Shows - it is a couch-mode tab - but the label has
+        // to exist for the same reason every branch here does.
+        LauncherTab.SHOWS -> "04"
     }
 
 private const val BAR_HEIGHT = PanelLayout.NAV_BAR_HEIGHT

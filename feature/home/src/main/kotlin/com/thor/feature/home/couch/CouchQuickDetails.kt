@@ -146,10 +146,8 @@ fun CouchQuickDetails(
 ) {
     val motion = ThorTheme.motion
     val baseDensity = LocalDensity.current
-    val safeUiScale = uiScale.coerceIn(
-        DisplaySettings.MIN_COUCH_UI_SCALE,
-        DisplaySettings.MAX_COUCH_UI_SCALE,
-    )
+    // The same rebased percentage the rest of couch mode composes through.
+    val safeUiScale = DisplaySettings.couchDensityScale(uiScale)
     val scaledDensity = remember(baseDensity.density, baseDensity.fontScale, safeUiScale) {
         Density(
             density = baseDensity.density * safeUiScale,

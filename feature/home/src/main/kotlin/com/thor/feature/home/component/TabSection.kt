@@ -88,7 +88,7 @@ fun EmptySection(
 private val LauncherTab.emptyIcon: ImageVector
     get() = when (this) {
         LauncherTab.STREAM -> Icons.Rounded.Sensors
-        LauncherTab.MOVIES -> Icons.Rounded.Movie
+        LauncherTab.MOVIES, LauncherTab.SHOWS -> Icons.Rounded.Movie
         // Home is never empty in this sense: it always has a grid, even if the
         // grid has nothing on it yet.
         LauncherTab.HOME -> Icons.Rounded.Sensors
@@ -98,6 +98,7 @@ private val LauncherTab.emptyTitle: String
     get() = when (this) {
         LauncherTab.STREAM -> "No streaming sources"
         LauncherTab.MOVIES -> "No video library"
+        LauncherTab.SHOWS -> "No shows library"
         LauncherTab.HOME -> "Nothing here"
     }
 
@@ -107,7 +108,7 @@ private val LauncherTab.emptyBody: String
             "This section has no source connected yet. It is built and navigable — " +
                 "what it lists has not been decided."
 
-        LauncherTab.MOVIES ->
+        LauncherTab.MOVIES, LauncherTab.SHOWS ->
             "This section has no source connected yet. It is built and navigable — " +
                 "what it lists has not been decided."
 

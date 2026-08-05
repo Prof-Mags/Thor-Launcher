@@ -40,6 +40,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,9 +56,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -134,35 +137,58 @@ internal fun MoviesCouchBrowse(
         }
     }
 
-    BoxWithConstraints(
+    val baseDensity = LocalDensity.current
+    /*
+     * The catalogue is drawn slightly smaller than the furniture around it.
+     *
+     * Not a stylistic preference - it is what makes two shelves fit. The featured
+     * card and one shelf were filling the panel between them, so the only way to
+     * see what was on the shelf below was to walk down to it, on a screen whose
+     * whole purpose is to be read from across a room without pressing anything.
+     *
+     * Applied as a density rather than by shrinking the numbers, so text, padding
+     * and artwork all come down together and the layout keeps its proportions. The
+     * rail and the shell's bar above it are outside this and keep the interface
+     * size the viewer chose, because they are how the launcher is navigated and
+     * they are the same size in every section.
+     */
+    val contentDensity = remember(baseDensity.density, baseDensity.fontScale) {
+        Density(
+            density = baseDensity.density * CONTENT_SCALE,
+            fontScale = baseDensity.fontScale,
+        )
+    }
+
+    Box(
         modifier = modifier.fillMaxSize().background(
             Brush.verticalGradient(
                 listOf(colors.surfaceElevated.copy(alpha = FIELD_ALPHA), colors.background),
             ),
         ),
     ) {
-        val available = (maxHeight - LEGEND_HEIGHT.dp).coerceAtLeast(MIN_CONTENT_HEIGHT.dp)
-        val heroHeight = couchHeroHeight(available)
-        val shelfHeight = couchShelfHeight(available)
-        val posterHeight = couchPosterHeight(shelfHeight)
-        // What a shelf actually has to lay cards across, once the rail has taken
-        // its share. The resume stills are sized back from this.
-        val rowWidth = (maxWidth - RAIL_WIDTH.dp).coerceAtLeast(MIN_ROW_WIDTH.dp)
-
         Row(modifier = Modifier.fillMaxSize()) {
             CouchMediaRail(
                 type = state.type,
                 stats = stats,
                 rows = rows,
                 selectedRow = rowIndex,
-                onTypeSelected = onTypeSelected,
                 // The head of the shelf, not wherever its cursor was left. A
                 // category picked from a list is a request to start reading it.
                 onCategorySelected = { index -> onItemFocused(index, 0) },
                 modifier = Modifier.width(RAIL_WIDTH.dp).fillMaxHeight(),
             )
 
-            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            CompositionLocalProvider(LocalDensity provides contentDensity) {
+            BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            val available = (maxHeight - LEGEND_HEIGHT.dp).coerceAtLeast(MIN_CONTENT_HEIGHT.dp)
+            val heroHeight = couchHeroHeight(available)
+            val shelfHeight = couchShelfHeight(available, heroHeight)
+            val posterHeight = couchPosterHeight(shelfHeight)
+            // What a shelf actually has to lay cards across. The resume stills are
+            // sized back from this so four of them always fit.
+            val rowWidth = maxWidth.coerceAtLeast(MIN_ROW_WIDTH.dp)
+
+            Column(modifier = Modifier.fillMaxSize()) {
                 val message = browseMessage(state)
                 if (message != null || rows.isEmpty()) {
                     Box(
@@ -235,6 +261,8 @@ internal fun MoviesCouchBrowse(
 
                 CouchLegend()
             }
+            }
+            }
         }
     }
 }
@@ -252,19 +280,17 @@ private fun browseMessage(state: MoviesUiState): String? = when {
 // ---- The rail ----------------------------------------------------------------
 
 /**
- * Films or shows, the shelves, and what is behind them.
+ * The shelves, and what is behind them.
  *
- * The section's own navigation, down the side where a television expects to find
- * it. It deliberately does not repeat the shell's tabs above: Home, Stream and
- * Settings are one bar away, and a second copy of them here would be two places
- * to be in the same place.
+ * It holds nothing the bar above already holds. Films and Shows are tabs up there
+ * in couch mode, Home and Stream and Settings are one press away on the same bar,
+ * and Y raises the keyboard from anywhere in the catalogue - so what is left for a
+ * rail is the one thing the bar cannot say, which is what this catalogue is made
+ * of and where in it the cursor is.
  *
- * No search box. Y raises the keyboard from anywhere in the catalogue and the
- * legend along the foot says so, which left the box standing in the rail as a
- * control for something that was already one press away - and this panel is about
- * half the height in dp that a television's pixel dimensions suggest, because
- * couch mode composes through a scaled density, so a row of chrome is a row of
- * categories not listed.
+ * Worth being strict about, because this panel is about half the height in dp that
+ * a television's pixel dimensions suggest: couch mode composes through a scaled
+ * density, so a row of chrome is a row of categories not listed.
  */
 @Composable
 private fun CouchMediaRail(
@@ -272,7 +298,6 @@ private fun CouchMediaRail(
     stats: CouchMediaStats,
     rows: List<MediaRow>,
     selectedRow: Int,
-    onTypeSelected: (MediaType) -> Unit,
     onCategorySelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -294,30 +319,30 @@ private fun CouchMediaRail(
             .padding(horizontal = RAIL_INSET.dp, vertical = RAIL_TOP_INSET.dp),
         verticalArrangement = Arrangement.spacedBy(RAIL_GAP.dp),
     ) {
-        Text(
-            text = "CINEMA",
-            style = MaterialTheme.typography.titleMedium,
-            color = colors.cursor,
-            fontWeight = FontWeight.Black,
-            letterSpacing = WORDMARK_TRACKING.sp,
-            maxLines = 1,
+        Row(
             modifier = Modifier.padding(start = RAIL_ROW_PADDING.dp, bottom = RAIL_GAP.dp),
-        )
-
-        RailDestination(
-            icon = Icons.Rounded.Movie,
-            label = "Films",
-            hint = "LB",
-            selected = type == MediaType.MOVIE,
-            onClick = { onTypeSelected(MediaType.MOVIE) },
-        )
-        RailDestination(
-            icon = Icons.Rounded.Tv,
-            label = "Shows",
-            hint = "RB",
-            selected = type == MediaType.SERIES,
-            onClick = { onTypeSelected(MediaType.SERIES) },
-        )
+            horizontalArrangement = Arrangement.spacedBy(RAIL_ICON_GAP.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = if (type == MediaType.SERIES) {
+                    Icons.Rounded.Tv
+                } else {
+                    Icons.Rounded.Movie
+                },
+                contentDescription = null,
+                tint = colors.cursor,
+                modifier = Modifier.size(RAIL_ICON.dp),
+            )
+            Text(
+                text = if (type == MediaType.SERIES) "SHOWS" else "FILMS",
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.cursor,
+                fontWeight = FontWeight.Black,
+                letterSpacing = WORDMARK_TRACKING.sp,
+                maxLines = 1,
+            )
+        }
 
         if (rows.isNotEmpty()) {
             Text(
@@ -1106,9 +1131,17 @@ private fun CouchLegend() {
 internal fun couchHeroHeight(available: Dp): Dp =
     (available * HERO_FRACTION).coerceIn(MIN_HERO.dp, MAX_HERO.dp)
 
-/** How tall one shelf is, header and cards together. */
-internal fun couchShelfHeight(available: Dp): Dp =
-    (available * SHELF_FRACTION).coerceIn(MIN_SHELF.dp, MAX_SHELF.dp)
+/**
+ * How tall one shelf is, header and cards together.
+ *
+ * Divided out of what the featured card leaves rather than taken as a share of
+ * the screen, because the thing worth guaranteeing is a *count*: a catalogue that
+ * shows one shelf at a time can only be surveyed by walking it, which is the one
+ * thing a screen read from across a room should not require. Two is the floor,
+ * and the clamps keep a card recognisable on a panel too short to honour it.
+ */
+internal fun couchShelfHeight(available: Dp, heroHeight: Dp): Dp =
+    ((available - heroHeight) / VISIBLE_SHELVES).coerceIn(MIN_SHELF.dp, MAX_SHELF.dp)
 
 /** The artwork height left inside a shelf once its header and caption are spent. */
 internal fun couchPosterHeight(shelfHeight: Dp): Dp =
@@ -1296,14 +1329,25 @@ private val LEGEND = listOf(
     "B" to "Back",
 )
 
-private const val HERO_FRACTION = 0.52f
-private const val MIN_HERO = 200
-private const val MAX_HERO = 340
-private const val SHELF_FRACTION = 0.44f
-private const val MIN_SHELF = 148
-private const val MAX_SHELF = 300
-private const val MIN_POSTER = 92
-private const val MAX_POSTER = 230
+/**
+ * How much smaller the catalogue is drawn than the rail beside it.
+ *
+ * See the note at the call site: this is what makes two shelves fit, and the rail
+ * and the shell's bar stay outside it so navigation keeps the interface size the
+ * viewer chose.
+ */
+private const val CONTENT_SCALE = 0.88f
+
+/** The fewest categories that should be on screen together. */
+private const val VISIBLE_SHELVES = 2
+
+private const val HERO_FRACTION = 0.42f
+private const val MIN_HERO = 172
+private const val MAX_HERO = 300
+private const val MIN_SHELF = 118
+private const val MAX_SHELF = 250
+private const val MIN_POSTER = 68
+private const val MAX_POSTER = 190
 private const val MIN_CONTENT_HEIGHT = 240
 private const val MIN_ROW_WIDTH = 320
 
@@ -1340,15 +1384,15 @@ private const val STATS_INSET = 12
 private const val STATS_GAP = 10
 private const val STAT_ICON = 18
 
-private const val SHELF_HEADER_HEIGHT = 24
-private const val SHELF_HEADER_GAP = 6
-private const val SHELF_ICON = 17
-private const val SHELF_ICON_GAP = 8
-private const val CARD_GAP = 11
-private const val CARD_LABEL_HEIGHT = 30
-private const val CARD_LABEL_GAP = 5
+private const val SHELF_HEADER_HEIGHT = 22
+private const val SHELF_HEADER_GAP = 5
+private const val SHELF_ICON = 16
+private const val SHELF_ICON_GAP = 7
+private const val CARD_GAP = 10
+private const val CARD_LABEL_HEIGHT = 28
+private const val CARD_LABEL_GAP = 4
 /** Room around a card for the focused one to grow into without being clipped. */
-private const val CARD_GROWTH = 6
+private const val CARD_GROWTH = 5
 /** Everything in a shelf that is not the artwork: header, caption and their gaps. */
 private const val SHELF_FURNITURE = SHELF_HEADER_HEIGHT + SHELF_HEADER_GAP +
     CARD_LABEL_HEIGHT + CARD_LABEL_GAP + CARD_GROWTH * 2
@@ -1364,7 +1408,7 @@ private const val HERO_WIDTH_FRACTION = 0.56f
 private const val HERO_GAP = 7
 private const val HERO_SCRIM_KNEE = 0.5f
 private const val LOGO_WIDTH_FRACTION = 0.66f
-private const val LOGO_HEIGHT = 44
+private const val LOGO_HEIGHT = 40
 /**
  * The featured card minus its story: padding, badge, wordmark, facts and buttons.
  *
@@ -1372,8 +1416,8 @@ private const val LOGO_HEIGHT = 44
  * a little generous - erring high prints one line fewer than would have fitted,
  * erring low pushes the title out of the card.
  */
-private const val HERO_FURNITURE = 180f
-private const val OVERVIEW_LINE_HEIGHT = 21f
+private const val HERO_FURNITURE = 166f
+private const val OVERVIEW_LINE_HEIGHT = 20f
 private const val MAX_OVERVIEW_LINES = 4
 private const val SCORE_ICON = 20
 private const val ACTION_GAP = 10

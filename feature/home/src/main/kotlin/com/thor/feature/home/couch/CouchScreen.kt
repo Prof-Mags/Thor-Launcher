@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
@@ -285,10 +286,9 @@ fun CouchScreen(
 ) {
     val colors = ThorTheme.colors
     val baseDensity = LocalDensity.current
-    val safeUiScale = uiScale.coerceIn(
-        DisplaySettings.MIN_COUCH_UI_SCALE,
-        DisplaySettings.MAX_COUCH_UI_SCALE,
-    )
+    // The setting is a percentage of a size chosen for a television, not of the
+    // panel's own density; see DisplaySettings.COUCH_BASE_SCALE.
+    val safeUiScale = DisplaySettings.couchDensityScale(uiScale)
     val scaledDensity = remember(baseDensity.density, baseDensity.fontScale, safeUiScale) {
         Density(
             density = baseDensity.density * safeUiScale,
@@ -768,6 +768,7 @@ private fun LauncherTab.couchIcon(): ImageVector = when (this) {
     LauncherTab.STREAM -> Icons.Rounded.Cast
     LauncherTab.HOME -> Icons.Rounded.Home
     LauncherTab.MOVIES -> Icons.Rounded.Movie
+    LauncherTab.SHOWS -> Icons.Rounded.Tv
 }
 
 @Composable

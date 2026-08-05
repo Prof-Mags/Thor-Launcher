@@ -171,7 +171,7 @@ fun BottomScreen(
      * Resolved here rather than beside the bar because the grid's height depends
      * on the same answer; see [bottomClearance].
      */
-    val tabs = LauncherTab.visible(state.enabledExtensions)
+    val tabs = LauncherTab.visible(state.enabledExtensions, couchMode)
     val navBarVisible = tabs.size > 1
 
     /*

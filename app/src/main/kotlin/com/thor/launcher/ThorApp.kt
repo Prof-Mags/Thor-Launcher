@@ -488,6 +488,20 @@ fun ThorApp(
     )
     val couchModeNow = rememberUpdatedState(mode == DualScreenMode.COUCH)
 
+    /*
+     * The bar follows the catalogue, as well as setting it.
+     *
+     * Couch mode draws Films and Shows as two tabs over one section, and the
+     * bumpers still switch media type from inside it - so a press of RB has to
+     * light the other tab, or the bar ends up saying Films over a screen of
+     * television. Quietly: `showSection` moves the selection without parking the
+     * cursor on the bar, which is what a press *on* the bar means and not what a
+     * press inside a section should do.
+     */
+    LaunchedEffect(mode, moviesState.type, selectedTab) {
+        if (mode != DualScreenMode.COUCH || !selectedTab.isMoviesSection) return@LaunchedEffect
+        viewModel.showSection(LauncherTab.forMediaType(moviesState.type))
+    }
 
     /*
      * ---- Focus -----------------------------------------------------------------
@@ -1050,7 +1064,7 @@ fun ThorApp(
                  * playing in it.
                  */
                 if (
-                    selectedTabNow() == LauncherTab.MOVIES &&
+                    selectedTabNow().isMoviesSection &&
                     viewModel.navCursor.value == null &&
                     !overlayIsOpenNow()
                 ) {
@@ -1747,7 +1761,7 @@ fun ThorApp(
                  * a library and a player, and showing either behind the other
                  * would put two unrelated pictures on one screen.
                  */
-                if (selectedTab == LauncherTab.MOVIES) {
+                if (selectedTab.isMoviesSection) {
                     /*
                      * Collected here, inside the panel, rather than once at the
                      * top of the shell.
@@ -1855,7 +1869,7 @@ fun ThorApp(
          * module never has to depend on an unrelated one.
          */
         val sectionHost: @Composable (LauncherTab) -> Unit = { tab ->
-                    if (tab == LauncherTab.MOVIES) {
+                    if (tab.isMoviesSection) {
                         // In this panel's own composition; see the note beside the
                         // matching collection in the info panel above.
                         val moviesStatus by moviesViewModel.playerStatus.collectAsState()
@@ -2022,6 +2036,9 @@ fun ThorApp(
                         overlay = Overlay.NONE
                         settingsViewModel.resetFocus()
                     }
+                    // Films and Shows are the same section with its catalogue
+                    // chosen from the bar, so the tab is what sets the media type.
+                    tab.mediaType?.let(moviesViewModel::switchType)
                     viewModel.selectTab(tab)
                     if (mode == DualScreenMode.COUCH) viewModel.leaveNavBar()
                 },
@@ -2049,7 +2066,7 @@ fun ThorApp(
                 onCouchDetailsDismissed = viewModel::closeCouchQuickDetails,
                 onCouchDetailsActionFocused = viewModel::focusCouchQuickDetailsAction,
                 onCouchSettingsSelected = viewModel::openCouchSettings,
-                couchFullscreenSection = selectedTab == LauncherTab.MOVIES &&
+                couchFullscreenSection = selectedTab.isMoviesSection &&
                     moviesSection.mode == MoviesMode.PLAYING,
                 couchSettingsContent = {
                     SettingsScreen(

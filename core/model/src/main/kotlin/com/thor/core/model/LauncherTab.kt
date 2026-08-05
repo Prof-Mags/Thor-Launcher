@@ -22,21 +22,62 @@ enum class LauncherTab(val label: String) {
     STREAM("Stream"),
     HOME("Home"),
     MOVIES("Movies"),
+
+    /**
+     * Films and shows are one section with two catalogues, split in two only on a
+     * television.
+     *
+     * They share a view model, a cursor and a player, so this is not a second
+     * section — it is the Movies section with its media type chosen from the bar
+     * instead of from inside itself. Which is right for a screen across a room,
+     * where the top-level bar is the whole of the navigation and reaching a toggle
+     * inside a section costs a journey; and wrong for the handheld, where the bar
+     * is a strip along the bottom edge of a small panel and the toggle is already
+     * on the screen you are looking at.
+     *
+     * So it is drawn by exactly one shell. See [visible].
+     */
+    SHOWS("Shows"),
     ;
 
     /** True for the section that owns the icon grid. */
     val isHome: Boolean get() = this == HOME
 
+    /** True for a tab only Couch Mode draws. */
+    val isCouchOnly: Boolean get() = this == SHOWS
+
+    /**
+     * True for either face of the films-and-shows section.
+     *
+     * Asked wherever the shell needs to know which *section* is open rather than
+     * which tab is lit — routing a press, deciding what fills a panel, hiding the
+     * bar for a playing film. All of those are true of Shows exactly when they are
+     * true of Movies, because there is one section behind both.
+     */
+    val isMoviesSection: Boolean get() = this == MOVIES || this == SHOWS
+
+    /** The media type this tab stands for, or null where it stands for no section. */
+    val mediaType: MediaType?
+        get() = when (this) {
+            MOVIES -> MediaType.MOVIE
+            SHOWS -> MediaType.SERIES
+            HOME, STREAM -> null
+        }
+
     /** The extension this section belongs to, or null for Home. */
     val extension: LauncherExtension?
         get() = when (this) {
             STREAM -> LauncherExtension.STREAM
-            MOVIES -> LauncherExtension.MOVIES
+            MOVIES, SHOWS -> LauncherExtension.MOVIES
             HOME -> null
         }
 
     companion object {
         val DEFAULT: LauncherTab = HOME
+
+        /** The tab that stands for [type], for a bar that separates the two. */
+        fun forMediaType(type: MediaType): LauncherTab =
+            if (type == MediaType.SERIES) SHOWS else MOVIES
 
         /** Every tab, in draw order, whether or not it is available. */
         val ORDERED: List<LauncherTab> = entries
@@ -51,9 +92,31 @@ enum class LauncherTab(val label: String) {
          *
          * With only Home left the bar has nothing to switch between, and the
          * surfaces that draw it can leave it out entirely.
+         *
+         * @param couch whether the bar being drawn is Couch Mode's, which is the
+         *   only one that separates films from shows. Everywhere else [SHOWS] is
+         *   not a place: the section is Movies, and its media type is a control
+         *   inside it.
          */
-        fun visible(enabled: Set<String>): List<LauncherTab> =
-            ORDERED.filter { tab -> tab.extension?.id?.let { it in enabled } ?: true }
+        fun visible(enabled: Set<String>, couch: Boolean = false): List<LauncherTab> =
+            ORDERED.filter { tab ->
+                if (tab.isCouchOnly && !couch) return@filter false
+                tab.extension?.id?.let { it in enabled } ?: true
+            }
+
+        /**
+         * The section a tab collapses to on a shell that does not draw it.
+         *
+         * Leaving couch mode while on Shows lands on Movies, which is the same
+         * catalogue reached the other way, rather than throwing the user back to
+         * Home for having been on a tab the handheld does not have.
+         */
+        fun landing(tab: LauncherTab, enabled: Set<String>, couch: Boolean = false): LauncherTab {
+            val sections = visible(enabled, couch)
+            if (tab in sections) return tab
+            if (tab == SHOWS && MOVIES in sections) return MOVIES
+            return DEFAULT
+        }
 
         /**
          * The tab [steps] places from this one, clamped at both ends.
@@ -65,8 +128,13 @@ enum class LauncherTab(val label: String) {
          * Walks the *visible* tabs, so a disabled section is not a dead stop the
          * cursor lands on halfway along.
          */
-        fun step(from: LauncherTab, steps: Int, enabled: Set<String> = ALL_IDS): LauncherTab {
-            val tabs = visible(enabled)
+        fun step(
+            from: LauncherTab,
+            steps: Int,
+            enabled: Set<String> = ALL_IDS,
+            couch: Boolean = false,
+        ): LauncherTab {
+            val tabs = visible(enabled, couch)
             if (tabs.isEmpty()) return DEFAULT
             val current = tabs.indexOf(from).takeIf { it >= 0 } ?: tabs.indexOf(DEFAULT)
             return tabs[(current + steps).coerceIn(0, tabs.lastIndex)]

@@ -331,13 +331,20 @@ class LauncherViewModel @Inject constructor(
      */
     private fun observeWithdrawnSections() {
         viewModelScope.launch {
-            settingsRepository.settings
-                .map { it.enabledExtensions }
+            /*
+             * The display mode as well as the extensions, because Shows is a tab
+             * only couch mode draws. Leaving couch mode with it selected has to
+             * put the shell somewhere the handheld bar can actually show.
+             */
+            combine(
+                settingsRepository.settings.map { it.enabledExtensions },
+                settingsRepository.display.map { it.mode == DualScreenMode.COUCH },
+            ) { enabled, couch -> enabled to couch }
                 .distinctUntilChanged()
-                .collect { enabled ->
-                    val sections = LauncherTab.visible(enabled)
+                .collect { (enabled, couch) ->
+                    val sections = LauncherTab.visible(enabled, couch)
                     if (_selectedTab.value !in sections) {
-                        _selectedTab.value = LauncherTab.DEFAULT
+                        _selectedTab.value = LauncherTab.landing(_selectedTab.value, enabled, couch)
                     }
                     // Off the bar too, if it is pointing at a tab that is gone —
                     // or at any tab at all once the bar itself stops being drawn.
@@ -358,6 +365,20 @@ class LauncherViewModel @Inject constructor(
     fun leaveNavBar() {
         _navCursor.value = null
         _couchSettingsFocused.value = false
+    }
+
+    /**
+     * Points the shell at a section without moving the bar's cursor.
+     *
+     * For a section that changes which tab it *is*: couch mode draws Films and
+     * Shows as two tabs over one catalogue, so switching media type from inside
+     * the section has to move the highlight in the bar to match. [selectTab] would
+     * also park the cursor on the bar, which means something else entirely — that
+     * is what a press *on* the bar does, not what a press inside a section does.
+     */
+    fun showSection(tab: LauncherTab) {
+        if (_selectedTab.value == tab) return
+        _selectedTab.value = tab
     }
 
     /** Selects a section, from a tap or from Confirm on the bar. */
@@ -395,7 +416,7 @@ class LauncherViewModel @Inject constructor(
 
     private fun onNavBarCommand(command: ControllerCommand, couchMode: Boolean) {
         val focused = _navCursor.value ?: return
-        val tabs = LauncherTab.visible(enabledExtensionIds())
+        val tabs = LauncherTab.visible(enabledExtensionIds(), couchMode)
         if (couchMode && _couchSettingsFocused.value) {
             when (command) {
                 ControllerCommand.NAVIGATE_LEFT -> {
@@ -423,13 +444,13 @@ class LauncherViewModel @Inject constructor(
             ControllerCommand.NAVIGATE_LEFT -> if (couchMode && focused == tabs.firstOrNull()) {
                 _couchSettingsFocused.value = true
             } else {
-                _navCursor.value = LauncherTab.step(focused, -1, enabledExtensionIds())
+                _navCursor.value = LauncherTab.step(focused, -1, enabledExtensionIds(), couchMode)
             }
 
             ControllerCommand.NAVIGATE_RIGHT -> if (couchMode && focused == tabs.lastOrNull()) {
                 _couchSettingsFocused.value = true
             } else {
-                _navCursor.value = LauncherTab.step(focused, 1, enabledExtensionIds())
+                _navCursor.value = LauncherTab.step(focused, 1, enabledExtensionIds(), couchMode)
             }
 
             // The handheld bar sits below content, while Couch Mode's bar sits
@@ -1859,7 +1880,8 @@ class LauncherViewModel @Inject constructor(
      * normal couch content shell.
      */
     fun cycleCouchDestination(delta: Int, fromSettings: Boolean = false): Boolean {
-        val tabs = LauncherTab.visible(enabledExtensionIds())
+        // Always the couch list: this sequence exists only in couch mode.
+        val tabs = LauncherTab.visible(enabledExtensionIds(), couch = true)
         if (tabs.isEmpty()) return false
         val settingsIndex = tabs.size
         val currentIndex = if (fromSettings) {

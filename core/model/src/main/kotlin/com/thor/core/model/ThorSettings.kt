@@ -448,8 +448,33 @@ data class DisplaySettings(
 ) {
     companion object {
         const val MIN_COUCH_UI_SCALE = 0.75f
-        const val MAX_COUCH_UI_SCALE = 1.25f
+        const val MAX_COUCH_UI_SCALE = 1.4f
         const val DEFAULT_COUCH_UI_SCALE = 1.0f
+
+        /**
+         * What the setting's 100% is worth in density.
+         *
+         * Couch Mode used to draw at the panel's own density, which on a
+         * television is a handheld's interface enlarged to fill a wall: correct
+         * arithmetic, far too big to be read comfortably from a sofa, and it took
+         * turning the setting down to three quarters before the screen held as
+         * much as a set-top box's does.
+         *
+         * Folded in here rather than left as a number the user has to find. The
+         * setting stays a plain percentage of a sensible size, which is what a
+         * percentage should be - it is a preference, not a correction.
+         */
+        const val COUCH_BASE_SCALE = 0.75f
+
+        /**
+         * The density multiplier a stored [couchUiScale] actually means.
+         *
+         * Clamped here rather than at each screen, so a value that arrives out of
+         * range from an import or an older release cannot make one surface tiny
+         * while its neighbour is unaffected.
+         */
+        fun couchDensityScale(scale: Float): Float =
+            scale.coerceIn(MIN_COUCH_UI_SCALE, MAX_COUCH_UI_SCALE) * COUCH_BASE_SCALE
     }
 }
 
