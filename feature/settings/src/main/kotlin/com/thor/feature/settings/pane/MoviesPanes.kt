@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.thor.core.model.DebridService
 import com.thor.core.model.MediaSettings
 import com.thor.core.model.Resolution
 import com.thor.core.model.ThorSettings
@@ -48,16 +49,43 @@ internal fun MoviesCataloguePage(
          * asking for a key nothing reads is worse than no field — it is the
          * launcher asking for something and then ignoring the answer.
          */
+        /*
+         * Which service, before its credential.
+         *
+         * They do the same job and people hold an account with one or the other,
+         * so this is a preference rather than a capability — and it has to come
+         * first, because it decides what the field under it is asking for. Both
+         * credentials are kept either way: switching back should not mean going
+         * and finding the other one again.
+         */
+        ChoiceRow(
+            title = "Debrid service",
+            subtitle = "What turns a torrent into an instant stream.",
+            options = DebridService.entries,
+            selected = media.debridService,
+            focused = focusedRow == 0,
+            label = DebridService::label,
+            onSelected = { service ->
+                viewModel.updateMedia { it.copy(debridService = service) }
+            },
+        )
+        RowDivider()
+
         TextFieldRow(
-            title = "Real-Debrid token",
+            title = "${media.debridService.label} ${media.debridService.credentialLabel}",
             subtitle = "Turns a torrent into an instant stream. Without it, sources " +
                 "are listed but cannot be opened.",
-            value = media.realDebridToken,
-            placeholder = "API token",
+            value = media.debridToken,
+            placeholder = media.debridService.credentialLabel,
             isSecret = true,
-            focused = focusedRow == 0,
+            focused = focusedRow == 1,
             onValueChange = { token ->
-                viewModel.updateMedia { it.copy(realDebridToken = token) }
+                viewModel.updateMedia {
+                    when (it.debridService) {
+                        DebridService.REAL_DEBRID -> it.copy(realDebridToken = token)
+                        DebridService.TORBOX -> it.copy(torBoxApiKey = token)
+                    }
+                }
             },
         )
         RowDivider()
@@ -70,9 +98,10 @@ internal fun MoviesCataloguePage(
          * listed but nothing ever opening — points nowhere near this screen.
          */
         ActionRow(
-            title = "Check Real-Debrid",
-            subtitle = debridStatus ?: "Confirms the token works and the account is active.",
-            focused = focusedRow == 1,
+            title = "Check ${media.debridService.label}",
+            subtitle = debridStatus ?: "Confirms the ${media.debridService.credentialLabel} " +
+                "works and the account is active.",
+            focused = focusedRow == 2,
             trailingLabel = "Check",
             onClick = viewModel::checkDebrid,
         )
@@ -304,7 +333,8 @@ internal fun MoviesPlaybackPage(
 
         SwitchRow(
             title = "Only instantly playable sources",
-            subtitle = "Hide anything Real-Debrid does not already hold. An uncached " +
+            subtitle = "Hide anything ${media.debridService.label} does not already " +
+                "hold. An uncached " +
                 "torrent is a download, not a stream.",
             checked = media.cachedOnly,
             focused = focusedRow == 2,
@@ -380,14 +410,15 @@ internal fun MoviesPlaybackPage(
 }
 
 /**
- * Rows above the addon list: the debrid token and its connection check.
+ * Rows above the addon list: which debrid service, its credential, and its check.
  *
- * Was three, when a TMDb API key sat above them. Derived indices like this are
- * why that row could not simply be deleted — every row below it is placed
- * relative to this number, and leaving it at three would have left row zero
- * focusable and pointing at nothing.
+ * Was three, when a TMDb API key sat above them, then two, and three again now
+ * that the service is chosen rather than assumed. Derived indices like this are
+ * why a row cannot simply be added or deleted in the layout alone — every row
+ * below is placed relative to this number, and a layout with one more row than
+ * this says has a row the cursor walks onto and cannot press.
  */
-internal const val ADDON_FIRST_ROW = 2
+internal const val ADDON_FIRST_ROW = 3
 
 /** A URL, a test button and a remove button, per addon. */
 internal const val ROWS_PER_ADDON = 3

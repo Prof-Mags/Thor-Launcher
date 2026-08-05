@@ -2,6 +2,7 @@ package com.thor.data.media
 
 import com.thor.core.common.log.ThorLog
 import com.thor.core.datastore.SettingsRepository
+import com.thor.core.model.DebridService
 import com.thor.data.network.await
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -39,21 +40,6 @@ sealed interface ResolvedStream {
 }
 
 /**
- * What Real-Debrid said about a batch of torrent hashes.
- *
- * A hash is only included in [checkedHashes] when the response contained its
- * `rd` availability field, so a real cache miss remains distinct from an
- * unavailable or malformed availability response.
- */
-internal data class CacheAvailability(
-    val checkedHashes: Set<String>,
-    val variantsByHash: Map<String, List<CachedFileVariant>>,
-)
-
-/** One complete set of file IDs that Real-Debrid says is instantly available. */
-internal data class CachedFileVariant(val fileIds: List<Int>)
-
-/**
  * Real-Debrid.
  *
  * The piece that makes torrent sources behave like streams. A magnet on its own
@@ -72,14 +58,16 @@ class RealDebridClient @Inject constructor(
     private val client: OkHttpClient,
     private val json: Json,
     private val settings: SettingsRepository,
-) {
+) : DebridClient {
 
-    suspend fun isConfigured(): Boolean = token() != null
+    override val service: DebridService = DebridService.REAL_DEBRID
+
+    override suspend fun isConfigured(): Boolean = token() != null
 
     private suspend fun token(): String? =
         settings.media.first().realDebridToken.takeIf(String::isNotBlank)
 
-    suspend fun checkConnection(): DebridStatus {
+    override suspend fun checkConnection(): DebridStatus {
         val token = token() ?: return DebridStatus.NotConfigured
 
         return try {
@@ -110,14 +98,14 @@ class RealDebridClient @Inject constructor(
      * are bounded in small batches so a large addon list cannot make the full
      * availability check fail at once.
      */
-    internal suspend fun cachedHashes(infoHashes: Collection<String>): CacheAvailability? {
+    override suspend fun cachedHashes(infoHashes: Collection<String>): CacheAvailability? {
         val token = token() ?: return null
         val hashes = infoHashes
             .map(String::trim)
             .filter(String::isNotBlank)
             .map(String::lowercase)
             .distinct()
-        if (hashes.isEmpty()) return CacheAvailability(emptySet(), emptyMap())
+        if (hashes.isEmpty()) return CacheAvailability(emptySet(), emptySet())
 
         val checked = linkedSetOf<String>()
         val variantsByHash = linkedMapOf<String, List<CachedFileVariant>>()
@@ -127,8 +115,13 @@ class RealDebridClient @Inject constructor(
             variantsByHash += result.variantsByHash
         }
 
-        return CacheAvailability(checked, variantsByHash)
-            .takeIf { it.checkedHashes.isNotEmpty() }
+        return CacheAvailability(
+            checkedHashes = checked,
+            // Real-Debrid says it holds a torrent by naming the files inside it,
+            // so having a variant is the claim; there is no separate yes.
+            cachedHashes = variantsByHash.keys,
+            variantsByHash = variantsByHash,
+        ).takeIf { it.checkedHashes.isNotEmpty() }
     }
 
     /** One bounded instant-availability call, parsed from Real-Debrid's documented shape. */
@@ -179,7 +172,11 @@ class RealDebridClient @Inject constructor(
                 }
             }
 
-            CacheAvailability(checked, variantsByHash)
+            CacheAvailability(
+                checkedHashes = checked,
+                cachedHashes = variantsByHash.keys,
+                variantsByHash = variantsByHash,
+            )
         }
     } catch (e: IOException) {
         ThorLog.w(TAG, "Cache check failed", e)
@@ -201,11 +198,11 @@ class RealDebridClient @Inject constructor(
      *   name one, which for a season pack is the wrong answer and for everything
      *   else is right — callers with an episode in hand pass its index instead.
      */
-    suspend fun resolve(
+    override suspend fun resolve(
         magnetUri: String,
-        fileIndex: Int? = null,
-        instantFileIds: List<Int> = emptyList(),
-        preferLargest: Boolean = true,
+        fileIndex: Int?,
+        instantFileIds: List<Int>,
+        preferLargest: Boolean,
     ): ResolvedStream {
         val token = token() ?: return ResolvedStream.Failed("Real-Debrid is not set up")
 

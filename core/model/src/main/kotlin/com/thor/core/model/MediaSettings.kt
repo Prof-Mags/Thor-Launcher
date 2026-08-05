@@ -39,6 +39,23 @@ data class MediaSettings(
      */
     val realDebridToken: String = "",
 
+    /** TorBox API key, used when [debridService] names it. */
+    val torBoxApiKey: String = "",
+
+    /**
+     * Which debrid service turns a torrent into a stream.
+     *
+     * One at a time rather than both at once. They answer the same question and
+     * a source can only be opened through one of them, so running both would
+     * mean checking two caches for every hash and then explaining which account
+     * a stream came from — for a gain of nothing, since a source cached on
+     * either service plays identically.
+     *
+     * Both credentials are kept whichever is selected, so switching back does
+     * not mean finding the other token again.
+     */
+    val debridService: DebridService = DebridService.REAL_DEBRID,
+
     /**
      * Torrent indexers, searched by THOR itself.
      *
@@ -132,7 +149,15 @@ data class MediaSettings(
      * screen that could otherwise have been showing films.
      */
     val isMetadataConfigured: Boolean get() = true
-    val isDebridConfigured: Boolean get() = realDebridToken.isNotBlank()
+
+    /** The credential for whichever service is selected, which may be blank. */
+    val debridToken: String
+        get() = when (debridService) {
+            DebridService.REAL_DEBRID -> realDebridToken
+            DebridService.TORBOX -> torBoxApiKey
+        }
+
+    val isDebridConfigured: Boolean get() = debridToken.isNotBlank()
     val hasSources: Boolean
         get() = addons.any { it.isUsable } || indexers.any { it.isUsable }
 
@@ -144,6 +169,30 @@ data class MediaSettings(
      * missing at the point where it matters rather than at the door.
      */
     val isPlayable: Boolean get() = hasSources
+}
+
+/**
+ * A service that already holds the file a torrent points at.
+ *
+ * The distinction the Movies section is built on: a magnet on its own is a
+ * peer-to-peer download that starts slowly and may never finish, and the same
+ * magnet handed to a service that has the file becomes an ordinary HTTP URL that
+ * seeks instantly. Which service is a preference rather than a capability —
+ * both do the same job, people hold accounts with one or the other, and the
+ * difference is visible nowhere except in this setting.
+ */
+@Serializable
+enum class DebridService(val label: String) {
+    REAL_DEBRID("Real-Debrid"),
+    TORBOX("TorBox"),
+    ;
+
+    /** What its credential is called on its own website, so the field matches. */
+    val credentialLabel: String
+        get() = when (this) {
+            REAL_DEBRID -> "API token"
+            TORBOX -> "API key"
+        }
 }
 
 /**

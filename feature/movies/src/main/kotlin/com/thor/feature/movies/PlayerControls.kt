@@ -657,8 +657,8 @@ private fun StreamFacts(playback: Playback, status: PlayerStatus) {
         source.sizeLabel,
         status.videoWidth.takeIf { it > 0 }?.let { "${it}×${status.videoHeight}" },
         when (source.cached) {
-            CacheStatus.CACHED -> "Real-Debrid cached"
-            CacheStatus.NOT_CACHED -> "Real-Debrid fetching"
+            CacheStatus.CACHED -> "Cached"
+            CacheStatus.NOT_CACHED -> "Fetching"
             CacheStatus.UNKNOWN -> null
         },
         source.providerName,

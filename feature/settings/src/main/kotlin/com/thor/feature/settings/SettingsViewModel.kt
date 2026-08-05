@@ -387,12 +387,12 @@ class SettingsViewModel @Inject constructor(
     private val _debridStatus = MutableStateFlow<String?>(null)
 
     /**
-     * What Real-Debrid said when last asked.
+     * What the selected debrid service said when last asked.
      *
-     * Null until asked. A token that is present but expired, revoked or mistyped
-     * is indistinguishable from a working one by inspection, and the symptom it
-     * produces — sources listed, nothing ever opening — points nowhere near this
-     * screen.
+     * Null until asked. A credential that is present but expired, revoked or
+     * mistyped is indistinguishable from a working one by inspection, and the
+     * symptom it produces — sources listed, nothing ever opening — points
+     * nowhere near this screen.
      */
     val debridStatus: StateFlow<String?> = _debridStatus.asStateFlow()
 
@@ -402,15 +402,20 @@ class SettingsViewModel @Inject constructor(
             tag = TAG,
             onError = { error -> _debridStatus.value = error.message ?: "Check failed" },
         ) {
+            // Named rather than assumed: the answer is about whichever service
+            // is selected, and "could not reach Real-Debrid" on a TorBox account
+            // sends the reader to the wrong website.
+            val name = mediaRepository.debridServiceName()
             _debridStatus.value = when (val status = mediaRepository.debridStatus()) {
                 is DebridStatus.Connected -> buildString {
-                    append("Connected as ${status.username}")
+                    append("Connected")
+                    status.username.takeIf(String::isNotBlank)?.let { append(" as $it") }
                     status.daysRemaining?.let { append(" · $it days left") }
                 }
 
-                is DebridStatus.NotConfigured -> "No token set"
-                is DebridStatus.InvalidToken -> "That token was rejected"
-                is DebridStatus.Error -> "Could not reach Real-Debrid: ${status.reason}"
+                is DebridStatus.NotConfigured -> "Nothing set for $name"
+                is DebridStatus.InvalidToken -> "$name rejected that"
+                is DebridStatus.Error -> "Could not reach $name: ${status.reason}"
             }
         }
     }

@@ -51,7 +51,7 @@ class MediaRepository @Inject constructor(
      * did return then needed a second lookup before it could be searched for.
      */
     private val catalog: StremioCatalogProvider,
-    private val debrid: RealDebridClient,
+    private val debrid: DebridGateway,
     /**
      * Every way of finding a file, asked together.
      *
@@ -288,8 +288,18 @@ class MediaRepository @Inject constructor(
                 source.fileIndex?.plus(1) in variant.fileIds
             } ?: variants.firstOrNull()
             source.copy(
+                /*
+                 * The claim, not the evidence for it.
+                 *
+                 * This read "has a file variant" as "is cached", which is true
+                 * of Real-Debrid — it answers by naming the files inside — and
+                 * false of a service that simply says yes. TorBox says yes, so
+                 * on TorBox every cached source was being marked not-cached and
+                 * then deleted by `cachedOnly`, which is on by default: the
+                 * account works, the hashes come back, and the list is empty.
+                 */
                 cached = when {
-                    instantVariant != null -> CacheStatus.CACHED
+                    hash.lowercase() in availability.cachedHashes -> CacheStatus.CACHED
                     hash.lowercase() in availability.checkedHashes -> CacheStatus.NOT_CACHED
                     else -> CacheStatus.UNKNOWN
                 },
@@ -328,6 +338,9 @@ class MediaRepository @Inject constructor(
     }
 
     suspend fun debridStatus(): DebridStatus = withContext(ioDispatcher) { debrid.checkConnection() }
+
+    /** What the selected debrid service is called, for anything reporting on it. */
+    suspend fun debridServiceName(): String = withContext(ioDispatcher) { debrid.serviceName() }
 
     /**
      * Asks one indexer whether it works, and reports what it said.

@@ -829,8 +829,11 @@ class MoviesViewModel @Inject constructor(
                         it.copy(
                             resolving = false,
                             downloadProgress = resolved.progress,
-                            resolveError = "Real-Debrid is still fetching this source. " +
-                                "Pick a cached one, or try again shortly.",
+                            // Not named: which service this is depends on a
+                            // setting, and a message that says the wrong one
+                            // sends the reader to the wrong website.
+                            resolveError = "Your debrid service is still fetching this " +
+                                "source. Pick a cached one, or try again shortly.",
                         )
                     }
                 }
