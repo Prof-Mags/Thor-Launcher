@@ -87,17 +87,39 @@ fun StreamPadHost(
      * Nothing is lost by standing it down. The controller is already forwarded
      * to the PC whole, and a pointer nobody can reach is not a pointer.
      */
-    val display by settings.display.collectAsState(initial = DisplaySettings())
-    val couchMode = display.mode == DualScreenMode.COUCH ||
-        (
-            display.mode == DualScreenMode.AUTO &&
-                display.couchOnExternalDisplay &&
-                monitorAttached
-            )
+    val display = settings.display.collectAsState(initial = DisplaySettings())
 
     SecondaryDisplay(
         displayId = displayId,
-        enabled = { quality.bottomPanel && !couchMode && displayId != null },
+        /*
+         * Every term read inside the lambda, none of them captured outside it.
+         *
+         * This is the hazard [SecondaryDisplay.enabled] is a lambda to avoid,
+         * and computing `couchMode` above the call walked straight into it. The
+         * activity's composition is paused the moment the stream covers the
+         * display, so a value worked out during composition is frozen at
+         * whatever it was on the first frame — and on the first frame
+         * `collectAsState` has only the initial `DisplaySettings()`, because the
+         * real ones are still being read off disk. That default is `AUTO` with
+         * `couchOnExternalDisplay` on, so the answer was decided before the
+         * user's actual mode was known and could never be revised: a device in
+         * dual display lost its trackpad and keyboard for the whole session,
+         * with no way to get them back short of ending the stream.
+         *
+         * Read here instead and `snapshotFlow` sees each change directly, on a
+         * coroutine that keeps running while the activity is stopped — which is
+         * the entire point of the parameter's shape.
+         */
+        enabled = {
+            val settingsNow = display.value
+            val couchMode = settingsNow.mode == DualScreenMode.COUCH ||
+                (
+                    settingsNow.mode == DualScreenMode.AUTO &&
+                        settingsNow.couchOnExternalDisplay &&
+                        monitorAttached
+                    )
+            quality.bottomPanel && !couchMode && displayId != null
+        },
         /*
          * Never takes focus, and this is the important line in the file.
          *

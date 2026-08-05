@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
@@ -137,7 +138,7 @@ enum class ContextAction(
         "Take out of folder",
         "Return this to the home grid",
         Icons.Rounded.FolderOff,
-        "Unfile",
+        "Remove",
     ),
     EDIT("Edit…", "Title, artwork, details and emulator", Icons.Rounded.Edit, "Edit…"),
     APP_INFO("App info", "Open Android's settings page", Icons.Rounded.Info, "App info"),
@@ -177,9 +178,9 @@ enum class ContextAction(
         "Remove from library",
         "Your files are left untouched",
         Icons.Rounded.DeleteForever,
-        // Not "Remove", which is what the grid action would shorten to as well.
-        // The two sit together in the drawer and are the pair this menu most
-        // has to keep apart.
+        // "Remove" belongs to taking something out of a folder, which is the
+        // harmless one. This is the destructive member of the pair and does not
+        // get to wear the milder word.
         "Forget",
     ),
 
@@ -449,7 +450,9 @@ fun EntryContextMenu(
                             repeat(rows) { row ->
                                 Row(horizontalArrangement = Arrangement.spacedBy(TILE_GAP.dp)) {
                                     repeat(CONTEXT_MENU_COLUMNS) { column ->
-                                        val index = row * CONTEXT_MENU_COLUMNS + column
+                                        // Down the first column, then down the
+                                        // second — see [contextMenuRows].
+                                        val index = column * rows + row
                                         val action = actions.getOrNull(index)
                                         if (action == null) {
                                             // Holds the column so a ragged last row
@@ -490,8 +493,8 @@ private fun ContextHeader(entry: GridEntry) {
         Box(
             modifier = Modifier
                 .size(HEADER_ICON.dp)
-                .clip(RoundedCornerShape(HEADER_ICON_RADIUS.dp))
-                .background(colors.surface),
+                .clip(ThorTheme.shapes.small)
+                .background(colors.onSurface.copy(alpha = TILE_FILL_ALPHA)),
             contentAlignment = Alignment.Center,
         ) {
             ContextEntryIcon(entry)
@@ -563,7 +566,7 @@ private fun ContextEntryIcon(entry: GridEntry) {
             AppIcon(
                 packageName = entry.packageName,
                 title = entry.title,
-                shape = RoundedCornerShape(HEADER_ICON_RADIUS.dp),
+                shape = ThorTheme.shapes.small,
             )
         }
 
@@ -630,7 +633,10 @@ private fun ContextTile(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
-    val shape = RoundedCornerShape(TILE_RADIUS.dp)
+    // The user's corner choice, not a number of my own. A literal radius here
+    // is exactly how a launcher set to square corners ends up with rounded
+    // buttons on one card.
+    val shape = ThorTheme.shapes.small
     val hover = rememberPointerHover()
     val lit = focused || hover.isHovered
 
@@ -652,7 +658,23 @@ private fun ContextTile(
         modifier = modifier
             .height(height)
             .clip(shape)
-            .background(if (lit) accent.copy(alpha = TILE_LIT_ALPHA) else colors.surface)
+            /*
+             * A lift off the card, not a hole in it.
+             *
+             * `surface` is near the bottom of the ramp and this card is drawn at
+             * the top of it, so filling the tiles with it put the darkest colour
+             * in the palette inside the lightest — eleven dark rectangles on a
+             * pale card. Tinting with `onSurface` instead gets the direction
+             * right in both polarities without asking which one is in use: on a
+             * dark theme the text colour is light and lifts the tile, on a light
+             * theme it is dark and settles it, and either way it is a step away
+             * from the card rather than a plunge past it.
+             */
+            .background(
+                if (lit) accent.copy(alpha = TILE_LIT_ALPHA)
+                else colors.onSurface.copy(alpha = TILE_FILL_ALPHA),
+            )
+            .border(1.dp, colors.outline.copy(alpha = TILE_EDGE_ALPHA), shape)
             .thorCursor(focused = lit, shape = shape)
             .pointerHover(hover)
             .bringIntoViewRequester(requester)
@@ -729,31 +751,63 @@ private fun GridEntry.subtitle(): String = when (this) {
 const val CONTEXT_MENU_COLUMNS = 2
 
 /**
- * One row up or down the menu's grid, wrapping within the column.
+ * How many rows the menu stands in.
  *
- * The last row is usually ragged — eleven actions in two columns leaves one
- * tile on its own — so stepping down off the end returns to the top of the same
- * column rather than to index zero, and stepping up from the top lands on the
- * lowest tile that column actually has. Wrapping to a cell that is not drawn
- * would park the cursor on nothing: the highlight disappears and the next press
- * does something the user did not aim at.
+ * The grid is filled down the first column and then down the second, rather
+ * than left to right along each row. That is what keeps a group of related
+ * actions together: the list is written with related things next to each other
+ * — launch, then on the top screen, then on the bottom — and filling by rows
+ * scatters exactly those pairs diagonally across the card, so the two screen
+ * targets sat side by side with an unrelated action beneath each. Filling by
+ * columns stacks them, and the card reads down one column and then down the
+ * next like a page.
+ */
+fun contextMenuRows(count: Int): Int =
+    (count + CONTEXT_MENU_COLUMNS - 1) / CONTEXT_MENU_COLUMNS
+
+/** How many tiles a given column actually holds; the last one is often short. */
+private fun columnHeight(column: Int, count: Int): Int {
+    val rows = contextMenuRows(count)
+    return (count - column * rows).coerceIn(0, rows)
+}
+
+/**
+ * One tile up or down, wrapping inside the column the cursor is already in.
  *
  * Lives here beside [CONTEXT_MENU_COLUMNS] rather than in the view model
  * because the two have to agree, and this is the one that knows the number.
  */
 fun stepContextMenuRow(index: Int, direction: Int, count: Int): Int {
     if (count <= 0) return 0
-    val columns = CONTEXT_MENU_COLUMNS
-    val next = index + direction * columns
-    if (next in 0 until count) return next
+    val rows = contextMenuRows(count)
+    val column = index / rows
+    val height = columnHeight(column, count)
+    if (height <= 0) return index
 
-    val column = index % columns
-    if (direction > 0) return column
+    val row = ((index % rows) + direction + height) % height
+    return column * rows + row
+}
 
-    // The bottom-most index in this column, which the ragged row may not reach.
-    var last = count - 1
-    while (last % columns != column) last--
-    return last
+/**
+ * One tile left or right, onto the same row of another column.
+ *
+ * Eleven actions leave the second column one short, so the cell beside the last
+ * tile of the first column is not drawn. Stepping onto it would park the cursor
+ * on nothing — the highlight disappears and the next press does something the
+ * user did not aim at — so an absent cell is stepped over rather than onto.
+ */
+fun stepContextMenuColumn(index: Int, direction: Int, count: Int): Int {
+    if (count <= 0) return 0
+    val rows = contextMenuRows(count)
+    val row = index % rows
+    var column = index / rows
+
+    repeat(CONTEXT_MENU_COLUMNS) {
+        column = (column + direction + CONTEXT_MENU_COLUMNS) % CONTEXT_MENU_COLUMNS
+        val candidate = column * rows + row
+        if (candidate < count) return candidate
+    }
+    return index
 }
 
 /**
@@ -770,7 +824,6 @@ private const val CARD_PADDING = 12
 
 private const val HEADER_HEIGHT = 56
 private const val HEADER_ICON = 48
-private const val HEADER_ICON_RADIUS = 10
 private const val HEADER_ICON_INSET = 4
 private const val HEADER_GLYPH = 26
 private const val HEADER_GAP = 10
@@ -780,9 +833,18 @@ private const val HINT_HEIGHT = 26
 private const val HINT_GAP = 8
 
 private const val TILE_GAP = 6
-private const val TILE_RADIUS = 10
 private const val TILE_INSET = 10
 private const val TILE_GLYPH = 18
+
+/**
+ * How far a resting tile stands off the card, and how visible its edge is.
+ *
+ * Both are alphas over `onSurface` and `outline` rather than named surfaces, so
+ * they work out to a lift on a dark theme and a settle on a light one without
+ * either being asked for by name.
+ */
+private const val TILE_FILL_ALPHA = 0.07f
+private const val TILE_EDGE_ALPHA = 0.5f
 
 /**
  * The range a tile is allowed to be squeezed into.

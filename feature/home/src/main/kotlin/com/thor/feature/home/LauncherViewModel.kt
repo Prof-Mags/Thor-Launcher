@@ -53,6 +53,7 @@ import com.thor.feature.home.dialog.EntryEdits
 import com.thor.feature.home.dialog.FolderPickerState
 import com.thor.feature.home.menu.CONTEXT_MENU_COLUMNS
 import com.thor.feature.home.menu.ContextAction
+import com.thor.feature.home.menu.stepContextMenuColumn
 import com.thor.feature.home.menu.stepContextMenuRow
 import com.thor.feature.home.menu.contextActionsFor
 import com.thor.feature.home.menu.SideMenuAction
@@ -2547,15 +2548,18 @@ class LauncherViewModel @Inject constructor(
         }
 
         when (command) {
-            // Left and right step one tile; up and down step a whole row. The
-            // menu is a grid now, and treating all four as +/-1 meant Down
-            // walked sideways — the cursor crossed to the other column instead
-            // of dropping to the tile visibly beneath it.
+            // The menu is a grid filled column by column, so up and down move
+            // within a column and left and right cross between them. Treating
+            // all four as +/-1 meant Down walked sideways — the cursor crossed
+            // to the other column instead of dropping to the tile visibly
+            // beneath it.
             ControllerCommand.NAVIGATE_LEFT ->
-                contextMenuIndex.value = (contextMenuIndex.value - 1 + actions.size) % actions.size
+                contextMenuIndex.value =
+                    stepContextMenuColumn(contextMenuIndex.value, -1, actions.size)
 
             ControllerCommand.NAVIGATE_RIGHT ->
-                contextMenuIndex.value = (contextMenuIndex.value + 1) % actions.size
+                contextMenuIndex.value =
+                    stepContextMenuColumn(contextMenuIndex.value, 1, actions.size)
 
             ControllerCommand.NAVIGATE_UP ->
                 contextMenuIndex.value = stepContextMenuRow(contextMenuIndex.value, -1, actions.size)
