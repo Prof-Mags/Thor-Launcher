@@ -12,9 +12,9 @@ import com.thor.core.database.dao.PlatformDao
 import com.thor.core.common.profile.ActiveProfileId
 import com.thor.core.datastore.SettingsRepository
 import com.thor.data.iconpack.IconPackRepository
-import com.thor.data.repository.GridLayoutRepository
-import com.thor.data.repository.LibraryRepository
-import com.thor.data.repository.toDomain
+import com.thor.data.library.GridLayoutRepository
+import com.thor.data.library.LibraryRepository
+import com.thor.data.library.toDomain
 import com.thor.data.scanner.AppScanner
 import com.thor.data.scanner.RomScanner
 import com.thor.data.scanner.ScanProgress

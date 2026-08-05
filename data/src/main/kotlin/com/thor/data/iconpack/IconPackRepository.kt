@@ -7,7 +7,7 @@ import com.thor.core.common.log.ThorLog
 import com.thor.core.database.dao.FolderDao
 import com.thor.core.database.dao.PlatformDao
 import com.thor.core.datastore.SettingsRepository
-import com.thor.data.repository.GridLayoutRepository
+import com.thor.data.library.GridLayoutRepository
 import com.thor.core.model.IconPack
 import com.thor.core.model.PlatformArtwork
 import com.thor.core.model.PlatformFolders

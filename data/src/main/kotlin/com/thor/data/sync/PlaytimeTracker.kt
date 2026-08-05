@@ -4,7 +4,7 @@ import com.thor.core.common.coroutines.safely
 import com.thor.core.common.log.ThorLog
 import com.thor.core.datastore.PlaybackStateRepository
 import com.thor.core.model.PlaybackState
-import com.thor.data.repository.LibraryRepository
+import com.thor.data.library.LibraryRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 

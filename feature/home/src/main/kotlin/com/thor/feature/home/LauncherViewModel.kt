@@ -33,8 +33,8 @@ import com.thor.data.launcher.LaunchFailure
 import com.thor.data.launcher.LaunchResult
 import com.thor.data.launcher.LaunchTarget
 import com.thor.data.launcher.SystemPanel
-import com.thor.data.repository.GridLayoutRepository
-import com.thor.data.repository.LibraryRepository
+import com.thor.data.library.GridLayoutRepository
+import com.thor.data.library.LibraryRepository
 import com.thor.data.sync.LibrarySyncManager
 import com.thor.data.sync.PlaytimeTracker
 import com.thor.data.sync.SyncState

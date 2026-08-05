@@ -1,4 +1,4 @@
-package com.thor.data.repository
+package com.thor.data.library
 
 import com.thor.core.database.model.AppEntity
 import com.thor.core.database.model.FolderEntity

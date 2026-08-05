@@ -1,4 +1,4 @@
-package com.thor.data.repository
+package com.thor.data.library
 
 import com.thor.core.common.dispatchers.Dispatcher
 import com.thor.core.common.dispatchers.ThorDispatcher

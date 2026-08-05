@@ -51,11 +51,11 @@ import com.thor.data.media.AddonCheck
 import com.thor.data.media.MediaRepository
 import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.ProviderStatus
-import com.thor.data.repository.GridLayoutRepository
+import com.thor.data.library.GridLayoutRepository
 import com.thor.data.importer.CocoonImportResult
 import com.thor.data.importer.CocoonImporter
 import com.thor.data.profile.ProfileRepository
-import com.thor.data.repository.LibraryRepository
+import com.thor.data.library.LibraryRepository
 import com.thor.data.scanner.EmulatorRegistry
 import com.thor.data.sync.LibrarySyncManager
 import com.thor.data.sync.MetadataSyncManager

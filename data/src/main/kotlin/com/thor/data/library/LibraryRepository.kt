@@ -1,4 +1,4 @@
-package com.thor.data.repository
+package com.thor.data.library
 
 import com.thor.core.common.dispatchers.Dispatcher
 import com.thor.core.common.dispatchers.ThorDispatcher
@@ -17,9 +17,9 @@ import com.thor.core.database.model.PlatformEntity
 import com.thor.core.database.model.PlaySessionEntity
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.model.AppEntry
+import com.thor.core.model.ArtworkSet
 import com.thor.core.model.BuiltInPlatforms
 import com.thor.core.model.FolderEntry
-import com.thor.core.model.ArtworkSet
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GameMetadata
 import com.thor.core.model.GameVersion
@@ -28,19 +28,18 @@ import com.thor.core.model.LibraryFilter
 import com.thor.core.model.Platform
 import com.thor.core.model.PlatformArtwork
 import com.thor.core.model.PlatformFolders
-import com.thor.core.model.PlayStats
 import com.thor.core.model.SmartQuery
 import com.thor.core.model.SortOrder
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * The launcher's view of everything that can appear on the grid.

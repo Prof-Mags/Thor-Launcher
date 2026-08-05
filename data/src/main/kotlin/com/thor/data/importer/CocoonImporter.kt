@@ -10,7 +10,7 @@ import com.thor.core.common.profile.ProfileFiles
 import com.thor.core.database.dao.GameDao
 import com.thor.core.datastore.ProfileRegistryRepository
 import com.thor.core.model.ArtworkSet
-import com.thor.data.repository.toDomain
+import com.thor.data.library.toDomain
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first

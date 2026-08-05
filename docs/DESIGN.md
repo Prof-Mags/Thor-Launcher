@@ -1,5 +1,12 @@
 # THOR
 
+> **Superseded.** This is the original design document, written while the
+> launcher was still called THOR. It describes an earlier state of the project —
+> the status section below counts 103 tests across 14 test classes, and both
+> numbers have long since moved — and it has not been kept in step with the
+> code. [README.md](../README.md) is the current description; where the two
+> disagree, the README is right and this file is history.
+
 A dual-screen Android launcher built for the **AYN Thor** handheld.
 
 The Thor has two panels. THOR treats that as the point rather than as a

@@ -3,7 +3,7 @@ package com.thor.feature.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thor.core.model.GridEntry
-import com.thor.data.repository.LibraryRepository
+import com.thor.data.library.LibraryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted

@@ -528,8 +528,10 @@ JDK 17, plus the NDK and CMake for the streaming core:
 sdkmanager "ndk;27.0.12077973" "cmake;3.22.1"
 ```
 
-How it's built and why — the dual screen architecture and the rules behind it — is
-in [docs/DESIGN.md](docs/DESIGN.md).
+The original design document — the dual screen architecture and the rules behind
+it — is kept at [docs/DESIGN.md](docs/DESIGN.md). It was written under the old
+THOR name and has not been maintained since, so read it as history rather than
+as a description of the code as it stands.
 
 <br>
 

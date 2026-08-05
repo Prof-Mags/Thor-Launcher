@@ -1,4 +1,4 @@
-package com.thor.data.repository
+package com.thor.data.library
 
 import com.google.common.truth.Truth.assertThat
 import com.thor.core.model.ArtworkSet

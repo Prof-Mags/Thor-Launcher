@@ -7,7 +7,6 @@ local.properties
 .kotlin/
 .cxx/
 captures/
-hs_err_pid*.log
 
 # Icon packs dropped in the working tree for testing the importer.
 # Third-party artwork, tens of megabytes each, and none of it ours to
