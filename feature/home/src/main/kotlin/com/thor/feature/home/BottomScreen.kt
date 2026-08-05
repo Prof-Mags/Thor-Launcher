@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
 import com.thor.core.designsystem.theme.ThorTheme
@@ -123,6 +124,9 @@ fun BottomScreen(
     /** Inflates a placed widget; see [com.thor.feature.home.grid.WidgetLayer]. */
     createWidgetView: (Context, Int) -> View? = { _, _ -> null },
     onWidgetMeasured: (appWidgetId: Int, widthDp: Int, heightDp: Int) -> Unit = { _, _, _ -> },
+    /** One cell wider, narrower, taller or shorter; see [WidgetResizeControls]. */
+    onWidgetResizeStep: (columns: Int, rows: Int) -> Unit = { _, _ -> },
+    onWidgetResizeDone: () -> Unit = {},
     /** Whether any non-smart folder exists, so filing can be offered. */
     foldersExist: Boolean,
     /** Whether the context-menu entry currently sits inside a folder. */
@@ -415,9 +419,11 @@ fun BottomScreen(
         (state.editMode as? EditMode.Resizing)?.let { resizing ->
             val widget = state.entriesById[resizing.entryId] as? WidgetEntry
             if (widget != null) {
-                ResizeBanner(
+                WidgetResizeControls(
                     columns = widget.spanColumns,
                     rows = widget.spanRows,
+                    onStep = onWidgetResizeStep,
+                    onDone = onWidgetResizeDone,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = bottomClearance + dimens.spacing),
@@ -686,24 +692,102 @@ private const val TUTORIAL_WIDTH_FRACTION = 0.86f
 private const val TUTORIAL_MAX_WIDTH = 420
 private const val TUTORIAL_GESTURE_WIDTH = 52
 
-/** Says what the size is now, while the D-pad is changing it. */
+/**
+ * The size, and the buttons that change it.
+ *
+ * The D-pad already does this — see `LauncherViewModel.onResizeCommand` — and on
+ * a controller that is the better gesture. These exist because the panel this is
+ * drawn on is a touchscreen, and without them a finger could start a resize from
+ * the long-press menu and then have no way to finish one. The number between
+ * each pair is the point of the panel as much as the buttons are: at this cell
+ * size two columns and three are not obviously different, and it is the only
+ * thing that explains a widget refusing to grow when it has hit the ceiling.
+ */
 @Composable
-private fun ResizeBanner(columns: Int, rows: Int, modifier: Modifier = Modifier) {
+private fun WidgetResizeControls(
+    columns: Int,
+    rows: Int,
+    onStep: (columns: Int, rows: Int) -> Unit,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = ThorTheme.colors
     val dimens = ThorTheme.dimens
-    GlassSurface(modifier = modifier) {
-        Text(
-            // The multiplication sign, not the letter: this is a size.
-            text = "$columns × $rows",
-            style = MaterialTheme.typography.titleMedium,
-            color = colors.cursor,
+
+    GlassSurface(shape = ThorTheme.shapes.large, modifier = modifier) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
             modifier = Modifier.padding(
-                horizontal = dimens.spacing,
-                vertical = dimens.spacingSmall,
+                horizontal = dimens.spacingSmall,
+                vertical = dimens.spacingTiny,
             ),
-        )
+        ) {
+            ResizeAxis(
+                label = "wide",
+                value = columns,
+                onDecrease = { onStep(-1, 0) },
+                onIncrease = { onStep(1, 0) },
+            )
+            ResizeAxis(
+                label = "tall",
+                value = rows,
+                onDecrease = { onStep(0, -1) },
+                onIncrease = { onStep(0, 1) },
+            )
+            Text(
+                text = "Done",
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.cursor,
+                modifier = Modifier
+                    .clip(ThorTheme.shapes.small)
+                    .clickable(onClick = onDone)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
     }
 }
+
+/** One axis of the resize panel: minus, the count, plus. */
+@Composable
+private fun ResizeAxis(
+    label: String,
+    value: Int,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+) {
+    val colors = ThorTheme.colors
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        ResizeStep(glyph = "−", onClick = onDecrease)
+        Text(
+            text = "$value $label",
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.onSurface,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+        ResizeStep(glyph = "+", onClick = onIncrease)
+    }
+}
+
+@Composable
+private fun ResizeStep(glyph: String, onClick: () -> Unit) {
+    val colors = ThorTheme.colors
+    Text(
+        text = glyph,
+        style = MaterialTheme.typography.titleMedium,
+        color = colors.cursor,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .clip(ThorTheme.shapes.small)
+            .background(colors.surfaceElevated)
+            .clickable(onClick = onClick)
+            .width(RESIZE_STEP_SIZE.dp)
+            .padding(vertical = 3.dp),
+    )
+}
+
+/** Wide enough for a finger, which is what these are for. */
+private const val RESIZE_STEP_SIZE = 34
 
 /** Tells the user edit mode is active and what the buttons do. */
 @Composable

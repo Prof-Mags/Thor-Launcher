@@ -2304,6 +2304,8 @@ fun ThorApp(
                 onWidgetPickerDismissed = viewModel::closeWidgetPicker,
                 createWidgetView = viewModel::createWidgetView,
                 onWidgetMeasured = viewModel::onWidgetMeasured,
+                onWidgetResizeStep = viewModel::stepWidgetResize,
+                onWidgetResizeDone = viewModel::finishWidgetResize,
                 foldersExist = state.entriesById.values.any { it is FolderEntry && !it.isSmart },
                 entryInFolder = state.contextMenuEntry
                     ?.let { viewModel.folderContaining(it.id) != null } == true,
