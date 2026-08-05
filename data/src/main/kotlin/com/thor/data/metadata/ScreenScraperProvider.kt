@@ -120,6 +120,21 @@ class ScreenScraperProvider @Inject constructor(
             ?.addQueryParameter("romnom", query.fileName)
             // Size narrows an ambiguous filename to a specific dump.
             ?.addQueryParameter("romtaille", query.fileSizeBytes.toString())
+            /*
+             * The fingerprints, which outrank everything above them.
+             *
+             * ScreenScraper indexes dumps by hash, so given one it answers about
+             * the exact file rather than about the closest name — which is the
+             * whole difference between a scraper that gets regional variants and
+             * revisions right and one that guesses. Sent alongside the name
+             * rather than instead of it: a file the database has never seen falls
+             * back to the name match, and an unknown hash is not an error.
+             */
+            ?.apply {
+                query.crc32?.let { addQueryParameter("crc", it) }
+                query.md5?.let { addQueryParameter("md5", it) }
+                query.sha1?.let { addQueryParameter("sha1", it) }
+            }
             ?.apply { addCredentials(config) }
             ?.build()
             ?: return emptyList()

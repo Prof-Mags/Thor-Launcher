@@ -192,6 +192,27 @@ object ThorMigrations {
         }
     }
 
-    val ALL: Array<Migration> =
-        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+    /**
+     * Games gain the fingerprints of their own files.
+     *
+     * Three nullable columns added in place. Null is the honest starting value
+     * for every existing row: nothing has been hashed yet, and the first scrape
+     * that touches a game fills them in.
+     */
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            listOf("rom_crc32", "rom_md5", "rom_sha1").forEach { column ->
+                db.execSQL("ALTER TABLE `games` ADD COLUMN `$column` TEXT")
+            }
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(
+        MIGRATION_1_2,
+        MIGRATION_2_3,
+        MIGRATION_3_4,
+        MIGRATION_4_5,
+        MIGRATION_5_6,
+        MIGRATION_6_7,
+    )
 }

@@ -77,6 +77,51 @@ class MetadataAggregator @Inject constructor(
             merge(existing, candidates, config, replaceArtwork)
         }
 
+    /**
+     * Every candidate the providers offer, for the user to choose between.
+     *
+     * The automatic path takes the highest-confidence candidate per field and
+     * merges. This returns the whole set instead, unfiltered by
+     * [MIN_CONFIDENCE], because the point of asking a person is that they can
+     * recognise the right answer where the score could not — and a threshold
+     * that hid it would defeat the exercise. Deduplicated by provider and title
+     * so one game matched by four providers is one row rather than four.
+     */
+    suspend fun candidates(query: MetadataQuery): List<MetadataCandidate> =
+        withContext(ioDispatcher) {
+            val config = settings.metadata.first()
+            val active = usableProviders(config)
+            if (active.isEmpty()) return@withContext emptyList()
+
+            queryProviders(active, query, config)
+                .distinctBy { it.providerId to it.matchedTitle.lowercase() }
+                .sortedByDescending { it.confidence }
+        }
+
+    /**
+     * Applies one chosen candidate over what is already stored.
+     *
+     * Locks every field it fills, which is the whole point of having chosen it:
+     * a hand-picked match that the next scrape quietly replaced would be worse
+     * than no picker at all.
+     */
+    suspend fun applyChosen(existing: GameMetadata, chosen: MetadataCandidate): GameMetadata =
+        withContext(ioDispatcher) {
+            val config = settings.metadata.first()
+            val merged = merge(existing, listOf(chosen), config, replaceArtwork = true)
+            merged.copy(
+                lockedFields = merged.lockedFields + buildSet {
+                    if (!merged.description.isNullOrBlank()) add(GameMetadata.FIELD_DESCRIPTION)
+                    if (merged.genres.isNotEmpty()) add(GameMetadata.FIELD_GENRES)
+                    if (!merged.developer.isNullOrBlank()) add(GameMetadata.FIELD_DEVELOPER)
+                    if (!merged.publisher.isNullOrBlank()) add(GameMetadata.FIELD_PUBLISHER)
+                    if (merged.releaseYear != null) add(GameMetadata.FIELD_RELEASE_DATE)
+                    if (merged.rating != null) add(GameMetadata.FIELD_RATING)
+                    if (merged.artwork != existing.artwork) add(GameMetadata.FIELD_ARTWORK)
+                },
+            )
+        }
+
     /** True when at least one enabled provider is fully configured. */
     suspend fun hasUsableProvider(): Boolean =
         usableProviders(settings.metadata.first()).isNotEmpty()

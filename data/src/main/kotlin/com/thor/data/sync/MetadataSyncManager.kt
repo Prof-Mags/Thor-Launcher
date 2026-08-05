@@ -10,6 +10,7 @@ import com.thor.core.database.dao.GameDao
 import com.thor.core.database.dao.PlatformDao
 import com.thor.core.database.model.GameEntity
 import com.thor.core.datastore.SettingsRepository
+import com.thor.data.scanner.RomHasher
 import com.thor.core.model.GameMetadata
 import com.thor.core.model.PlatformFlagships
 import com.thor.core.model.PlatformFolders
@@ -59,6 +60,7 @@ class MetadataSyncManager @Inject constructor(
     private val gameDao: GameDao,
     private val folderDao: FolderDao,
     private val platformDao: PlatformDao,
+    private val romHasher: RomHasher,
     private val settings: SettingsRepository,
     @ApplicationScope private val scope: CoroutineScope,
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
@@ -211,6 +213,16 @@ class MetadataSyncManager @Inject constructor(
             )
 
             val platform = platforms[game.platformId]
+            /*
+             * Hashed once, and only if it has not been.
+             *
+             * A full read of the ROM is by far the most expensive thing in this
+             * loop — more than the network call it enables — so the result is
+             * stored on the game and every later scrape reuses it. A file too
+             * large to read comes back null and stays null, which is the same
+             * answer as "not hashed" and takes the same path: match by name.
+             */
+            val hashed = ensureHashed(game)
             val merged = aggregator.scrape(
                 query = MetadataQuery(
                     title = game.title,
@@ -221,6 +233,9 @@ class MetadataSyncManager @Inject constructor(
                     fileSizeBytes = game.fileSizeBytes,
                     releaseYearHint = game.metadata.releaseYear,
                     region = game.metadata.region,
+                    crc32 = hashed.romCrc32,
+                    md5 = hashed.romMd5,
+                    sha1 = hashed.romSha1,
                 ),
                 existing = game.metadata,
                 // A full re-scrape is a request to replace; only-missing is a
@@ -288,6 +303,27 @@ class MetadataSyncManager @Inject constructor(
      *
      * @return how many folders gained artwork
      */
+    /**
+     * The game with its fingerprints filled in, computing them if needed.
+     *
+     * Returns the game unchanged when it already has them, when the file is too
+     * large to read, or when it could not be opened. All three mean the same
+     * thing downstream — no hash, match by name — and none of them is worth
+     * retrying on the next scrape, except the last, which will simply be
+     * attempted again and fail again cheaply.
+     */
+    private suspend fun ensureHashed(game: GameEntity): GameEntity {
+        if (game.romMd5 != null) return game
+        val hashes = romHasher.hash(game.contentUri, game.fileSizeBytes) ?: return game
+        val hashed = game.copy(
+            romCrc32 = hashes.crc32,
+            romMd5 = hashes.md5,
+            romSha1 = hashes.sha1,
+        )
+        gameDao.upsert(hashed)
+        return hashed
+    }
+
     private suspend fun scrapeFolderArtwork(onlyMissing: Boolean): Int {
         /*
          * Platform folders are never scraped, and this is the important part.

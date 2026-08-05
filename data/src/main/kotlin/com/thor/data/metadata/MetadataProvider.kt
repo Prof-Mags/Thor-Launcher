@@ -21,6 +21,21 @@ data class MetadataQuery(
     val providerPlatformIds: Map<String, String> = emptyMap(),
     val fileName: String,
     val fileSizeBytes: Long,
+    /**
+     * The file's own fingerprints, when it was small enough to read.
+     *
+     * The difference between asking a provider "is there a game called
+     * something like this?" and telling it "this is the file I have".
+     * ScreenScraper's database is keyed by these, so a match against one is
+     * exact — right game, right region, right revision — where a name match has
+     * to infer all three from a filename somebody else chose.
+     *
+     * Null for anything too large to hash; see `RomHasher`. Providers that
+     * cannot use them ignore them, and every provider must still work without.
+     */
+    val crc32: String? = null,
+    val md5: String? = null,
+    val sha1: String? = null,
     val releaseYearHint: Int? = null,
     val region: String? = null,
 )

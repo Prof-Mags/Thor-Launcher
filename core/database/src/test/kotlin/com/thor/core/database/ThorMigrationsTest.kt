@@ -114,6 +114,22 @@ class ThorMigrationsTest {
         assertThat(tables(v6)).isEqualTo(tables(v5))
     }
 
+    /**
+     * 6 → 7 adds columns in place, so the check is the one version 3 gets: the
+     * columns it adds are the ones the entity gained, spelled the same way and
+     * nullable — an existing row has not been hashed, and null is what that
+     * means.
+     */
+    @Test
+    fun `version 7 adds exactly the rom hash columns`() {
+        val v6 = normalise(exportedDdl(version = 6, table = "games"))
+        val v7 = normalise(exportedDdl(version = 7, table = "games"))
+
+        val added = columnNames(v7) - columnNames(v6)
+        assertThat(added).containsExactly("rom_crc32", "rom_md5", "rom_sha1")
+        added.forEach { column -> assertThat(v7).contains("`$column` TEXT,") }
+    }
+
     @Test
     fun `migrations declare the expected version ranges`() {
         assertThat(ThorMigrations.MIGRATION_1_2.startVersion).isEqualTo(1)
@@ -158,9 +174,16 @@ class ThorMigrationsTest {
         return createSql.substring(open + 1, close)
     }
 
-    /** Column names from a normalised column list, in declaration order. */
+    /**
+     * Column names from a normalised column list, in declaration order.
+     *
+     * Digits are part of a name. Without them `rom_crc32` and `rom_sha1` matched
+     * nothing at all, so a test asserting which columns a migration added
+     * compared two empty lists and passed — the failure mode of a check that
+     * cannot see what it is checking.
+     */
     private fun columnNames(ddl: String): List<String> =
-        Regex("`([a-z_]+)` (?:TEXT|INTEGER|REAL|BLOB)")
+        Regex("`([a-z0-9_]+)` (?:TEXT|INTEGER|REAL|BLOB)")
             .findAll(ddl)
             .map { it.groupValues[1] }
             .toList()

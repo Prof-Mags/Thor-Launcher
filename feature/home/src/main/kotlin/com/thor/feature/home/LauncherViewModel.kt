@@ -45,6 +45,7 @@ import com.thor.data.library.GridLayoutRepository
 import com.thor.data.library.LibraryRepository
 import com.thor.data.library.MoveResult
 import com.thor.data.achievements.AchievementRepository
+import com.thor.data.metadata.MetadataCandidate
 import com.thor.data.widget.WidgetOption
 import com.thor.data.widget.WidgetRepository
 import com.thor.data.sync.LibrarySyncManager
@@ -63,6 +64,7 @@ import com.thor.feature.home.couch.platform
 import com.thor.feature.home.dialog.EmulatorOption
 import com.thor.feature.home.dialog.EntryEdits
 import com.thor.feature.home.dialog.FolderPickerState
+import com.thor.feature.home.dialog.MatchPickerState
 import com.thor.feature.home.dialog.WidgetChoice
 import com.thor.feature.home.dialog.WidgetPickerState
 import com.thor.feature.home.menu.CELL_ACTIONS
@@ -1460,6 +1462,10 @@ class LauncherViewModel @Inject constructor(
          * menu closes as the picker opens, but ordering it the other way round
          * would still be wrong the moment both are ever open together.
          */
+        if (_matchPicker.value.visible) {
+            onMatchPickerCommand(command)
+            return
+        }
         if (_widgetPicker.value.visible) {
             onWidgetPickerCommand(command)
             return
@@ -2847,6 +2853,8 @@ class LauncherViewModel @Inject constructor(
 
             ContextAction.REMOVE_FROM_GRID -> removeFromGrid(entry)
 
+            ContextAction.CHOOSE_MATCH -> openMatchPicker(entry as? GameEntry)
+
             ContextAction.RESIZE_WIDGET -> beginWidgetResize(entry as? WidgetEntry)
 
             ContextAction.REMOVE_WIDGET -> (entry as? WidgetEntry)?.let(::removeWidget)
@@ -3482,6 +3490,79 @@ class LauncherViewModel @Inject constructor(
 
     fun updateGridSpec(transform: (GridSpec) -> GridSpec) {
         viewModelScope.launchSafely(TAG) { settingsRepository.updateGrid(transform) }
+    }
+
+    // ---------------------------------------------------------- match picker
+
+    private val _matchPicker = MutableStateFlow(MatchPickerState())
+    val matchPicker: StateFlow<MatchPickerState> = _matchPicker.asStateFlow()
+
+    /**
+     * Asks every provider about a game and shows what they say.
+     *
+     * Opened with the list still null so the card appears at once and fills in,
+     * rather than the press doing nothing for as long as the slowest provider
+     * takes. See [MatchPickerState.candidates].
+     */
+    fun openMatchPicker(entry: GameEntry? = uiState.value.selection as? GameEntry) {
+        val game = entry ?: return
+        closeContextMenu()
+        _matchPicker.value = MatchPickerState(
+            visible = true,
+            entryId = game.id,
+            entryTitle = game.title,
+            candidates = null,
+        )
+
+        viewModelScope.launchSafely(TAG) {
+            val found = libraryRepository.matchCandidatesFor(game.id)
+            // Only if it is still the same card on screen: this is several
+            // network calls, and the user is free to dismiss it or move on.
+            if (_matchPicker.value.entryId == game.id) {
+                _matchPicker.update { it.copy(candidates = found, focusedIndex = 0) }
+            }
+        }
+    }
+
+    fun closeMatchPicker() {
+        _matchPicker.value = MatchPickerState()
+    }
+
+    fun focusMatchRow(index: Int) {
+        _matchPicker.update { picker ->
+            picker.copy(focusedIndex = index.coerceIn(0, (picker.rowCount - 1).coerceAtLeast(0)))
+        }
+    }
+
+    /** Applies the chosen match and locks it against the next scrape. */
+    fun pickMatch(candidate: MetadataCandidate) {
+        val entryId = _matchPicker.value.entryId ?: return
+        val title = _matchPicker.value.entryTitle
+        closeMatchPicker()
+        viewModelScope.launchSafely(TAG) {
+            libraryRepository.applyChosenMatch(entryId, candidate)
+            emit(LauncherEffect.ShowMessage("$title is now ${candidate.matchedTitle}"))
+        }
+    }
+
+    private fun onMatchPickerCommand(command: ControllerCommand) {
+        val picker = _matchPicker.value
+        val count = picker.rowCount
+        when (command) {
+            ControllerCommand.NAVIGATE_UP -> if (count > 0) {
+                focusMatchRow((picker.focusedIndex - 1 + count) % count)
+            }
+
+            ControllerCommand.NAVIGATE_DOWN -> if (count > 0) {
+                focusMatchRow((picker.focusedIndex + 1) % count)
+            }
+
+            ControllerCommand.CONFIRM ->
+                picker.candidates?.getOrNull(picker.focusedIndex)?.let(::pickMatch)
+
+            ControllerCommand.BACK, ControllerCommand.CONTEXT_MENU -> closeMatchPicker()
+            else -> Unit
+        }
     }
 
     // --------------------------------------------------------------- widgets

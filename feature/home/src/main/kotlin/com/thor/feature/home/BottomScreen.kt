@@ -58,6 +58,9 @@ import com.thor.feature.home.couch.platform
 import com.thor.feature.home.dialog.FolderPickerDialog
 import com.thor.feature.home.dialog.FolderPickerState
 import com.thor.feature.home.dialog.SortDialog
+import com.thor.data.metadata.MetadataCandidate
+import com.thor.feature.home.dialog.MatchPickerDialog
+import com.thor.feature.home.dialog.MatchPickerState
 import com.thor.feature.home.dialog.WidgetChoice
 import com.thor.feature.home.dialog.WidgetPickerDialog
 import com.thor.feature.home.dialog.WidgetPickerState
@@ -119,6 +122,10 @@ fun BottomScreen(
     onCellAction: (CellAction) -> Unit = {},
     onCellMenuDismissed: () -> Unit = {},
     widgetPicker: WidgetPickerState = WidgetPickerState(),
+    /** The "choose the right game" card; see [MatchPickerDialog]. */
+    matchPicker: MatchPickerState = MatchPickerState(),
+    onMatchPicked: (MetadataCandidate) -> Unit = {},
+    onMatchPickerDismissed: () -> Unit = {},
     onWidgetPicked: (WidgetChoice) -> Unit = {},
     onWidgetPickerDismissed: () -> Unit = {},
     /** Inflates a placed widget; see [com.thor.feature.home.grid.WidgetLayer]. */
@@ -573,6 +580,12 @@ fun BottomScreen(
             focusedIndex = cellMenu.focusedIndex,
             onAction = onCellAction,
             onDismiss = onCellMenuDismissed,
+        )
+
+        MatchPickerDialog(
+            state = matchPicker,
+            onPick = onMatchPicked,
+            onDismiss = onMatchPickerDismissed,
         )
 
         WidgetPickerDialog(

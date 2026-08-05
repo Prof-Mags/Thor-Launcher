@@ -121,6 +121,20 @@ data class GameEntity(
         PerformanceProfile.BALANCED,
     /** Set when the file was missing during the last scan. */
     @ColumnInfo(name = "is_missing") val isMissing: Boolean = false,
+    /*
+     * The file's own fingerprints, computed once.
+     *
+     * On the game rather than in its metadata because they are facts about the
+     * file, not about the game: a rescrape replaces metadata wholesale and would
+     * throw these away, and they cost a full read of the ROM to recover.
+     *
+     * Null means not hashed — either not yet, or too large to be worth reading;
+     * see `RomHasher.MAX_HASHED_BYTES`. Both are answered the same way, by
+     * matching on the name instead.
+     */
+    @ColumnInfo(name = "rom_crc32") val romCrc32: String? = null,
+    @ColumnInfo(name = "rom_md5") val romMd5: String? = null,
+    @ColumnInfo(name = "rom_sha1") val romSha1: String? = null,
 )
 
 

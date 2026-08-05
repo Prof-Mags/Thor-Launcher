@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.ManageSearch
 import androidx.compose.material.icons.rounded.Monitor
 import androidx.compose.material.icons.rounded.OpenWith
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -247,6 +248,21 @@ enum class ContextAction(
      * action the menu has ever needed. A widget is the first thing here whose
      * size is a property of the entry rather than of the grid.
      */
+    /**
+     * Corrects a scrape that matched the wrong game.
+     *
+     * The scraper picks the highest-scoring candidate and for most files it is
+     * right; where it is not, there was nothing to be done except edit every
+     * field by hand, because re-running it made the same decision again. This is
+     * the way out.
+     */
+    CHOOSE_MATCH(
+        "Choose match…",
+        "Pick the right game from the scrapers",
+        Icons.Rounded.ManageSearch,
+        "Match…",
+    ),
+
     RESIZE_WIDGET(
         "Resize",
         "D-pad to change its size, A when it looks right",
@@ -339,6 +355,7 @@ fun contextActionsFor(
      * artwork nobody has chosen it would do nothing visible.
      */
     if (entry is GameEntry) {
+        add(ContextAction.CHOOSE_MATCH)
         add(ContextAction.SET_GAME_COVER)
         add(ContextAction.SET_GAME_BACKDROP)
         if (hasCustomArtwork) add(ContextAction.CLEAR_GAME_ARTWORK)

@@ -32,6 +32,9 @@ import com.thor.core.model.PlatformFolders
 import com.thor.core.model.SmartQuery
 import com.thor.core.model.SortOrder
 import com.thor.core.model.WidgetEntry
+import com.thor.data.metadata.MetadataAggregator
+import com.thor.data.metadata.MetadataCandidate
+import com.thor.data.metadata.MetadataQuery
 import com.thor.data.widget.toDomain
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -65,6 +68,8 @@ class LibraryRepository @Inject constructor(
     private val widgetDao: WidgetDao,
     private val achievementDao: AchievementDao,
     private val settings: SettingsRepository,
+    /** The scrapers, for the manual match picker; see [matchCandidatesFor]. */
+    private val aggregator: MetadataAggregator,
     @Dispatcher(ThorDispatcher.Default) private val defaultDispatcher: CoroutineDispatcher,
 ) {
 
@@ -517,6 +522,50 @@ class LibraryRepository @Inject constructor(
      * Every field the user actually filled in is added to `lockedFields`, which
      * is what stops the next scrape from quietly reverting the edit.
      */
+    /**
+     * Every game the scrapers think this file might be.
+     *
+     * The search half of a scrape, without the deciding half. Hashes are passed
+     * when the game has them, so a provider that indexes by them answers exactly
+     * rather than joining in the guesswork — which is usually why the user is
+     * here.
+     */
+    suspend fun matchCandidatesFor(entryId: String): List<MetadataCandidate> =
+        withContext(defaultDispatcher) {
+            val game = gameDao.getById(entryId) ?: return@withContext emptyList()
+            val platform = platformDao.getById(game.platformId)
+            aggregator.candidates(
+                MetadataQuery(
+                    title = game.title,
+                    sortTitle = game.sortTitle,
+                    platformId = game.platformId,
+                    providerPlatformIds = platform?.providerIds.orEmpty(),
+                    fileName = game.fileName,
+                    fileSizeBytes = game.fileSizeBytes,
+                    releaseYearHint = game.metadata.releaseYear,
+                    region = game.metadata.region,
+                    crc32 = game.romCrc32,
+                    md5 = game.romMd5,
+                    sha1 = game.romSha1,
+                ),
+            )
+        }
+
+    /**
+     * Replaces a game's metadata with one candidate the user chose.
+     *
+     * Locked field by field inside the aggregator, which is the point of having
+     * chosen: a hand-picked match quietly replaced by the next scrape would be
+     * worse than not offering the choice at all.
+     */
+    suspend fun applyChosenMatch(entryId: String, candidate: MetadataCandidate) =
+        withContext(defaultDispatcher) {
+            val game = gameDao.getById(entryId) ?: return@withContext
+            gameDao.upsert(
+                game.copy(metadata = aggregator.applyChosen(game.metadata, candidate)),
+            )
+        }
+
     suspend fun updateGameMetadata(entryId: String, metadata: GameMetadata) {
         val game = gameDao.getById(entryId) ?: return
         val locked = buildSet {
