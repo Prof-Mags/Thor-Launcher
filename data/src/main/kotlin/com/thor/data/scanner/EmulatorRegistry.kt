@@ -58,6 +58,16 @@ data class EmulatorSpec(
 
 object EmulatorRegistry {
 
+    /**
+     * The activity every Mupen64Plus descendant on Android still starts from.
+     *
+     * M64Plus FZ is a fork of Paul Lamb's Mupen64Plus AE and kept its
+     * `paulscode.android.mupen64plusae` class namespace while changing its
+     * application id, so the free build, the paid build and the original all
+     * answer to the same component.
+     */
+    private const val MUPEN_SPLASH_ACTIVITY = "paulscode.android.mupen64plusae.SplashActivity"
+
     val KNOWN: List<EmulatorSpec> = listOf(
         /*
          * Lemuroid, which like RetroArch is many cores behind one application.
@@ -132,10 +142,46 @@ object EmulatorRegistry {
             displayName = "Pizza Boy GBC",
             platformIds = setOf("gb", "gbc"),
         ),
+        /*
+         * ---- Nintendo 64 ----------------------------------------------------
+         *
+         * Three packages, one lineage, and the names had drifted a long way from
+         * what is actually on the store. `…fzurita.pro` is the paid M64Plus FZ,
+         * `…fzurita` is the free one — it was labelled "Mupen64Plus FZ (Pro)",
+         * which named the wrong build — and `…v3.alpha` is not FZ at all but
+         * Paul Lamb's original Mupen64Plus AE that FZ was forked from. Three
+         * confusingly similar entries in the N64 picker, two of them lying about
+         * which application they would open.
+         *
+         * All three take the same explicit activity. FZ kept its parent's
+         * `paulscode.android.mupen64plusae` namespace when it changed its
+         * application id, which is why one component name serves the family.
+         * Without it the intent resolves to whatever the package declares as its
+         * default VIEW handler, and on this family that is the file browser — so
+         * pressing Launch opened the emulator on a list of folders rather than on
+         * the game, which is the exact failure this table exists to prevent.
+         *
+         * Harmless if the component ever moves: `EntryLauncher` retries without it
+         * before giving up, so a stale name costs one refused intent and nothing
+         * else.
+         */
         EmulatorSpec(
             packageName = "org.mupen64plusae.v3.fzurita.pro",
             displayName = "M64Plus FZ Pro",
             platformIds = setOf("n64"),
+            activityName = MUPEN_SPLASH_ACTIVITY,
+        ),
+        EmulatorSpec(
+            packageName = "org.mupen64plusae.v3.fzurita",
+            displayName = "M64Plus FZ",
+            platformIds = setOf("n64"),
+            activityName = MUPEN_SPLASH_ACTIVITY,
+        ),
+        EmulatorSpec(
+            packageName = "org.mupen64plusae.v3.alpha",
+            displayName = "Mupen64Plus AE",
+            platformIds = setOf("n64"),
+            activityName = MUPEN_SPLASH_ACTIVITY,
         ),
 
         // ---- Arcade and home computers --------------------------------------
@@ -263,6 +309,31 @@ object EmulatorRegistry {
                 "Import this game into Dolphin's own library, then launch it there.",
             ),
         ),
+        /*
+         * ---- Wii U ----------------------------------------------------------
+         *
+         * The last built-in system with no emulator of any kind. RetroArch claims
+         * it the way it claims everything — by declaring the whole platform list —
+         * and no libretro core runs Wii U, so a Wii U game in the library was
+         * unlaunchable rather than merely awkward, exactly as PS3 was.
+         *
+         * Cemu's own Android build, rather than a port of it: the project ships
+         * one, under `info.cemu.Cemu`.
+         *
+         * Left on the default contract, which is an `ACTION_VIEW` carrying the
+         * game's URI. That is what most Android emulators accept and it is the
+         * right first assumption, but it is an assumption — the Android build is
+         * new and its manifest has not been read from here. If it turns out to
+         * open on its own game list instead of the game, it belongs with Dolphin
+         * below, on an `Unsupported` contract that says so plainly rather than
+         * failing at the intent.
+         */
+        EmulatorSpec(
+            packageName = "info.cemu.Cemu",
+            displayName = "Cemu",
+            platformIds = setOf("wiiu"),
+        ),
+
         EmulatorSpec(
             packageName = "org.ppsspp.ppsspp",
             displayName = "PPSSPP",
@@ -377,6 +448,16 @@ object EmulatorRegistry {
             displayName = "Play!",
             platformIds = setOf("ps2"),
         ),
+        /*
+         * Snes9x, under the name it actually ships as on Android.
+         *
+         * Robert Broglia's build is the Snes9x port people have: it is Snes9x's
+         * own core inside his front-end, and there is no separate application
+         * called plain "Snes9x" to add. Named "Snes9x EX+" here because that is
+         * what the store calls it and what the installed app calls itself — a
+         * picker that renamed it to "Snes9x" would be tidier to read and wrong
+         * about which application it was going to open.
+         */
         EmulatorSpec(
             packageName = "com.explusalpha.Snes9xPlus",
             displayName = "Snes9x EX+",
@@ -513,17 +594,11 @@ object EmulatorRegistry {
          * No such package exists. The `com.explusalpha.*` family is Robert
          * Broglia's `.emu` applications and MD.emu is the Genesis one; there is no
          * N64 member and never was. The app that name was reaching for is
-         * Mupen64Plus FZ Pro, which is `org.mupen64plusae.v3.fzurita.pro` and is
-         * already listed above as "M64Plus FZ Pro".
+         * M64Plus FZ, which is with the rest of its family further up.
          *
          * It could never match an installed package, so it did nothing except
          * appear in the picker for N64 as a choice that would never launch.
          */
-        EmulatorSpec(
-            packageName = "org.mupen64plusae.v3.fzurita",
-            displayName = "Mupen64Plus FZ (Pro)",
-            platformIds = setOf("n64"),
-        ),
         EmulatorSpec(
             packageName = "com.fastemulator.gba",
             displayName = "My Boy!",
@@ -540,23 +615,25 @@ object EmulatorRegistry {
             platformIds = setOf("nds"),
         ),
         EmulatorSpec(
-            packageName = "org.mupen64plusae.v3.alpha",
-            displayName = "Mupen64Plus FZ",
-            platformIds = setOf("n64"),
-        ),
-        EmulatorSpec(
             packageName = "com.seleuco.mame4droid",
             displayName = "MAME4droid",
             platformIds = setOf("arcade"),
         ),
+        /*
+         * Flycast twice, because it has two application ids and both are still
+         * installed out there: `com.flycast.emulator` is the current one, and
+         * `com.reicast.emulator` is the id it carried when the project was
+         * Reicast. Told apart in the picker rather than left as two rows both
+         * reading "Flycast", which is a choice nobody can make correctly.
+         */
         EmulatorSpec(
-            packageName = "com.reicast.emulator",
+            packageName = "com.flycast.emulator",
             displayName = "Flycast",
             platformIds = setOf("dreamcast"),
         ),
         EmulatorSpec(
-            packageName = "com.flycast.emulator",
-            displayName = "Flycast",
+            packageName = "com.reicast.emulator",
+            displayName = "Flycast (Reicast build)",
             platformIds = setOf("dreamcast"),
         ),
         EmulatorSpec(
@@ -669,6 +746,6 @@ object EmulatorRegistry {
         // The current generation, and the long-lived Play Store families.
         "azahar", "lime3ds", "panda3ds", "pandroid", "stratoemu", "skyline",
         "sudachi", "citron", "noods", "johnemulators", "lemuroid", "vita3k",
-        "winlator", "scummvm", "pizzaboy",
+        "winlator", "scummvm", "pizzaboy", "cemu",
     )
 }

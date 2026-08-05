@@ -1,6 +1,7 @@
 package com.thor.data.scanner
 
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import com.thor.core.model.BuiltInPlatforms
 import org.junit.Test
 
@@ -145,7 +146,76 @@ class EmulatorRegistryTest {
 
         assertThat(packages).containsNoDuplicates()
     }
+
+    /**
+     * Two emulators sharing a name is the same problem as sharing a package.
+     *
+     * The N64 entries were "M64Plus FZ Pro", "Mupen64Plus FZ (Pro)" and
+     * "Mupen64Plus FZ" — three near-identical captions over three different
+     * applications, two of them naming the wrong build. The picker is a list of
+     * names, so a duplicate there is a choice the user cannot make correctly.
+     */
+    @Test
+    fun `no two emulators wear the same name`() {
+        val names = EmulatorRegistry.KNOWN.map { it.displayName }
+
+        assertThat(names).containsNoDuplicates()
+    }
+
+    /**
+     * Wii U was the last system with nothing that could open a game on it.
+     *
+     * RetroArch claims it the way it claims everything, by declaring the whole
+     * platform list — and no libretro core runs Wii U, so the claim was empty and
+     * every Wii U game in the library was unlaunchable.
+     */
+    @Test
+    fun `Wii U has a dedicated emulator`() {
+        val dedicated = EmulatorRegistry.candidatesFor("wiiu").filterNot { it.isFrontEnd }
+
+        assertThat(dedicated.map { it.packageName }).contains("info.cemu.Cemu")
+    }
+
+    /**
+     * The three the user asks for by name, reachable for their systems.
+     *
+     * Snes9x is here under the name it ships as: Broglia's build is the Snes9x
+     * port on Android, and there is no application called plain "Snes9x" to add.
+     */
+    @Test
+    fun `Cemu, M64Plus FZ and Snes9x are all offered`() {
+        fun packagesFor(platformId: String) =
+            EmulatorRegistry.candidatesFor(platformId).map { it.packageName }
+
+        assertThat(packagesFor("wiiu")).contains("info.cemu.Cemu")
+        assertThat(packagesFor("n64")).containsAtLeast(
+            "org.mupen64plusae.v3.fzurita",
+            "org.mupen64plusae.v3.fzurita.pro",
+        )
+        assertThat(packagesFor("snes")).contains("com.explusalpha.Snes9xPlus")
+    }
+
+    /**
+     * The Mupen family is launched by component, not by the package's default.
+     *
+     * Without it the intent resolves to whatever the package declares as its VIEW
+     * handler, and on this family that is the file browser — so Launch opened the
+     * emulator on a list of folders rather than on the game. That is the failure
+     * this whole table exists to prevent, and it is invisible from here: nothing
+     * throws, the emulator simply opens on the wrong screen.
+     */
+    @Test
+    fun `every Mupen build is launched through its splash activity`() {
+        val mupen = EmulatorRegistry.KNOWN.filter { it.packageName.startsWith("org.mupen64plusae") }
+
+        assertThat(mupen).isNotEmpty()
+        mupen.forEach { spec ->
+            assertWithMessage("activity for ${spec.packageName}")
+                .that(spec.activityName)
+                .isEqualTo("paulscode.android.mupen64plusae.SplashActivity")
+        }
+    }
 }
 
 /** Kept in step with the figure in README.md, by the test above. */
-private const val EMULATORS_IN_README = 80
+private const val EMULATORS_IN_README = 81
