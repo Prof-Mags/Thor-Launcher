@@ -33,14 +33,19 @@ class ThemeSpecTest {
     }
 
     @Test
-    fun `there are twelve themes, four to a family`() {
-        assertThat(ThemeRecipe.ALL).hasSize(THEME_COUNT)
-
+    fun `every shelf holds what it is meant to`() {
+        // The even split across the three colour shelves is a design decision, not
+        // an accident of what has been added over time — the set was once sixteen
+        // darks against four lights, which is what made the gallery a long scroll
+        // of near-identical cards. A new theme has to displace one from its own
+        // shelf.
         val byFamily = ThemeRecipe.ALL.groupBy(ThemeRecipe::family)
+
         assertThat(byFamily.keys).containsExactlyElementsIn(ThemeFamily.entries)
-        byFamily.forEach { (family, recipes) ->
-            assertWithMessage("themes in $family").that(recipes).hasSize(THEMES_PER_FAMILY)
+        SHELF_SIZES.forEach { (family, size) ->
+            assertWithMessage("themes in $family").that(byFamily.getValue(family)).hasSize(size)
         }
+        assertThat(ThemeRecipe.ALL).hasSize(SHELF_SIZES.values.sum())
     }
 
     @Test
@@ -50,7 +55,7 @@ class ThemeSpecTest {
         val families = ThemeRecipe.ALL.map(ThemeRecipe::family)
 
         assertThat(families).isEqualTo(
-            families.distinct().flatMap { family -> List(THEMES_PER_FAMILY) { family } },
+            families.distinct().flatMap { family -> List(SHELF_SIZES.getValue(family)) { family } },
         )
     }
 
@@ -67,6 +72,10 @@ class ThemeSpecTest {
         ThemeRecipe.ALL.forEach { recipe ->
             val message = "${recipe.id} on the ${recipe.family} shelf"
             when (recipe.family) {
+                // The editor shelf makes a different claim, checked separately: it
+                // is about where a palette came from, not which way it leans.
+                ThemeFamily.EDITOR -> Unit
+
                 ThemeFamily.NEUTRAL ->
                     assertWithMessage(message)
                         .that(recipe.accentChroma)
@@ -109,20 +118,75 @@ class ThemeSpecTest {
     // ------------------------------------------------ generated palettes
 
     @Test
-    fun `the surface ramp never goes backwards`() {
-        // A card on a panel on the background has to stay distinguishable, which it
-        // cannot if an "elevated" surface is darker than the one beneath it. Higher
-        // is lighter in both polarities — on a light theme that means a white card
-        // over an off-white page, which is the conventional cue.
+    fun `adjacent surfaces are far enough apart to see`() {
+        /*
+         * The assertion that would have caught the light palettes.
+         *
+         * The old one checked that the ramp never went *backwards*, which the light
+         * ramp obeyed while stepping 0.024 in lightness where the dark one stepped
+         * 0.050 — monotonic, and half as visible. The result on a device was that
+         * you could not tell where a grid slot ended and the page began, and the
+         * test said everything was fine.
+         *
+         * Measured in OKLCH lightness rather than as a WCAG ratio, and that choice
+         * is the point of the colour space. Contrast ratios collapse near black —
+         * two surfaces 0.06 apart at the top of the contrast dial measure 1.02:1
+         * and are perfectly easy to see — so a ratio would demand the impossible in
+         * the shadows and accept the invisible near white. Perceptual lightness
+         * says the same thing at both ends.
+         */
         forEveryPalette { spec, label ->
             val ramp = listOf(
                 spec.backgroundArgb,
                 spec.surfaceArgb,
                 spec.surfaceElevatedArgb,
                 spec.surfaceHighestArgb,
-            ).map { Oklch.relativeLuminance(it) }
+            ).map { Oklch.fromArgb(it).l }
 
-            assertWithMessage("surface ramp for $label").that(ramp).isInOrder()
+            ramp.zipWithNext().forEachIndexed { level, (lower, higher) ->
+                assertWithMessage("step $level to ${level + 1} of the ramp, $label")
+                    .that(kotlin.math.abs(higher - lower))
+                    .isAtLeast(MIN_SURFACE_STEP)
+            }
+        }
+    }
+
+    @Test
+    fun `the ramp travels in one direction, and the right one`() {
+        // Climbing on a dark ground and descending on a light one. A container on a
+        // light page is distinguished by being dimmer than the page — brighter has
+        // nowhere to go, which is exactly how the light ramp ran out of room.
+        forEveryPalette { spec, label ->
+            val ramp = listOf(
+                spec.backgroundArgb,
+                spec.surfaceArgb,
+                spec.surfaceElevatedArgb,
+                spec.surfaceHighestArgb,
+            ).map { Oklch.fromArgb(it).l }
+
+            assertWithMessage("ramp direction for $label")
+                .that(if (spec.isDark) ramp else ramp.reversed())
+                .isInOrder()
+        }
+    }
+
+    @Test
+    fun `the outline reads against every surface it edges`() {
+        // The border is the whole of what separates a panel from its page on a
+        // light theme, and it used to be measured from the background — which put
+        // it *inside* the ramp, lighter than the cards it was outlining.
+        forEveryPalette { spec, label ->
+            val outline = Oklch.fromArgb(spec.outlineArgb).l
+            listOf(
+                spec.backgroundArgb,
+                spec.surfaceArgb,
+                spec.surfaceElevatedArgb,
+                spec.surfaceHighestArgb,
+            ).forEach { surface ->
+                assertWithMessage("outline against a surface of $label")
+                    .that(kotlin.math.abs(outline - Oklch.fromArgb(surface).l))
+                    .isAtLeast(MIN_OUTLINE_STEP)
+            }
         }
     }
 
@@ -146,6 +210,80 @@ class ThemeSpecTest {
             assertWithMessage("muted on surface, $label")
                 .that(Oklch.contrastRatio(spec.onSurfaceVariantArgb, spec.surfaceArgb))
                 .isAtLeast(MIN_MUTED_CONTRAST)
+        }
+    }
+
+    @Test
+    fun `text stays readable on every level of the ramp, not just its own`() {
+        /*
+         * The stated ratio is measured against `surface`, because that is what the
+         * settings row promises. But text is drawn on all three panel levels — a
+         * dialog is `surfaceHighest`, a grid cell is `surfaceElevated` — and each
+         * step away from the surface it was tuned for costs some of the margin.
+         * This is the floor underneath the promise: whatever level it lands on, it
+         * still clears AA.
+         */
+        forEveryPalette { spec, label ->
+            listOf(
+                "surface" to spec.surfaceArgb,
+                "elevated" to spec.surfaceElevatedArgb,
+                "highest" to spec.surfaceHighestArgb,
+            ).forEach { (name, surface) ->
+                assertWithMessage("body on $name, $label")
+                    .that(Oklch.contrastRatio(spec.onSurfaceArgb, surface))
+                    .isAtLeast(MIN_BODY_CONTRAST)
+                assertWithMessage("muted on $name, $label")
+                    .that(Oklch.contrastRatio(spec.onSurfaceVariantArgb, surface))
+                    .isAtLeast(MIN_MUTED_CONTRAST)
+            }
+        }
+    }
+
+    @Test
+    fun `the editor ports are recognisably what they are ported from`() {
+        /*
+         * A port is a claim about something outside this codebase, and an unchecked
+         * claim of that kind rots quietly: a tweak to the ground lightness or the
+         * tint taper would leave One Dark still called One Dark and no longer
+         * looking like it. The reference values are measured out of the published
+         * palettes, and only the ground and the accent are asserted — those are
+         * what make the theme recognisable, and the rest is a launcher rather than
+         * an editor and cannot be faithful to anything.
+         */
+        EDITOR_SOURCES.forEach { (id, source) ->
+            val (groundArgb, accentArgb) = source
+            val spec = ThemeRecipe.of(id).resolve()
+
+            val ground = Oklch.fromArgb(spec.backgroundArgb)
+            val wanted = Oklch.fromArgb(groundArgb)
+            assertWithMessage("$id ground lightness").that(kotlin.math.abs(ground.l - wanted.l))
+                .isLessThan(PORT_LIGHTNESS_TOLERANCE)
+            assertWithMessage("$id ground hue").that(hueDistance(ground.h, wanted.h))
+                .isLessThan(PORT_HUE_TOLERANCE)
+
+            val accent = Oklch.fromArgb(spec.primaryArgb)
+            assertWithMessage("$id accent hue")
+                .that(hueDistance(accent.h, Oklch.fromArgb(accentArgb).h))
+                .isLessThan(PORT_HUE_TOLERANCE)
+        }
+    }
+
+    @Test
+    fun `a lifted ground yields to the contrast dial`() {
+        // An editor palette asks for a mid-toned field, and at the top of the
+        // contrast dial that is the opposite of what the user asked for. The dial
+        // has to win — and it also has to, because a ground sitting at One Dark's
+        // lightness cannot carry 17.5:1 however the text is chosen.
+        EDITOR_SOURCES.keys.forEach { id ->
+            val recipe = ThemeRecipe.of(id)
+            val grounds = ContrastLevel.entries.map { level ->
+                Oklch.fromArgb(
+                    recipe.resolve(ThemeOptions(dark = true, contrast = level)).backgroundArgb,
+                ).l
+            }
+            assertWithMessage("$id grounds across the dial")
+                .that(grounds.reversed())
+                .isInOrder()
         }
     }
 
@@ -342,16 +480,20 @@ class ThemeSpecTest {
                 assertWithMessage("body, $label")
                     .that(Oklch.contrastRatio(spec.onSurfaceArgb, spec.surfaceArgb))
                     .isAtLeast(MIN_BODY_CONTRAST)
-                assertWithMessage("ramp, $label")
-                    .that(
-                        listOf(
-                            spec.backgroundArgb,
-                            spec.surfaceArgb,
-                            spec.surfaceElevatedArgb,
-                            spec.surfaceHighestArgb,
-                        ).map { Oklch.relativeLuminance(it) },
-                    )
+                val ramp = listOf(
+                    spec.backgroundArgb,
+                    spec.surfaceArgb,
+                    spec.surfaceElevatedArgb,
+                    spec.surfaceHighestArgb,
+                ).map { Oklch.fromArgb(it).l }
+                assertWithMessage("ramp direction, $label")
+                    .that(if (spec.isDark) ramp else ramp.reversed())
                     .isInOrder()
+                ramp.zipWithNext().forEach { (lower, higher) ->
+                    assertWithMessage("ramp separation, $label")
+                        .that(kotlin.math.abs(higher - lower))
+                        .isAtLeast(MIN_SURFACE_STEP)
+                }
             }
         }
     }
@@ -450,8 +592,48 @@ class ThemeSpecTest {
         const val FULLY_OPAQUE = 0xFF
         const val BLACK = 0xFF000000L
 
-        const val THEME_COUNT = 12
-        const val THEMES_PER_FAMILY = 4
+        /**
+         * How many themes belong on each shelf.
+         *
+         * Four to each of the colour shelves, and the editor shelf holds however
+         * many ports there are — a shelf of ports cannot be padded to a quota,
+         * because a port has to be of something people actually use.
+         */
+        val SHELF_SIZES = mapOf(
+            ThemeFamily.NEUTRAL to 4,
+            ThemeFamily.WARM to 4,
+            ThemeFamily.COOL to 4,
+            ThemeFamily.EDITOR to 2,
+        )
+
+        /**
+         * Ground and accent, measured out of the published palettes.
+         *
+         * One Dark: #282C34 and #61AFEF. Palenight: #292D3E and #C792EA.
+         */
+        val EDITOR_SOURCES = mapOf(
+            ThemeId.ONE_DARK to (0xFF282C34L to 0xFF61AFEFL),
+            ThemeId.PALENIGHT to (0xFF292D3EL to 0xFFC792EAL),
+        )
+
+        /** How far a port's ground may sit from the original, in OKLCH lightness. */
+        const val PORT_LIGHTNESS_TOLERANCE = 0.03f
+
+        /** And in hue. Tighter than the lightness: the hue is the recognisable part. */
+        const val PORT_HUE_TOLERANCE = 8f
+
+        /**
+         * The smallest lightness step between adjacent surfaces that still reads.
+         *
+         * Set just under the narrowest step any contrast level asks for, so it
+         * documents what is shipping rather than an aspiration — and so a change
+         * that quietly compressed the ramp would fail rather than pass by a
+         * whisker, which is what the light palettes did.
+         */
+        const val MIN_SURFACE_STEP = 0.038f
+
+        /** And how far the outline has to sit from every surface it edges. */
+        const val MIN_OUTLINE_STEP = 0.018f
 
         /** Above this hue a colour has turned green; below it, it is still warm. */
         const val WARM_UPPER_BOUND = 110f

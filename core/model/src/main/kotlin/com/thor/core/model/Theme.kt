@@ -43,6 +43,10 @@ enum class ThemeId(val displayName: String) {
     AURORA("Aurora"),
     ORCHID("Orchid"),
     TERMINAL("Terminal"),
+
+    // ---- Editor --------------------------------------------------------
+    ONE_DARK("One Dark"),
+    PALENIGHT("Palenight"),
 }
 
 /**
@@ -64,6 +68,18 @@ enum class ThemeFamily(val label: String) {
 
     /** Greens through violets. */
     COOL("Cool"),
+
+    /**
+     * Palettes taken from code editors.
+     *
+     * A shelf about where a theme came from rather than what colour it is, which
+     * is the axis somebody looking for One Dark is actually searching on — nobody
+     * arrives at that name by browsing temperature. What the themes on it have in
+     * common is the thing that makes an editor palette an editor palette: a
+     * mid-toned ground rather than a near-black one, because a screen you read
+     * text on all day is not a screen you want at maximum depth.
+     */
+    EDITOR("Editor"),
 }
 
 /**
@@ -100,21 +116,37 @@ enum class ThemeMode(val label: String) {
 @Serializable
 enum class ContrastLevel(
     val label: String,
-    /** Lightness of the darkest surface when the palette resolves dark. */
+    /** Lightness of the ground when the palette resolves dark. */
     internal val darkGround: Float,
     /** Gap in lightness between adjacent dark surfaces. */
     internal val darkStep: Float,
-    /** Lightness of the darkest surface when the palette resolves light. */
+    /**
+     * Lightness of the ground when the palette resolves light.
+     *
+     * Near white, and the light ramp descends from it — see [surfaceRamp].
+     */
     internal val lightGround: Float,
+    /** Gap in lightness between adjacent light surfaces. */
+    internal val lightStep: Float,
     /** Ratio body text must clear against the surface behind it. */
     val bodyRatio: Float,
     /** Ratio secondary and metadata text must clear. */
     val mutedRatio: Float,
     /** Extra distance the accent is pushed away from the ground. */
     internal val accentPush: Float,
+    /**
+     * How much of a theme's own [ThemeRecipe.groundShift] survives at this level.
+     *
+     * A theme that lifts its ground off the extreme is asking for a softer look,
+     * and at the top of this dial that is the opposite of what the user asked for
+     * — so the dial wins, progressively. It also has to: a ground lifted to
+     * One Dark's mid-grey simply cannot carry 17.5:1, and a promise the palette
+     * cannot keep is worse than a theme that reads a little less like itself.
+     */
+    internal val groundShiftScale: Float,
 ) {
     /** Lower contrast than the default: a softer, flatter, more ambient look. */
-    SOFT("Softened", 0.205f, 0.042f, 0.885f, 6.0f, 3.8f, -0.02f),
+    SOFT("Softened", 0.205f, 0.042f, 0.962f, 0.045f, 6.8f, 4.6f, -0.02f, 1.0f),
 
     /*
      * Well past AA, on purpose.
@@ -125,12 +157,20 @@ enum class ContrastLevel(
      * written for a document at desk distance; this is read at arm's length on a
      * handheld and from a sofa on a television, and both of those want more.
      */
-    NORMAL("Normal", 0.158f, 0.050f, 0.928f, 10.5f, 5.6f, 0f),
+    NORMAL("Normal", 0.158f, 0.050f, 0.982f, 0.050f, 10.5f, 5.6f, 0f, 1.0f),
 
-    HIGH("High", 0.112f, 0.055f, 0.948f, 14.0f, 7.0f, 0.05f),
+    HIGH("High", 0.112f, 0.055f, 0.992f, 0.052f, 14.0f, 7.0f, 0.05f, 0.5f),
 
     /** As far as the palette can be pushed while still being the same theme. */
-    MAXIMUM("Maximum", 0.045f, 0.060f, 0.968f, 17.5f, 10.0f, 0.09f),
+    /*
+     * The top of the dial is bounded by physics, not by taste.
+     *
+     * A light palette's ceiling is the ratio between its own base surface and pure
+     * black, and that surface cannot be white — three panels have to fit below it
+     * and still be told apart. 17:1 is what is left once both of those are paid
+     * for, and asking for more would be a promise the generator could not keep.
+     */
+    MAXIMUM("Maximum", 0.045f, 0.060f, 1.0f, 0.052f, 17.0f, 10.0f, 0.09f, 0.15f),
 }
 
 /**
@@ -188,6 +228,19 @@ data class ThemeRecipe(
      * competing with the accent for the same job.
      */
     val neutralChroma: Float = 0.018f,
+    /**
+     * How far this theme lifts its ground off the extreme the contrast level picked.
+     *
+     * Zero on almost everything: a theme's ground is the contrast dial's business,
+     * not the theme's. The exception is a theme whose whole character *is* a
+     * mid-toned field rather than a near-black one — the code-editor palettes on
+     * the [ThemeFamily.EDITOR] shelf are exactly that, and resolving One Dark onto
+     * a near-black ground would produce something that is not One Dark in any
+     * respect a user would recognise.
+     *
+     * Scaled down as the contrast dial rises; see [ContrastLevel.groundShiftScale].
+     */
+    val groundShift: Float = 0f,
     val material: ThemeMaterial,
     val motion: MotionStyle = MotionStyle.SMOOTH,
     val font: FontChoice = FontChoice.SYSTEM,
@@ -222,7 +275,12 @@ data class ThemeRecipe(
         val greyHue = if (override != null) hue else (neutralHue + options.hueShift).mod(360f)
         val greyChroma = neutralChroma * intensity
 
-        val ramp = surfaceRamp(dark, contrast, options.pureBlack)
+        val ramp = surfaceRamp(
+            dark = dark,
+            contrast = contrast,
+            groundShift = groundShift * contrast.groundShiftScale,
+            pureBlack = options.pureBlack,
+        )
         val taper = if (dark) DARK_TINT_TAPER else LIGHT_TINT_TAPER
         val surfaces = ramp.mapIndexed { level, lightness ->
             Oklch(lightness, greyChroma * taper[level], greyHue)
@@ -266,7 +324,15 @@ data class ThemeRecipe(
             cursorArgb = cursor.toArgb(),
             glowArgb = cursor.toArgb(alpha = if (dark) DARK_GLOW_ALPHA else LIGHT_GLOW_ALPHA),
             outlineArgb = Oklch(
-                l = if (dark) panel.l + OUTLINE_LIFT else background.l - OUTLINE_LIFT,
+                // One step past the far end of the ramp, so the edge reads on the
+                // highest panel as well as on the ground. Measured from `surface`
+                // before, which on a light palette put it *inside* the ramp — an
+                // outline lighter than the card it was outlining.
+                l = if (dark) {
+                    surfaces[3].l + DARK_OUTLINE_STEP
+                } else {
+                    surfaces[3].l - LIGHT_OUTLINE_STEP
+                },
                 c = greyChroma * 0.9f,
                 h = greyHue,
             ).toArgb(),
@@ -292,8 +358,9 @@ data class ThemeRecipe(
             // An overridden style takes its preset whole rather than keeping the
             // theme's adjustments to the style it replaced: "glass, but with
             // Terminal's hard 1.5dp border" is not glass, and the label said glass.
-            surface = options.surfaceStyle?.let { SurfaceTreatment.forStyle(it) }
-                ?: material.surface,
+            surface = (options.surfaceStyle?.let { SurfaceTreatment.forStyle(it) }
+                ?: material.surface)
+                .let { if (dark) it else it.forLightGround() },
             backgroundDepth = if (options.pureBlack && dark) {
                 0f
             } else {
@@ -306,10 +373,10 @@ data class ThemeRecipe(
         /**
          * Every bundled theme, in gallery order.
          *
-         * Grouped by [ThemeFamily], four to a shelf, so the row reads as three
-         * groups rather than as one long strip: the neutrals first, because the
-         * default is one of them and the first card should be where the reader
-         * already is.
+         * Grouped by [ThemeFamily] so the row reads as shelves rather than as one
+         * long strip: the neutrals first, because the default is one of them and
+         * the first card should be where the reader already is, then warm, then
+         * cool, then the editor ports.
          */
         val ALL: List<ThemeRecipe> = listOf(
             // ---- Neutral ---------------------------------------------------
@@ -484,6 +551,53 @@ data class ThemeRecipe(
                 motion = MotionStyle.MECHANICAL, font = FontChoice.MONO,
                 defaultWallpaper = AnimatedWallpaper.PARTICLES,
             ),
+
+            // ---- Editor ----------------------------------------------------
+            /*
+             * Ports rather than homages, as far as a launcher can be one.
+             *
+             * What carries over is the part that makes these palettes
+             * recognisable: the ground and the accent, measured out of the
+             * originals in OKLCH. #282C34 and #292D3E are not near-black, and that
+             * is the whole of why they read as editor themes rather than as
+             * another two dark launchers — hence `groundShift`, which exists for
+             * these two and nothing else.
+             *
+             * What does not carry over is the typography. These ship on
+             * [FontChoice.SYSTEM] rather than mono, because a whole launcher set in
+             * a monospace face is a costume rather than a theme — and anybody who
+             * wants it now has a Typeface row to say so, which is new.
+             */
+            ThemeRecipe(
+                // Atom's One Dark, by way of the editor extension. Ground #282C34,
+                // accent #61AFEF.
+                id = ThemeId.ONE_DARK, family = ThemeFamily.EDITOR,
+                accentHue = 245f, accentChroma = 0.121f,
+                secondaryHueShift = 66f, accentSpread = 16f,
+                neutralHue = 254f, neutralChroma = 0.0204f,
+                groundShift = 0.142f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.TINTED.copy(elevationTint = 0.05f),
+                    cornerRadiusDp = 12, surfaceAlpha = 0.96f, blurRadiusDp = 14,
+                    grain = 0.03f, backgroundDepth = 0.06f,
+                ),
+                defaultWallpaper = AnimatedWallpaper.GRADIENT_DRIFT,
+            ),
+            ThemeRecipe(
+                // Material Theme's Palenight. Ground #292D3E, accent #C792EA, with
+                // its blue #82AAFF as the secondary.
+                id = ThemeId.PALENIGHT, family = ThemeFamily.EDITOR,
+                accentHue = 311f, accentChroma = 0.1345f,
+                secondaryHueShift = -60f, accentSpread = 18f,
+                neutralHue = 274f, neutralChroma = 0.0369f,
+                groundShift = 0.143f,
+                material = ThemeMaterial(
+                    surface = SurfaceTreatment.TINTED.copy(elevationTint = 0.06f),
+                    cornerRadiusDp = 10, surfaceAlpha = 0.94f, blurRadiusDp = 18,
+                    grain = 0.03f, backgroundDepth = 0.08f,
+                ),
+                defaultWallpaper = AnimatedWallpaper.MESH,
+            ),
         )
 
         val BY_ID: Map<ThemeId, ThemeRecipe> = ALL.associateBy(ThemeRecipe::id)
@@ -653,26 +767,80 @@ data class ThemeSpec(
 )
 
 /**
- * The four surface lightnesses, darkest first.
+ * The four surface lightnesses, ground first.
  *
- * Always ascending, in both polarities: a light theme elevates by getting whiter,
- * a white card over an off-white page, which is the conventional cue and the one
- * the eye reads as "nearer". Two steps was not enough — the dock, grid cells and
- * dialogs all landed on the same tone and the depth collapsed.
+ * The ramp climbs on a dark ground and *descends* on a light one, which is the
+ * opposite of what it used to do and the fix for the only thing genuinely wrong
+ * with the light palettes. Elevating toward white sounds right — a white card on
+ * an off-white page — but white is a wall: pin the top of the ramp at 1.0 and
+ * there is nowhere for four surfaces to go, so they land 0.024 apart in lightness
+ * where a dark ramp spreads them 0.050. Half the separation, and the result was
+ * that you could not see where a grid slot ended and the page began.
+ *
+ * Descending from a near-white ground has all the room in the world, and it is
+ * also what every light interface actually does — a container on a light page is
+ * distinguished by being *dimmer* than the page, not brighter than it. The steps
+ * are now the same size in both polarities.
+ *
+ * @param groundShift how far this theme lifts its ground off the extreme, already
+ *   scaled by the contrast level's appetite for it
  */
-private fun surfaceRamp(dark: Boolean, contrast: ContrastLevel, pureBlack: Boolean): List<Float> =
-    if (dark) {
-        val ground = contrast.darkGround
-        val step = contrast.darkStep
-        val ramp = listOf(ground, ground + step, ground + 2 * step, ground + 3.1f * step)
-        // Only the ground goes to black; the panels above it keep their own
-        // lightness, so the ramp gets *deeper* rather than being flattened into it.
-        if (pureBlack) listOf(0f) + ramp.drop(1) else ramp
+private fun surfaceRamp(
+    dark: Boolean,
+    contrast: ContrastLevel,
+    groundShift: Float,
+    pureBlack: Boolean,
+): List<Float> {
+    // Away from the extreme means lighter on a dark ground and darker on a light
+    // one: a theme that declares a soft ground means the same thing either way.
+    val ground = if (dark) {
+        (contrast.darkGround + groundShift).coerceIn(0f, MAX_DARK_GROUND)
     } else {
-        val ground = contrast.lightGround
-        val step = (1f - ground) / 3f
-        listOf(ground, ground + step, ground + 2 * step, 1f)
+        (contrast.lightGround - groundShift * LIGHT_GROUND_SHIFT_SCALE)
+            .coerceIn(MIN_LIGHT_GROUND, 1f)
     }
+    val step = (if (dark) contrast.darkStep else contrast.lightStep) * if (dark) 1f else -1f
+    val ramp = listOf(ground, ground + step, ground + 2 * step, ground + 3.1f * step)
+
+    // Only the ground goes to black; the panels above it keep their own lightness,
+    // so the ramp gets *deeper* rather than being flattened into it.
+    return if (dark && pureBlack) listOf(0f) + ramp.drop(1) else ramp
+}
+
+/**
+ * Strengthens a panel treatment for a light ground.
+ *
+ * The measurements in a [SurfaceTreatment] were all chosen against a dark field,
+ * where a panel separates itself mostly by being lighter than what is behind it
+ * and the edge is a finishing touch. None of that transfers. On a light page the
+ * lightness step is doing far less work, a white specular highlight on a
+ * near-white panel is invisible, and the border and the shadow are the whole of
+ * what says "this is a card" — so both are given a floor, and the sheen that has
+ * stopped meaning anything is turned down.
+ *
+ * [SurfaceStyle.FLAT] keeps its zero shadow. Having no depth is the entire claim
+ * of that treatment, and it pays for it with a full-strength border.
+ */
+private fun SurfaceTreatment.forLightGround(): SurfaceTreatment = copy(
+    borderWidthDp = if (borderWidthDp > 0f) maxOf(borderWidthDp, LIGHT_MIN_BORDER) else 0f,
+    borderAlpha = if (borderAlpha > 0f) maxOf(borderAlpha, LIGHT_MIN_BORDER_ALPHA) else 0f,
+    specularAlpha = specularAlpha * LIGHT_SPECULAR_SCALE,
+    shadowElevationDp = if (style == SurfaceStyle.FLAT) {
+        shadowElevationDp
+    } else {
+        maxOf(shadowElevationDp, LIGHT_MIN_SHADOW)
+    },
+)
+
+/** A hairline below 1dp does not survive on a light field. */
+private const val LIGHT_MIN_BORDER = 1f
+private const val LIGHT_MIN_BORDER_ALPHA = 0.6f
+
+/** White on near-white says nothing, so the lit edge mostly goes. */
+private const val LIGHT_SPECULAR_SCALE = 0.3f
+
+/** Enough shadow to read as a card without becoming a smudge. */
+private const val LIGHT_MIN_SHADOW = 5
 
 /**
  * The least extreme text lightness that still clears [targetRatio] on [surface].
@@ -716,8 +884,33 @@ private const val LIGHT_ACCENT_LIGHTNESS = 0.52f
 /** How far the gradient's far stop is lifted from the accent. */
 private const val ACCENT_END_LIFT = 0.09f
 
-/** How far the outline sits from the surface it edges. */
-private const val OUTLINE_LIFT = 0.115f
+/**
+ * How far past the end of the ramp the outline sits, on a dark ground.
+ *
+ * Small, because a pale hairline on a dark field is conspicuous already. It is
+ * measured from the *far* end of the ramp rather than from the base surface, so
+ * the outline is guaranteed to read on every panel rather than only on the one it
+ * was measured against.
+ */
+private const val DARK_OUTLINE_STEP = 0.02f
+
+/**
+ * And on a light ground, where it has to be much further.
+ *
+ * A grey line on white is the least conspicuous mark in the whole palette, and
+ * light themes lean on it hardest — there is no glow and no lit edge doing the
+ * work of separating a panel from its page.
+ */
+private const val LIGHT_OUTLINE_STEP = 0.1f
+
+/** A theme's own ground lift counts for less on a light page, which has less room. */
+private const val LIGHT_GROUND_SHIFT_SCALE = 0.45f
+
+/** Past this a "dark" theme is a mid-grey one, whatever it declared. */
+private const val MAX_DARK_GROUND = 0.55f
+
+/** And past this a light one has stopped being light. */
+private const val MIN_LIGHT_GROUND = 0.62f
 
 private const val DARK_GLOW_ALPHA = 0.55f
 private const val LIGHT_GLOW_ALPHA = 0.34f
@@ -745,8 +938,15 @@ private const val MAX_INTENSITY = 2f
  */
 private val DARK_TINT_TAPER = listOf(0.85f, 1f, 1.15f, 1.3f)
 
-/** And shrinks with it on a light one, because the top of a light ramp is white. */
-private val LIGHT_TINT_TAPER = listOf(1f, 0.78f, 0.5f, 0.22f)
+/**
+ * And the same way on a light one, now that the light ramp descends.
+ *
+ * The ground is nearly a true white — a light launcher should read as white, not
+ * as tinted paper — and each container below it carries more of the theme's
+ * colour. That is a second axis of separation on top of the lightness step, which
+ * is exactly where a light palette needs the help.
+ */
+private val LIGHT_TINT_TAPER = listOf(0.5f, 0.85f, 1.15f, 1.4f)
 
 private const val CONTRAST_SEARCH_STEPS = 18
 

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -106,7 +107,13 @@ fun SideMenu(
                     bordered = false,
                     modifier = Modifier
                         .fillMaxHeight()
-                        .width(PANEL_WIDTH.dp)
+                        // A share of the screen with a ceiling, rather than a flat
+                        // width. The rows read at body size now and a fixed 288dp
+                        // was already tight for them; a fraction also keeps the
+                        // drawer proportionate on the panel it is actually drawn
+                        // on, which is not the one this number was picked against.
+                        .fillMaxWidth(PANEL_FRACTION)
+                        .widthIn(max = PANEL_WIDTH.dp)
                         // The panel swallows taps so they do not reach the
                         // dismiss handler on the scrim behind it.
                         .clickable(enabled = false) {},
@@ -197,7 +204,10 @@ private fun MenuRow(
     )
 }
 
-private const val PANEL_WIDTH = 288
+private const val PANEL_WIDTH = 320
+
+/** Enough of the screen to be a drawer, not so much that it is a page. */
+private const val PANEL_FRACTION = 0.68f
 private const val EDGE_MARKER_FRACTION = 0.5f
 private const val ICON_TILE = 40
 private const val ICON_GLYPH = 21

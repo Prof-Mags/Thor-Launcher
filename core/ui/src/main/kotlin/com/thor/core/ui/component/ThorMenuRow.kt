@@ -92,7 +92,7 @@ fun ThorMenuRow(
             .thorCursor(focused = focused, shape = shape)
             .pointerHover(hover)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = dimens.spacingSmall, vertical = 8.dp),
+            .padding(horizontal = dimens.spacingSmall, vertical = ROW_PADDING.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
     ) {
@@ -133,7 +133,19 @@ fun ThorMenuRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelLarge,
+                // The same size the rest of the launcher reads at.
+                //
+                // These were `labelLarge` over `labelSmall` — 14sp over 10sp, the
+                // smallest style in the whole scale — while every settings row and
+                // every card beside them used 16 over 12. That is a fifth off the
+                // title and a third off the description, and since this one row is
+                // what draws the side menu, the long-press menu, the folder
+                // picker, the sort dialog and every dropdown, the effect was that
+                // every menu in the launcher looked like a scaled-down copy of the
+                // screen that raised it. Label styles are for chips and buttons,
+                // where the text is one word inside its own container; a row with a
+                // title and a sentence under it is body copy.
+                style = MaterialTheme.typography.bodyLarge,
                 color = when {
                     !enabled -> colors.onSurfaceVariant.copy(alpha = 0.5f)
                     accent != null && lit -> accent
@@ -146,8 +158,12 @@ fun ThorMenuRow(
             description?.let {
                 Text(
                     text = it,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant.copy(alpha = 0.72f),
+                    style = MaterialTheme.typography.bodySmall,
+                    // Raised along with the size. A description that carries real
+                    // information — "Stop keeping this at the front" is the only
+                    // thing telling you what the row does — should not also be the
+                    // faintest text on screen.
+                    color = colors.onSurfaceVariant.copy(alpha = DESCRIPTION_ALPHA),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -157,7 +173,7 @@ fun ThorMenuRow(
         trailing?.let {
             Text(
                 text = it,
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelMedium,
                 color = if (lit) tint else colors.onSurfaceVariant,
                 maxLines = 1,
             )
@@ -166,10 +182,17 @@ fun ThorMenuRow(
 }
 
 /** The tile size a [ThorMenuRow]'s [leading] slot should fill, for artwork marks. */
-const val THOR_MENU_ICON_TILE = 40
+const val THOR_MENU_ICON_TILE = 44
 
 private const val MARKER_WIDTH = 3
-private const val MARKER_HEIGHT = 22
+private const val MARKER_HEIGHT = 26
 private const val ICON_TILE = THOR_MENU_ICON_TILE
-private const val ICON_GLYPH = 21
+private const val ICON_GLYPH = 23
+
+/** Vertical breathing room, matched to the taller type it now sits around. */
+private const val ROW_PADDING = 10
+
 private const val LIT_ALPHA = 0.14f
+
+/** Muted, but still legible — this line often carries the row's only explanation. */
+private const val DESCRIPTION_ALPHA = 0.85f

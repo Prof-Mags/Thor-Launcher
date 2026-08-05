@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -303,7 +304,11 @@ fun EntryContextMenu(
                     // reusing the base surface made them read as part of it.
                     color = ThorTheme.colors.surfaceHighest,
                     modifier = Modifier
-                        .width(CARD_WIDTH.dp)
+                        // Capped rather than fixed: the rows read at body size now,
+                        // and a flat 360dp had no answer for a panel narrower than
+                        // itself — the card would simply have run off the edge.
+                        .fillMaxWidth(CARD_FRACTION)
+                        .widthIn(max = CARD_WIDTH.dp)
                         .clickable(enabled = false) {},
                 ) {
                     Column(
@@ -420,7 +425,10 @@ private fun GridEntry.subtitle(): String = when (this) {
  * icon tile and a line of description under the label, and at the old width the
  * longer captions wrapped to three lines.
  */
-private const val CARD_WIDTH = 360
+private const val CARD_WIDTH = 392
+
+/** Leaves the grid showing at the edges, so the card reads as sitting over it. */
+private const val CARD_FRACTION = 0.88f
 
 /** Matches the side menu, whose rows these are deliberately a copy of. */
 private const val EDGE_MARKER_HEIGHT = 22
