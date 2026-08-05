@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Loki's mark on its own plate, for anywhere that wants one drawable rather than
-  an adaptive icon's layers. The device itself is `ic_launcher_foreground`; this
-  is that over the rounded plate the launcher icon is masked into.
+  Loki's mark: the device it runs on.
+
+  A clamshell handheld seen face on — a wide screen above, a smaller one below
+  with a pad and buttons either side of it. That is what this launcher is: the
+  only launcher that treats the second panel as a screen rather than as a
+  touchpad, and the shape says so at any size without a word on it.
+
+  Everything sits inside a 44 x 56 box centred on the 108 grid, so it survives
+  the circular mask an adaptive icon may be given: the corners are rounded
+  enough that the diagonal stays inside the 66dp safe zone.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -11,22 +18,7 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <path
-        android:pathData="M22,10 L86,10 A12,12 0 0 1 98,22 L98,86 A12,12 0 0 1 86,98 L22,98 A12,12 0 0 1 10,86 L10,22 A12,12 0 0 1 22,10 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="10"
-                android:startY="10"
-                android:endX="98"
-                android:endY="98"
-                android:type="linear">
-                <item android:offset="0" android:color="#FF141A24" />
-                <item android:offset="0.55" android:color="#FF0E1116" />
-                <item android:offset="1" android:color="#FF080A0E" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
+    <!-- Upper shell. -->
     <path
         android:pathData="M37,26 L71,26 A5,5 0 0 1 76,31 L76,52 L32,52 L32,31 A5,5 0 0 1 37,26 Z">
         <aapt:attr name="android:fillColor">
@@ -42,18 +34,22 @@
         </aapt:attr>
     </path>
 
+    <!-- Top screen: the wide one, lit. -->
     <path
         android:fillColor="#FF4F8CFF"
         android:pathData="M37,30 L71,30 A1.5,1.5 0 0 1 72.5,31.5 L72.5,46.5 A1.5,1.5 0 0 1 71,48 L37,48 A1.5,1.5 0 0 1 35.5,46.5 L35.5,31.5 A1.5,1.5 0 0 1 37,30 Z" />
 
+    <!-- A highlight across the glass, so it reads as a screen and not a panel. -->
     <path
         android:fillColor="#33FFFFFF"
         android:pathData="M35.5,31.5 A1.5,1.5 0 0 1 37,30 L71,30 A1.5,1.5 0 0 1 72.5,31.5 L72.5,34 L35.5,39 Z" />
 
+    <!-- Hinge. -->
     <path
         android:fillColor="#FF2B3242"
         android:pathData="M42,51 L66,51 L66,56 L42,56 Z" />
 
+    <!-- Lower shell. -->
     <path
         android:pathData="M32,55 L76,55 L76,77 A5,5 0 0 1 71,82 L37,82 A5,5 0 0 1 32,77 Z">
         <aapt:attr name="android:fillColor">
@@ -69,13 +65,17 @@
         </aapt:attr>
     </path>
 
+    <!-- Bottom screen: squarer and dimmer, the way the panel actually reads. -->
     <path
         android:fillColor="#FF2F6BD8"
         android:pathData="M45,59 L63,59 A1.5,1.5 0 0 1 64.5,60.5 L64.5,76.5 A1.5,1.5 0 0 1 63,78 L45,78 A1.5,1.5 0 0 1 43.5,76.5 L43.5,60.5 A1.5,1.5 0 0 1 45,59 Z" />
 
+    <!-- The pad, left of the lower screen. -->
     <path
         android:fillColor="#FF4A5468"
         android:pathData="M37.4,62.6 L40.4,62.6 L40.4,66.4 L44,66.4 L44,69.4 L40.4,69.4 L40.4,73.2 L37.4,73.2 L37.4,69.4 L34,69.4 L34,66.4 L37.4,66.4 Z" />
+
+    <!-- Four buttons, right of it. -->
     <path
         android:fillColor="#FF4A5468"
         android:pathData="M70,62.4 m-1.9,0 a1.9,1.9 0 1,0 3.8,0 a1.9,1.9 0 1,0 -3.8,0 Z" />

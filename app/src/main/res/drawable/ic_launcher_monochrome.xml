@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The same device as one silhouette, for themed icons.
+
+  A themed icon is tinted flat by the system, so anything relying on the colour
+  difference between a shell and its screen disappears. The screens are cut out
+  of the body instead — holes read at any tint, where a second fill colour reads
+  at exactly none.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Upper shell with the top screen punched out. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M37,26 L71,26 A5,5 0 0 1 76,31 L76,52 L32,52 L32,31 A5,5 0 0 1 37,26 Z M37,30 A1.5,1.5 0 0 0 35.5,31.5 L35.5,46.5 A1.5,1.5 0 0 0 37,48 L71,48 A1.5,1.5 0 0 0 72.5,46.5 L72.5,31.5 A1.5,1.5 0 0 0 71,30 Z" />
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M42,51 L66,51 L66,56 L42,56 Z" />
+
+    <!-- Lower shell, with the screen punched out and the controls left solid. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M32,55 L76,55 L76,77 A5,5 0 0 1 71,82 L37,82 A5,5 0 0 1 32,77 Z M45,59 A1.5,1.5 0 0 0 43.5,60.5 L43.5,76.5 A1.5,1.5 0 0 0 45,78 L63,78 A1.5,1.5 0 0 0 64.5,76.5 L64.5,60.5 A1.5,1.5 0 0 0 63,59 Z" />
+</vector>

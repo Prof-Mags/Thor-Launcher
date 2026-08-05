@@ -21,8 +21,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
@@ -186,9 +190,11 @@ fun ThorIntro(
                                 style = Stroke(width = outerStroke, cap = StrokeCap.Round),
                             )
                         }
-                        drawPath(
-                            path = boltPath(size.minDimension),
-                            color = colors.cursor,
+                        drawDeviceMark(
+                            extent = size.minDimension,
+                            shell = colors.onBackground.copy(alpha = MARK_SHELL_ALPHA),
+                            topScreen = colors.cursor,
+                            bottomScreen = colors.accentEnd,
                         )
                     },
             )
@@ -311,17 +317,60 @@ private fun loadingLabel(progress: Float, stages: List<String>): String {
     return stages[index]
 }
 
-/** The THOR bolt, in the same 108-unit space as the launcher icon. */
-private fun boltPath(size: Float): Path {
-    val scale = size / VIEWPORT
-    return Path().apply {
-        moveTo(60f * scale, 20f * scale)
-        lineTo(34f * scale, 58f * scale)
-        lineTo(50f * scale, 58f * scale)
-        lineTo(46f * scale, 88f * scale)
-        lineTo(74f * scale, 48f * scale)
-        lineTo(57f * scale, 48f * scale)
-        close()
+/**
+ * The launcher's mark: the device it runs on.
+ *
+ * The same drawing as `ic_launcher_foreground`, in the same 108-unit space, so
+ * the icon the user pressed and the mark that greets them are one shape rather
+ * than two things that resemble each other. It is drawn rather than loaded
+ * because these strokes are themed — the screens take the current accent, which
+ * a compiled-in vector cannot.
+ *
+ * Scaled to two thirds of the ring it sits inside, so the shell clears the inner
+ * arc instead of touching it.
+ */
+private fun DrawScope.drawDeviceMark(
+    extent: Float,
+    shell: Color,
+    topScreen: Color,
+    bottomScreen: Color,
+) {
+    val scale = extent / VIEWPORT * MARK_INSET
+    val originX = center.x - VIEWPORT * scale / 2f
+    val originY = center.y - VIEWPORT * scale / 2f
+
+    fun rect(left: Float, top: Float, right: Float, bottom: Float, radius: Float, color: Color) {
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(originX + left * scale, originY + top * scale),
+            size = Size((right - left) * scale, (bottom - top) * scale),
+            cornerRadius = CornerRadius(radius * scale, radius * scale),
+        )
+    }
+
+    // Upper shell and the wide screen in it.
+    rect(32f, 26f, 76f, 52f, 5f, shell)
+    rect(35.5f, 30f, 72.5f, 48f, 1.5f, topScreen)
+
+    // Hinge.
+    rect(42f, 51f, 66f, 56f, 0f, shell)
+
+    // Lower shell, its squarer screen, and the pad and buttons either side.
+    rect(32f, 55f, 76f, 82f, 5f, shell)
+    rect(43.5f, 59f, 64.5f, 78f, 1.5f, bottomScreen)
+    rect(37.4f, 62.6f, 40.4f, 73.2f, 1f, bottomScreen)
+    rect(34f, 66.4f, 44f, 69.4f, 1f, bottomScreen)
+    listOf(
+        70f to 62.4f,
+        74f to 67f,
+        70f to 71.6f,
+        66f to 67f,
+    ).forEach { (x, y) ->
+        drawCircle(
+            color = bottomScreen,
+            radius = MARK_BUTTON_RADIUS * scale,
+            center = Offset(originX + x * scale, originY + y * scale),
+        )
     }
 }
 
@@ -329,6 +378,14 @@ private fun span(progress: Float, from: Float, to: Float): Float {
     if (to <= from) return if (progress >= to) 1f else 0f
     return ((progress - from) / (to - from)).coerceIn(0f, 1f)
 }
+
+/** How much of the ring's width the device fills, leaving the arcs clear. */
+private const val MARK_INSET = 0.62f
+
+/** The shell, which is the launcher's own foreground colour held back. */
+private const val MARK_SHELL_ALPHA = 0.22f
+
+private const val MARK_BUTTON_RADIUS = 1.9f
 
 private const val MARK_FROM = 0.02f
 private const val MARK_TO = 0.20f
