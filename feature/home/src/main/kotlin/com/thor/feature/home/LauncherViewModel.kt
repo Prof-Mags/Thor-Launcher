@@ -1048,42 +1048,6 @@ class LauncherViewModel @Inject constructor(
             .launchIn(viewModelScope)
 
         observeWithdrawnSections()
-        observeAchievementRefreshes()
-    }
-
-    /**
-     * Ids whose achievements have been fetched this run.
-     *
-     * A set rather than a timestamp per game: the point is one request per game
-     * per session, and progress only changes when the game is played — which
-     * ends this process on a handheld anyway, because the launcher does not
-     * survive an emulator taking the foreground.
-     */
-    private val refreshedAchievements = mutableSetOf<String>()
-
-    /**
-     * Fetches a game's achievements when the cursor settles on it.
-     *
-     * Debounced rather than fired per selection: crossing a page of games at
-     * auto-repeat is a dozen selections in a second, and each one that reached
-     * the network would be a request for a card the user never stopped on.
-     *
-     * The bulk sync stores counts for the whole library; this fills in the
-     * achievements themselves, which are a request per game and so are fetched
-     * for the one being looked at. A game with no stored match does nothing —
-     * the repository returns without a request.
-     */
-    private fun observeAchievementRefreshes() {
-        uiState
-            .map { (it.selection as? GameEntry)?.id }
-            .distinctUntilChanged()
-            .debounce(ACHIEVEMENT_REFRESH_DELAY_MS)
-            .onEach { entryId ->
-                if (entryId == null || !refreshedAchievements.add(entryId)) return@onEach
-                runCatching { achievementRepository.refresh(entryId) }
-                    .onFailure { ThorLog.w(TAG, "Could not refresh achievements", it) }
-            }
-            .launchIn(viewModelScope)
     }
 
     fun openAppDrawer() {
@@ -1253,6 +1217,59 @@ class LauncherViewModel @Inject constructor(
     /** Records that the edit-mode gestures have been explained. */
     fun dismissEditModeTutorial() {
         viewModelScope.launchSafely(TAG) { settingsRepository.setEditModeTutorialSeen(true) }
+    }
+
+    /**
+     * Ids whose achievements have been fetched this run.
+     *
+     * A set rather than a timestamp per game: the point is one request per game
+     * per session, and progress only changes when the game is played — which
+     * ends this process on a handheld anyway, because the launcher does not
+     * survive an emulator taking the foreground.
+     */
+    private val refreshedAchievements = mutableSetOf<String>()
+
+    /**
+     * Fetches a game's achievements when the cursor settles on it.
+     *
+     * Debounced rather than fired per selection: crossing a page of games at
+     * auto-repeat is a dozen selections in a second, and each one that reached
+     * the network would be a request for a card the user never stopped on.
+     *
+     * The bulk sync stores counts for the whole library; this fills in the
+     * achievements themselves, which are a request per game and so are fetched
+     * for the one being looked at. A game with no stored match does nothing —
+     * the repository returns without a request.
+     */
+    private fun observeAchievementRefreshes() {
+        uiState
+            .map { (it.selection as? GameEntry)?.id }
+            .distinctUntilChanged()
+            .debounce(ACHIEVEMENT_REFRESH_DELAY_MS)
+            .onEach { entryId ->
+                if (entryId == null || !refreshedAchievements.add(entryId)) return@onEach
+                runCatching { achievementRepository.refresh(entryId) }
+                    .onFailure { ThorLog.w(TAG, "Could not refresh achievements", it) }
+            }
+            .launchIn(viewModelScope)
+    }
+
+    /*
+     * Started here rather than in the init block near the top, and the position
+     * is the whole of it.
+     *
+     * Kotlin runs property initialisers and init blocks in declaration order, so
+     * an init block above [uiState] runs while that property is still null — and
+     * this reads it synchronously to build its flow. The result was a null
+     * dereference inside the view model's own constructor, which on a launcher
+     * means the home screen cannot be created at all: it crashed on start, every
+     * time, before drawing anything.
+     *
+     * Anything else that observes [uiState] at construction belongs below it for
+     * the same reason.
+     */
+    init {
+        observeAchievementRefreshes()
     }
 
     /** Screenshot index for [LauncherUiState.selection], 0 for any other entry. */

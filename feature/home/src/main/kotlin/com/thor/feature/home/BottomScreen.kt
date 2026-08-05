@@ -29,6 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.component.GlassSurface
+import com.thor.core.designsystem.theme.COUCH_SHORT_SIDE
+import com.thor.core.designsystem.theme.DesignScale
+import com.thor.core.designsystem.theme.PANEL_SHORT_SIDE
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AnimatedWallpaper
 import com.thor.core.model.ClockStyle
@@ -257,7 +260,22 @@ fun BottomScreen(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    /*
+     * One canvas for the whole panel, chosen by which mode is drawing.
+     *
+     * Wrapped here rather than inside each branch because the overlays below —
+     * the menus, the dialogs, the banners — are shared between the two and have
+     * to be the same size as whatever they are drawn over. It also means couch
+     * mode's own scaling is this and nothing else: it used to multiply the
+     * panel's density by a constant, which is correct on one screen and wrong on
+     * every other because it never asked how large the screen was.
+     */
+    DesignScale(
+        referenceShortSide = if (couchMode) COUCH_SHORT_SIDE else PANEL_SHORT_SIDE,
+        userScale = if (couchMode) couchUiScale else 1f,
+        modifier = modifier,
+    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
         /*
          * Couch mode replaces the furniture, not the screen.
          *
@@ -616,6 +634,7 @@ fun BottomScreen(
             onAction = onContextAction,
             onDismiss = onContextMenuDismissed,
         )
+    }
     }
 }
 

@@ -286,16 +286,17 @@ fun CouchScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = ThorTheme.colors
-    val baseDensity = LocalDensity.current
-    // The setting is a percentage of a size chosen for a television, not of the
-    // panel's own density; see DisplaySettings.COUCH_BASE_SCALE.
-    val safeUiScale = DisplaySettings.couchDensityScale(uiScale)
-    val scaledDensity = remember(baseDensity.density, baseDensity.fontScale, safeUiScale) {
-        Density(
-            density = baseDensity.density * safeUiScale,
-            fontScale = baseDensity.fontScale,
-        )
-    }
+    /*
+     * No scaling here any more.
+     *
+     * This used to multiply the panel's density by a constant three quarters,
+     * which is a correction to one screen rather than a design size: on a screen
+     * worth more dp the whole interface became a smaller share of it while
+     * everything laid out as a fraction kept its own, which is what pulled the
+     * shelves and the panels apart. The canvas is set once for the surface now —
+     * see `BottomScreen`, which wraps this and its overlays in one [DesignScale]
+     * — and [uiScale] is applied there as the user's preference on top.
+     */
     val platforms = remember(state.entriesById, state.platformsById) {
         state.couchPlatforms()
     }
@@ -353,7 +354,7 @@ fun CouchScreen(
             )
         }
 
-        CompositionLocalProvider(LocalDensity provides scaledDensity) {
+        run {
             Column(modifier = Modifier.fillMaxSize()) {
                 if (!fullscreenSection) {
                     CouchNavigationBar(
@@ -542,9 +543,7 @@ fun CouchScreen(
                             onClick = statusActions.onToggleShade,
                         ),
                 )
-                // The same density the bar was measured at, so the offset below
-                // it is the bar's real height and not its unscaled one.
-                CompositionLocalProvider(LocalDensity provides scaledDensity) {
+                run {
                     NotificationShadePanel(
                         profile = status.profile,
                         access = status.notifications,

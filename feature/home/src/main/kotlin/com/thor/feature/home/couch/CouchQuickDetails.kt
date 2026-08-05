@@ -148,15 +148,9 @@ fun CouchQuickDetails(
     modifier: Modifier = Modifier,
 ) {
     val motion = ThorTheme.motion
-    val baseDensity = LocalDensity.current
-    // The same rebased percentage the rest of couch mode composes through.
-    val safeUiScale = DisplaySettings.couchDensityScale(uiScale)
-    val scaledDensity = remember(baseDensity.density, baseDensity.fontScale, safeUiScale) {
-        Density(
-            density = baseDensity.density * safeUiScale,
-            fontScale = baseDensity.fontScale,
-        )
-    }
+    // Composed inside the surface's own canvas, like the rest of couch mode; see
+    // `BottomScreen`. [uiScale] is applied there and is kept as a parameter only
+    // so the call sites do not have to change.
 
     AnimatedVisibility(
         visible = visible && entry != null,
@@ -168,7 +162,7 @@ fun CouchQuickDetails(
         modifier = modifier.fillMaxSize(),
     ) {
         val shown = entry ?: return@AnimatedVisibility
-        CompositionLocalProvider(LocalDensity provides scaledDensity) {
+        run {
             DetailsPage(
                 entry = shown,
                 platform = platform,
