@@ -231,6 +231,33 @@ object EmulatorRegistry {
          * `mayReuseExistingTask` because the X server is expensive to start and
          * Winlator holds one session at a time in any case.
          */
+        /*
+         * The dual-screen build, which is a separate app rather than a patch.
+         *
+         * It carries its own applicationId so that it installs *beside* stock
+         * Winlator instead of upgrading over it — the two do not share containers,
+         * and an upgrade that silently adopted them would be a very large
+         * surprise. That separate id is also why this entry has to exist: without
+         * it the fork is simply an app THOR has never heard of, and every PC game
+         * on the grid would go on being handed to a Winlator that draws its
+         * controls over the top of the picture.
+         *
+         * Listed above the others deliberately. [resolve] takes the longest
+         * matching base, but these are distinct ids rather than variants of one
+         * another, so order is what decides which is offered first — and on a
+         * device with two screens the one that uses both is the better default.
+         *
+         * Everything else is inherited: same activity name, same shortcut
+         * contract, same session reuse. Only where the controls are drawn changed.
+         */
+        EmulatorSpec(
+            packageName = "com.loki.winlator",
+            displayName = "Loki Winlator (dual-screen)",
+            platformIds = setOf(BuiltInPlatforms.ID_PC, "dos"),
+            activityName = "com.winlator.cmod.XServerDisplayActivity",
+            launchContract = RomLaunchContract.PathExtra("shortcut_path"),
+            mayReuseExistingTask = true,
+        ),
         EmulatorSpec(
             packageName = "com.winlator.cmod",
             displayName = "Winlator (cmod)",

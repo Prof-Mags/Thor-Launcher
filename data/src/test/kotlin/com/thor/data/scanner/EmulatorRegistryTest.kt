@@ -280,4 +280,4 @@ class EmulatorRegistryTest {
 }
 
 /** Kept in step with the figure in README.md, by the test above. */
-private const val EMULATORS_IN_README = 86
+private const val EMULATORS_IN_README = 87
