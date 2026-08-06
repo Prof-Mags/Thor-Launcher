@@ -565,21 +565,25 @@ data class MetadataSettings(
     val igdbClientSecret: String = "",
     val scrapeOnlyMissing: Boolean = true,
     /**
-     * Show the candidates and let the user say which game a file is.
+     * Stop and ask during a *library-wide* scrape as well.
      *
-     * Only where there is a decision to make: one candidate is not a choice, and
-     * a prompt offering a single answer is a press charged for nothing. Most
-     * files match one thing, so this asks far less often than "every game" makes
-     * it sound.
+     * Off, and the default is the whole point. Scraping the entire library is
+     * the unattended job — hundreds of games, started and walked away from — and
+     * because the prompt waits indefinitely rather than answering itself, one
+     * left sitting on the first ambiguous game is a scrape that has silently
+     * stopped. Unattended is what that button is for.
      *
-     * The prompt waits rather than answering itself. A countdown was tried and
+     * Scraping a single system ignores this and always asks. That is the
+     * deliberate act: short, aimed at one console, and usually done precisely
+     * because the artwork already there is wrong — so the machine deciding the
+     * choice is obvious is exactly what is being disputed.
+     *
+     * The prompt never answers itself either way. A countdown was tried and
      * taken out: three seconds is not long enough to read four titles and
      * compare their covers, so it answered for the user more often than it let
-     * them answer, which is the opposite of what this setting is for. A scrape
-     * left on a prompt is stopped, and stopped is recoverable — a scrape that
-     * guessed while somebody was still reading is not.
+     * them answer.
      */
-    val askForMatches: Boolean = true,
+    val askForMatches: Boolean = false,
 )
 
 @Serializable

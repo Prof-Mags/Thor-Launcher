@@ -180,6 +180,18 @@ class MetadataAggregator @Inject constructor(
         usableProviders(settings.metadata.first()).any { it.id in SCREENSHOT_PROVIDERS }
 
     /**
+     * True when a configured source knows how long a game takes to finish.
+     *
+     * The narrowest of these lists, and worth asking separately for that reason:
+     * ScreenScraper covers the retro library almost completely and has no
+     * completion field at all, so the usual configuration scrapes every game
+     * successfully and produces no progress bars whatsoever. That looks like a
+     * broken panel rather than a provider that was never asked.
+     */
+    suspend fun hasCompletionProvider(): Boolean =
+        usableProviders(settings.metadata.first()).any { it.id in COMPLETION_PROVIDERS }
+
+    /**
      * Whether one named provider could issue a request right now.
      *
      * Asked of the provider rather than inferred from the settings map, because
@@ -461,6 +473,16 @@ class MetadataAggregator @Inject constructor(
          * fills every cover and leaves the panel with nothing to show.
          */
         val SCREENSHOT_PROVIDERS = setOf("screenscraper", "rawg", "igdb")
+
+        /**
+         * Sources that know how long a game takes.
+         *
+         * IGDB has real submitted play-throughs; RAWG has an average playtime in
+         * whole hours, which is coarser but is the same question. Nothing else
+         * carries the figure — notably not ScreenScraper, which is the one most
+         * likely to be configured.
+         */
+        val COMPLETION_PROVIDERS = setOf("igdb", "rawg")
 
         /**
          * Below this, a title match is more likely to be a different game than

@@ -215,6 +215,7 @@ class MetadataSyncManager @Inject constructor(
             return@withContext
         }
         val canFetchDescriptions = !trailersOnly && aggregator.hasDescriptionProvider()
+        val canFetchCompletion = !trailersOnly && aggregator.hasCompletionProvider()
         val askForMatches = settings.metadata.first().askForMatches
         // Naming a system is itself a request to be asked; see below.
         val alwaysAsk = platformId != null && !trailersOnly
@@ -249,9 +250,17 @@ class MetadataSyncManager @Inject constructor(
             // Older library rows may have been stamped "scraped" by an artwork
             // provider before descriptions were fetched from RAWG's detail API.
             // Treat a blank description as missing when a prose source is usable.
+            //
+            // Completion times are the same story one field later: they arrived
+            // after every existing library had already been scraped, so "only
+            // missing" meant *never scraped*, every game was skipped, and no
+            // progress bar could ever appear no matter how many times the button
+            // was pressed. Asked only of games that have no figure yet, and only
+            // when something configured could actually supply one.
             onlyMissing -> all.filter {
                 it.metadata.lastScrapedEpochMs == null ||
-                    it.metadata.needsDescriptionRefresh(canFetchDescriptions)
+                    it.metadata.needsDescriptionRefresh(canFetchDescriptions) ||
+                    it.metadata.needsCompletionRefresh(canFetchCompletion)
             }
             else -> all
         }
@@ -678,3 +687,17 @@ internal fun GameMetadata.needsDescriptionRefresh(providerAvailable: Boolean): B
     providerAvailable &&
         GameMetadata.FIELD_DESCRIPTION !in lockedFields &&
         description.isNullOrBlank()
+
+/**
+ * No completion figure is missing on an already-scraped row, same as prose.
+ *
+ * Both sources are checked because they answer at different resolutions and
+ * either is enough to draw the bar: IGDB gives submitted play-throughs in
+ * seconds, RAWG an average in whole hours. A game that came back from a scrape
+ * with neither is one nobody has submitted a time for, and asking again next
+ * pass costs a request that will keep returning nothing — but that is the same
+ * bargain already struck for descriptions, and it is the only way a figure added
+ * upstream later ever arrives.
+ */
+internal fun GameMetadata.needsCompletionRefresh(providerAvailable: Boolean): Boolean =
+    providerAvailable && timeToBeat == null && completionMinutes == null

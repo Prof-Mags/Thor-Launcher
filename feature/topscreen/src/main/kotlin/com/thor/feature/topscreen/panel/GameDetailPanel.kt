@@ -46,7 +46,6 @@ import com.thor.core.model.Achievement
 import com.thor.core.model.AchievementSummary
 import com.thor.core.model.GameEntry
 import com.thor.core.model.completionSeconds
-import com.thor.core.model.completionProgress
 import com.thor.core.model.Platform
 import com.thor.core.model.PlatformGlyph
 import com.thor.core.ui.component.ArtworkImage
@@ -526,8 +525,18 @@ private fun GameStat(
 @Composable
 private fun GameCompletion(game: GameEntry, accent: Color) {
     val colors = ThorTheme.colors
-    val progress = game.completionProgress() ?: return
-    val totalSeconds = game.metadata.completionSeconds ?: return
+
+    /*
+     * Shown as soon as the length is known, played or not.
+     *
+     * The shared helper hides an unplayed game, which is right on a shelf of
+     * covers where an empty bar under every one of them says nothing. On this
+     * panel it is wrong: the card already says "Never played" two lines above,
+     * so an empty bar is not a surprising claim — it is the scale that sentence
+     * is missing, and "0m of 25h" is a useful thing to know before starting.
+     */
+    val totalSeconds = game.metadata.completionSeconds?.takeIf { it > 0 } ?: return
+    val progress = (game.stats.totalPlayMillis / 1000f / totalSeconds).coerceIn(0f, 1f)
 
     Column(verticalArrangement = Arrangement.spacedBy(COMPLETION_GAP.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {

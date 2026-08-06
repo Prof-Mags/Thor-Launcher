@@ -58,10 +58,10 @@ internal fun MetadataPage(
     )
     RowDivider()
     SwitchRow(
-        title = "Choose matches myself",
-        subtitle = "Shows the candidates when providers disagree, then the covers " +
-            "when they offer more than one. Scraping a single system asks about " +
-            "every game.",
+        title = "Ask during a full scrape",
+        subtitle = "Stops on every game the providers disagree about. Off by " +
+            "default so a library scrape can be left running — scraping a single " +
+            "system always asks, whatever this is set to.",
         checked = metadata.askForMatches,
         focused = focusedRow == 2,
         onCheckedChange = { on -> viewModel.updateMetadata { it.copy(askForMatches = on) } },
