@@ -351,6 +351,17 @@ class MetadataAggregator @Inject constructor(
             players = pick(GameMetadata.FIELD_PLAYERS, existing.players) { it.metadata.players },
             completionMinutes = existing.completionMinutes
                 ?: textual.firstNotNullOfOrNull { it.metadata.completionMinutes },
+            /*
+             * Kept once found, like the completion figure beside it.
+             *
+             * Only one provider reports these and only for part of its
+             * catalogue, so a later scrape whose winning candidate happens to be
+             * from somewhere else would otherwise erase a figure nothing else
+             * can supply.
+             */
+            timeToBeat = existing.timeToBeat
+                ?: textual.firstNotNullOfOrNull { it.metadata.timeToBeat },
+            achievements = existing.achievements,
             artwork = mergedArtwork,
             providerSources = sources,
             lastScrapedEpochMs = System.currentTimeMillis(),

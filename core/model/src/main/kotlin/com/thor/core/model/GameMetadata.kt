@@ -31,6 +31,8 @@ data class GameMetadata(
     /** Locally cached manual, if one was downloaded. */
     val manualUri: String? = null,
     val achievements: AchievementSummary? = null,
+    /** How long this takes to finish, when a source knows; see [TimeToBeat]. */
+    val timeToBeat: TimeToBeat? = null,
     /** Field name -> provider id that supplied the winning value. */
     val providerSources: Map<String, String> = emptyMap(),
     /** Fields the user edited by hand; these are never overwritten by a rescan. */
@@ -49,6 +51,7 @@ data class GameMetadata(
         const val FIELD_RATING = "rating"
         const val FIELD_PLAYERS = "players"
         const val FIELD_ARTWORK = "artwork"
+        const val FIELD_TIME_TO_BEAT = "timeToBeat"
     }
 }
 
@@ -196,4 +199,89 @@ data class Achievement(
     val isHardcore: Boolean = false,
 ) {
     val isEarned: Boolean get() = earnedEpochMs != null
+}
+
+/**
+ * How long a game takes to finish, as reported by people who have.
+ *
+ * Three answers rather than one, because "how long is this" has never had a
+ * single one: rushing the story, playing it the way it was meant, and finishing
+ * everything in it are different games with the same title. Kept in seconds
+ * because that is what the source reports; the interface decides what is worth
+ * showing.
+ *
+ * Every field is optional. A game with only a handful of submissions may have
+ * one figure and not the others, and a game nobody has submitted has none — the
+ * honest answer there is to say nothing rather than to estimate.
+ */
+@Serializable
+data class TimeToBeat(
+    /** Straight through the story, skipping what can be skipped. */
+    val hastilySeconds: Int? = null,
+    /** The ordinary play-through, which is the figure most people mean. */
+    val normallySeconds: Int? = null,
+    /** Everything: side content, collectables, the lot. */
+    val completelySeconds: Int? = null,
+    /** How many play-throughs the figures are drawn from. */
+    val submissions: Int = 0,
+) {
+    /**
+     * The figure to measure progress against.
+     *
+     * The ordinary play-through where there is one, because that is what
+     * somebody means when they ask how far through they are. Falling back to the
+     * rushed figure rather than the completionist one: overstating what is left
+     * is discouraging in a way that understating it is not, and a bar that never
+     * fills is worse than one that fills early.
+     */
+    val referenceSeconds: Int?
+        get() = normallySeconds ?: hastilySeconds ?: completelySeconds
+
+    val isEmpty: Boolean
+        get() = hastilySeconds == null && normallySeconds == null && completelySeconds == null
+
+    /**
+     * How far [playedMillis] is through this game, 0..1.
+     *
+     * Null when there is nothing to measure against, which the interface has to
+     * distinguish from zero: no data and not started look nothing alike to
+     * somebody deciding what to play.
+     */
+    fun progressOf(playedMillis: Long): Float? {
+        val reference = referenceSeconds?.takeIf { it > 0 } ?: return null
+        return (playedMillis / 1000f / reference).coerceIn(0f, 1f)
+    }
+}
+
+/**
+ * How long this game takes, in seconds, from whichever source knows.
+ *
+ * [TimeToBeat] first because it is the better answer: three figures drawn from
+ * submitted play-throughs, against one average. The older single figure stands
+ * in where nothing has submitted a time — which on a retro library is most of
+ * it, so the fallback is not a formality.
+ *
+ * Null means nobody knows, which every caller has to keep distinct from zero: no
+ * data and not started look nothing alike to somebody deciding what to play.
+ */
+val GameMetadata.completionSeconds: Int?
+    get() = timeToBeat?.referenceSeconds
+        ?: completionMinutes?.takeIf { it > 0 }?.times(60)
+
+/**
+ * How far through this game the player is, 0..1, or null.
+ *
+ * One definition, shared by the information panel and the couch shelves. They
+ * showed the same bar computed two ways before, from the weaker of the two
+ * sources — and a progress bar that disagrees with itself between screens is
+ * worse than no progress bar.
+ *
+ * Null when the length is unknown *or* nothing has been played: a bar sitting at
+ * zero says "you have not started this", which is a claim, and it should only be
+ * made when it is true rather than when the figure is missing.
+ */
+fun GameEntry.completionProgress(): Float? {
+    val seconds = metadata.completionSeconds?.takeIf { it > 0 } ?: return null
+    if (stats.totalPlayMillis <= 0L) return null
+    return (stats.totalPlayMillis / 1000f / seconds).coerceIn(0f, 1f)
 }

@@ -45,11 +45,14 @@ import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.Achievement
 import com.thor.core.model.AchievementSummary
 import com.thor.core.model.GameEntry
+import com.thor.core.model.completionSeconds
+import com.thor.core.model.completionProgress
 import com.thor.core.model.Platform
 import com.thor.core.model.PlatformGlyph
 import com.thor.core.ui.component.ArtworkImage
 import com.thor.feature.topscreen.component.PlatformLineIcon
 import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
 
 /** Game information in the same translucent, artwork-led language as platforms. */
 @Composable
@@ -145,6 +148,21 @@ private fun GameProfileCard(
             GameDivider()
             GameSectionTitle("YOUR ACTIVITY")
             GameActivityStats(game = game, accent = accent)
+
+            /*
+             * How far through it you are, where anyone knows how long it is.
+             *
+             * Under the play time rather than beside it, because it is the same
+             * number given a scale: on its own "9h" says nothing about whether
+             * that is a third of the way in or twice as long as it should have
+             * taken.
+             *
+             * Absent entirely when the length is unknown, which on a retro
+             * library is most games. A bar sitting at zero is a claim that you
+             * have not started something, and it should only be made when it is
+             * true rather than when the figure is missing.
+             */
+            GameCompletion(game = game, accent = accent)
 
             /*
              * The description, below the figures and above the media.
@@ -492,6 +510,57 @@ private fun GameStat(
                 color = colors.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
+ * Play time against how long the game takes.
+ *
+ * The figure comes from submitted play-throughs rather than from a guess, so it
+ * is the ordinary route through — not the rushed one and not the completionist
+ * one. Someone past the end of the bar has not broken anything: they took longer
+ * than most, or they are still playing, and both are ordinary.
+ */
+@Composable
+private fun GameCompletion(game: GameEntry, accent: Color) {
+    val colors = ThorTheme.colors
+    val progress = game.completionProgress() ?: return
+    val totalSeconds = game.metadata.completionSeconds ?: return
+
+    Column(verticalArrangement = Arrangement.spacedBy(COMPLETION_GAP.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "${formatDuration(game.stats.totalPlayMillis)} of " +
+                    formatDuration(totalSeconds * 1000L),
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onSurface,
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                // Rounded, because a percentage to the decimal implies the
+                // underlying figure is that precise and it is an average of
+                // however many people bothered to submit one.
+                text = "${(progress * 100).roundToInt()}%",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (progress >= 1f) accent else colors.onSurfaceVariant,
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(COMPLETION_BAR_HEIGHT.dp)
+                .clip(ThorTheme.shapes.pill)
+                .background(colors.onSurfaceVariant.copy(alpha = COMPLETION_TRACK_ALPHA)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .fillMaxHeight()
+                    .clip(ThorTheme.shapes.pill)
+                    .background(accent),
             )
         }
     }
@@ -1056,3 +1125,9 @@ private const val ACHIEVEMENT_BADGES = 5
 
 /** How far an unearned badge is held back; still legible, plainly not done. */
 private const val ACHIEVEMENT_LOCKED_ALPHA = 0.3f
+
+
+/** The completion bar, and how far its track is held back from the fill. */
+private const val COMPLETION_GAP = 5
+private const val COMPLETION_BAR_HEIGHT = 5
+private const val COMPLETION_TRACK_ALPHA = 0.18f

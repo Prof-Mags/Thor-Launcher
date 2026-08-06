@@ -85,6 +85,7 @@ import com.thor.core.model.ClockStyle
 import com.thor.core.model.CouchWallpaperStyle
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
+import com.thor.core.model.completionProgress
 import com.thor.core.model.GridEntry
 import com.thor.core.model.LauncherTab
 import com.thor.core.model.Platform
@@ -1625,16 +1626,8 @@ internal fun CouchCard(
     )
     val shape = ThorTheme.shapes.small
     val game = entry as? GameEntry
-    val progress = game?.let {
-        val completionMillis = it.metadata.completionMinutes
-            ?.takeIf { minutes -> minutes > 0 }
-            ?.times(60_000L)
-        if (completionMillis != null && it.stats.totalPlayMillis > 0L) {
-            (it.stats.totalPlayMillis.toFloat() / completionMillis.toFloat()).coerceIn(0f, 1f)
-        } else {
-            null
-        }
-    }
+    // One definition, shared with the information panel; see completionProgress.
+    val progress = game?.completionProgress()
 
     Box(
         modifier = Modifier

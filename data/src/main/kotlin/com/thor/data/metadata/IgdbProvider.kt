@@ -4,6 +4,7 @@ import com.thor.core.common.log.ThorLog
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.model.ArtworkSet
 import com.thor.core.model.GameMetadata
+import com.thor.core.model.TimeToBeat
 import com.thor.data.network.await
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
@@ -103,8 +104,21 @@ class IgdbProvider @Inject constructor(
 
         return try {
             val response = post("$BASE_URL/games", body, bearer) ?: return emptyList()
-            json.decodeFromString<List<IgdbGame>>(response)
-                .map { it.toCandidate(query) }
+            val games = json.decodeFromString<List<IgdbGame>>(response)
+
+            /*
+             * How long each of them takes, in one request for all of them.
+             *
+             * A second endpoint rather than a field on the game, which is IGDB's
+             * own shape — and asked in a batch because the alternative is a
+             * request per candidate, eight of them, for a figure most of them
+             * will not have. A failure here costs the figures and nothing else;
+             * the candidates are already built.
+             */
+            val times = timesToBeat(games.map(IgdbGame::id), bearer)
+
+            games
+                .map { it.toCandidate(query, times[it.id]) }
                 .filter { it.confidence > 0f }
         } catch (e: IOException) {
             ThorLog.w(TAG, "Request failed for '${query.title}'", e)
@@ -186,7 +200,44 @@ class IgdbProvider @Inject constructor(
         }
     }
 
-    private fun IgdbGame.toCandidate(query: MetadataQuery): MetadataCandidate {
+    /**
+     * How long each of [gameIds] takes to finish, keyed by game.
+     *
+     * IGDB's own figures, drawn from play-throughs people submitted — the same
+     * question HowLongToBeat answers, from a source this launcher is already
+     * credentialled for and allowed to use. Empty when nobody has submitted one,
+     * which is the honest answer for most of a retro library and is why the
+     * interface has to treat "no data" and "not started" as different things.
+     */
+    private suspend fun timesToBeat(gameIds: List<Long>, bearer: String): Map<Long, TimeToBeat> {
+        if (gameIds.isEmpty()) return emptyMap()
+
+        val body = buildString {
+            append("fields game_id,hastily,normally,completely,count;")
+            append("where game_id = (${gameIds.joinToString(",")});")
+            append("limit ${gameIds.size};")
+        }
+
+        return try {
+            val response = post("$BASE_URL/game_time_to_beat", body, bearer)
+                ?: return emptyMap()
+            json.decodeFromString<List<IgdbTimeToBeat>>(response)
+                .mapNotNull { entry -> entry.gameId?.let { it to entry.toDomain() } }
+                .filterNot { it.second.isEmpty }
+                .toMap()
+        } catch (e: IOException) {
+            ThorLog.w(TAG, "Could not read completion times", e)
+            emptyMap()
+        } catch (e: IllegalArgumentException) {
+            ThorLog.w(TAG, "Malformed completion times", e)
+            emptyMap()
+        }
+    }
+
+    private fun IgdbGame.toCandidate(
+        query: MetadataQuery,
+        timeToBeat: TimeToBeat?,
+    ): MetadataCandidate {
         val companies = involvedCompanies.orEmpty()
 
         // Captures first, then whichever promotional art is the right shape.
@@ -208,6 +259,7 @@ class IgdbProvider @Inject constructor(
                 releaseYear = firstReleaseDate?.let(::yearOfEpochSeconds),
                 genres = genres.orEmpty().mapNotNull { it.name },
                 rating = totalRating?.toInt(),
+                timeToBeat = timeToBeat,
                 providerSources = buildMap {
                     if (!summary.isNullOrBlank()) put(GameMetadata.FIELD_DESCRIPTION, ID)
                     if (companies.isNotEmpty()) put(GameMetadata.FIELD_DEVELOPER, ID)
@@ -316,6 +368,28 @@ private data class IgdbGame(
     val genres: List<IgdbNamed>? = null,
     @SerialName("involved_companies") val involvedCompanies: List<IgdbCompany>? = null,
 )
+
+/**
+ * IGDB's completion figures, in seconds.
+ *
+ * Every one is optional independently: a game with few submissions routinely has
+ * a normal time and nothing else.
+ */
+@Serializable
+private data class IgdbTimeToBeat(
+    @SerialName("game_id") val gameId: Long? = null,
+    val hastily: Int? = null,
+    val normally: Int? = null,
+    val completely: Int? = null,
+    val count: Int = 0,
+) {
+    fun toDomain() = TimeToBeat(
+        hastilySeconds = hastily?.takeIf { it > 0 },
+        normallySeconds = normally?.takeIf { it > 0 },
+        completelySeconds = completely?.takeIf { it > 0 },
+        submissions = count,
+    )
+}
 
 @Serializable
 internal data class IgdbImage(

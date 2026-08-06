@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.Dp
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AppEntry
 import com.thor.core.model.GameEntry
+import com.thor.core.model.completionProgress
 import com.thor.core.model.GridEntry
 import com.thor.core.model.Platform
 import com.thor.core.model.ShortcutAction
@@ -558,14 +559,8 @@ private fun CouchSpotlight(
 @Composable
 private fun CouchCompletionBar(game: GameEntry?, accent: Color) {
     val colors = ThorTheme.colors
-    val completionMillis = game?.metadata?.completionMinutes
-        ?.takeIf { it > 0 }
-        ?.times(60_000L)
-    val progress = if (completionMillis != null && game.stats.totalPlayMillis > 0L) {
-        (game.stats.totalPlayMillis.toFloat() / completionMillis).coerceIn(0f, 1f)
-    } else {
-        null
-    }
+    // One definition, shared with the information panel; see completionProgress.
+    val progress = game?.completionProgress()
 
     Row(
         modifier = Modifier.fillMaxWidth(),

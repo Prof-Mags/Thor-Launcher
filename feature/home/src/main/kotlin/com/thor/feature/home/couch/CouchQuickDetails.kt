@@ -54,6 +54,7 @@ import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AppEntry
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
+import com.thor.core.model.completionProgress
 import com.thor.core.model.GridEntry
 import com.thor.core.model.Platform
 import com.thor.core.ui.component.ArtworkImage
@@ -600,16 +601,6 @@ private fun DetailsCompletion(progress: Float, accent: Color, modifier: Modifier
             maxLines = 1,
         )
     }
-}
-
-/** Play time over the scraped completion time, or null when either is missing. */
-private fun GameEntry.completionProgress(): Float? {
-    val completionMillis = metadata.completionMinutes
-        ?.takeIf { it > 0 }
-        ?.times(60_000L)
-        ?: return null
-    if (stats.totalPlayMillis <= 0L) return null
-    return (stats.totalPlayMillis.toFloat() / completionMillis).coerceIn(0f, 1f)
 }
 
 @Composable
