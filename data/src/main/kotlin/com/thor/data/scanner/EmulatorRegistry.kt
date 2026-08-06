@@ -13,8 +13,20 @@ sealed interface RomLaunchContract {
     /** RetroArch's explicit ROM extra; core selection is handled by RetroArch. */
     data object RetroArch : RomLaunchContract
 
-    /** This emulator exposes no supported public arbitrary-ROM launch contract. */
-    data class Unsupported(val reason: String) : RomLaunchContract
+    /**
+     * Nothing documented is known about how this build takes a ROM.
+     *
+     * Not a refusal. It used to be one — the launch was rejected before an
+     * intent was ever built, and the user was told to open the emulator and
+     * find the game themselves — which is a table admitting ignorance and
+     * charging the user for it. These builds are also the ones most likely to
+     * have gained a VIEW filter since the row was written, and nobody would
+     * ever find out.
+     *
+     * So the generic contract is attempted anyway, and [hint] is only said if
+     * every attempt fails. Trying costs one intent; refusing costs the feature.
+     */
+    data class Undocumented(val hint: String) : RomLaunchContract
 }
 
 /**
@@ -295,8 +307,8 @@ object EmulatorRegistry {
             packageName = "org.scummvm.scummvm",
             displayName = "ScummVM",
             platformIds = setOf("scummvm"),
-            launchContract = RomLaunchContract.Unsupported(
-                "Add the game's folder in ScummVM, then launch it from there.",
+            launchContract = RomLaunchContract.Undocumented(
+                "ScummVM may need the game's folder adding in its own library first.",
             ),
         ),
 
@@ -305,8 +317,8 @@ object EmulatorRegistry {
             displayName = "Dolphin",
             platformIds = setOf("gamecube", "wii"),
             activityName = "org.dolphinemu.dolphinemu.ui.main.MainActivity",
-            launchContract = RomLaunchContract.Unsupported(
-                "Import this game into Dolphin's own library, then launch it there.",
+            launchContract = RomLaunchContract.Undocumented(
+                "This Dolphin build may need the game importing into its own library first.",
             ),
         ),
         /*
@@ -536,16 +548,16 @@ object EmulatorRegistry {
             packageName = "org.dolphinemu.dolphinemu.mmjr",
             displayName = "Dolphin MMJR",
             platformIds = setOf("gamecube", "wii"),
-            launchContract = RomLaunchContract.Unsupported(
-                "This Dolphin build does not expose a supported arbitrary-ROM launch intent.",
+            launchContract = RomLaunchContract.Undocumented(
+                "This Dolphin build may need the game importing into its own library first.",
             ),
         ),
         EmulatorSpec(
             packageName = "org.mmjr.dolphinemu",
             displayName = "Dolphin MMJR2",
             platformIds = setOf("gamecube", "wii"),
-            launchContract = RomLaunchContract.Unsupported(
-                "This Dolphin build does not expose a supported arbitrary-ROM launch intent.",
+            launchContract = RomLaunchContract.Undocumented(
+                "This Dolphin build may need the game importing into its own library first.",
             ),
         ),
         EmulatorSpec(

@@ -297,9 +297,27 @@ class EntryLauncher @Inject constructor(
             return LaunchResult.Failed(LaunchFailure.RomUnavailable)
         }
 
-        val contract = spec?.launchContract ?: RomLaunchContract.ContentUriView
-        if (contract is RomLaunchContract.Unsupported) {
-            return LaunchResult.Failed(LaunchFailure.UnsupportedEmulatorLaunch(contract.reason))
+        val declared = spec?.launchContract ?: RomLaunchContract.ContentUriView
+
+        /*
+         * A row that documents no contract still gets the ordinary one tried.
+         *
+         * This used to return here — the launch was refused before an intent was
+         * ever built, and the user was told to open the emulator and find the
+         * game themselves. That is the table's ignorance charged to the user, and
+         * these are exactly the builds most likely to have gained a VIEW filter
+         * since the row was written, which nobody would ever discover while the
+         * launch was rejected on sight.
+         *
+         * The hint survives as the message *if* every attempt fails, which is the
+         * right place for it: advice about a fallback rather than an instruction
+         * issued instead of trying.
+         */
+        val hint = (declared as? RomLaunchContract.Undocumented)?.hint
+        val contract = if (declared is RomLaunchContract.Undocumented) {
+            RomLaunchContract.ContentUriView
+        } else {
+            declared
         }
         val filePath = when (contract) {
             is RomLaunchContract.PathExtra,
@@ -336,7 +354,8 @@ class EntryLauncher @Inject constructor(
                     putExtra(RETROARCH_ROM_EXTRA, filePath)
                 }
 
-                is RomLaunchContract.Unsupported -> error("Unsupported contract was rejected above")
+                is RomLaunchContract.Undocumented ->
+                    error("An undocumented contract is resolved to a real one above")
             }
 
             /*
