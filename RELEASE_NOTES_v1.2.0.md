@@ -77,6 +77,12 @@ Every surface is now drawn against a fixed canvas rather than the screen's raw d
 - A large blank gap between the description and the platform highlights
 - The scanner importing everything that happened to sit beside a ROM
 
+### Extensions
+
+`movies.json` and `stream.json` are attached below. Movies & TV and PC streaming ship inside the launcher but stay switched off until one is imported — until then there is no section in the bar, no settings category and no pages. Download the file for the part you want, then **Settings → System → Extensions → Import an extension**. Nothing is downloaded and both work offline. Removing one takes everything it added away again and keeps your settings in case you add it back.
+
+Unchanged from v1.1.0, so there is no need to re-import if you already have them.
+
 ### Notes
 
 Completion times come from IGDB or RAWG only — ScreenScraper carries no such field. Add IGDB credentials or a RAWG key in Metadata settings and run a scrape; the pass now picks up games that were already scraped before the field existed.
