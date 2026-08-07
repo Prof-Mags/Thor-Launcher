@@ -93,6 +93,7 @@ import com.thor.core.model.GridEntry
 import com.thor.core.model.KeyboardKey
 import com.thor.core.model.HomeLayout
 import com.thor.core.model.PlatformFolders
+import com.thor.core.model.RecordingAudio
 import com.thor.core.model.ThorSettings
 import com.thor.core.ui.feedback.FeedbackCue
 import com.thor.core.ui.component.COUCH_STAGES
@@ -457,6 +458,34 @@ fun ThorApp(
          * punishing them for an answer they were entitled to give.
          */
         ProjectionConsentActivity.request(context)
+    }
+
+    /*
+     * The microphone, asked for when it is chosen rather than on first run.
+     *
+     * Most recordings are silent and a launcher asking to listen during setup has
+     * nothing to point at as a reason. Choosing "Microphone" in Recording settings
+     * is a reason, and this is that moment: the prompt appears once, when the
+     * choice is made, and never again once answered either way.
+     *
+     * Declining is not an error. `ScreenRecorder` checks the grant before touching
+     * `setAudioSource` and records silently without it, which is a recording that
+     * works rather than one that refuses to start over a setting.
+     */
+    val microphoneRequest = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* Nothing to do either way; the recorder re-checks when it starts. */ }
+
+    LaunchedEffect(settings.recording.audio) {
+        val wantsMicrophone = settings.recording.audio == RecordingAudio.MICROPHONE
+        val alreadyGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO,
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (wantsMicrophone && !alreadyGranted) {
+            microphoneRequest.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
 
     val askForNotifications: () -> Unit = {
@@ -2512,7 +2541,8 @@ fun ThorApp(
                 canScreenshot = canScreenshot,
                 companionAction = companionAction,
                 onScreenshot = viewModel::captureScreenshot,
-                onEditCompanionNote = viewModel::openNoteEditorForRunning,
+                companionRecording = recording is RecordingState.Active,
+                onToggleRecording = viewModel::startScreenRecording,
                 onTakePanelBack = viewModel::goHome,
                 noteDialog = noteDialog,
                 onNoteSaved = viewModel::saveNote,

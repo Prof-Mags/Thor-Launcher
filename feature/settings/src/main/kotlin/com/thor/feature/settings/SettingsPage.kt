@@ -283,6 +283,20 @@ enum class SettingsPage(
         "Add Films & shows or PC streaming to the launcher",
         group = "Data & features",
     ),
+
+    /**
+     * What a recording captures, as opposed to when one is started.
+     *
+     * Starting is two tiles in the shortcut panel and one on the companion panel,
+     * where the decision is actually made; this is the standing choice those
+     * inherit. Under Data & features because a recording is a file, and beside
+     * Backup because both are about what leaves the device.
+     */
+    RECORDING(
+        SettingsCategory.SYSTEM, "Recording",
+        "Whether captures have sound",
+        group = "Data & features",
+    ),
     ;
 
     companion object {

@@ -132,7 +132,9 @@ fun BottomScreen(
     /** Which companion tile the controller cursor is on. */
     companionAction: Int = 0,
     onScreenshot: () -> Unit = {},
-    onEditCompanionNote: () -> Unit = {},
+    /** Whether a screen recording is running, so the tile can offer to stop it. */
+    companionRecording: Boolean = false,
+    onToggleRecording: () -> Unit = {},
     onTakePanelBack: () -> Unit = {},
     /** The note editor, raised from the companion panel and from the context menu. */
     noteDialog: NoteDialogState = NoteDialogState(),
@@ -426,9 +428,10 @@ fun BottomScreen(
                         journal = companionJournal,
                         sinceEpochMs = companionSinceEpochMs,
                         canScreenshot = canScreenshot,
+                        recording = companionRecording,
                         focusedAction = companionAction,
                         onScreenshot = onScreenshot,
-                        onEditNote = onEditCompanionNote,
+                        onToggleRecording = onToggleRecording,
                         onHome = onTakePanelBack,
                         modifier = Modifier
                             .fillMaxWidth()

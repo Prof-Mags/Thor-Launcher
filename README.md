@@ -310,7 +310,9 @@ If it feels slow, **Settings → System & accessibility → Performance** turns 
 
 Start a game and the panel you are not playing on becomes that game's panel rather than going back to being a grid. A grid at that moment is a menu for choosing something you have already chosen; this is the thing a second screen is actually for.
 
-It shows what you cannot see from inside the game. A clock counting this sitting — not your total, which answers a different question; this one answers whether you should stop. How far through you are, drawn against the completion times the scrapers returned, and only where one was actually returned rather than against an invented number. What you wrote down last time. The frames you have kept. And three actions: take a screenshot, write a note, or take the panel back.
+It shows what you cannot see from inside the game. A clock counting this sitting — not your total, which answers a different question; this one answers whether you should stop. How far through you are, drawn against the completion times the scrapers returned, and only where one was actually returned rather than against an invented number. The frames you have kept. And three actions: take a screenshot, start or stop a recording, or take the panel back.
+
+Recording is here rather than a note, because the two belong at different moments. A note is written *about* a session, usually once it is over, and every game's own menu opens one. A recording is started *during* one, and until now there was nowhere to start it from without leaving the game.
 
 It is deliberately not a remote control. The game is not Loki's to drive, and a row of buttons that mostly did nothing would be worse than one that admits what it can reach.
 
@@ -342,7 +344,11 @@ There are two recordings, and they capture different things, which is why they a
 
 Recording the launcher draws both panels into one video inside a dual-screen console body, saved to `Movies/Loki`. It records the launcher rather than the device, because Android only lets an app capture the default display, so a running game will not appear and there is no audio.
 
-Recording the screen mirrors the real display and keeps going into a game. It needs the platform's consent dialog and runs in a foreground service so it survives you leaving the launcher, and its notification carries the controls — which is the only way to stop what you started once you are inside a game.
+Recording the screen mirrors the real display and keeps going into a game. It needs the platform's consent dialog and runs in a foreground service so it survives you leaving the launcher, and its notification carries the controls — as does the companion panel beside the game, and the panel Loki draws over it.
+
+Either can carry sound, and the option is under System, in Recording. It records the **microphone**, which on a handheld is a hand's width from the speakers — so what lands on the clip is the game, and the room, and you. That is worth knowing before you rely on it.
+
+There is no clean game-audio option, and the reason is worth stating rather than leaving as an absence. Android will not hand an ordinary app another app's audio through any route the recorder can use: the only door is playback capture on a media projection, which yields raw samples that `MediaRecorder` cannot accept as a source at all. Supporting it means encoding the picture and the sound separately and interleaving them by hand — a different recorder rather than a flag on this one. It is worth building; it is not worth pretending is built by adding an option that silently records nothing.
 
 <br>
 

@@ -174,6 +174,7 @@ fun SettingsPageContent(
             SettingsPage.PROFILE_EDIT -> ProfileEditPage(profileRegistry, focusedRow, viewModel)
             SettingsPage.DUAL_SCREEN -> DualScreenPage(settings, focusedRow, viewModel)
             SettingsPage.PERFORMANCE -> PerformancePage(settings, focusedRow, viewModel)
+            SettingsPage.RECORDING -> RecordingPage(settings, focusedRow, viewModel)
 
             SettingsPage.BACKUP -> BackupPage(
                 activeProfile = profileRegistry.active,
@@ -254,6 +255,9 @@ fun rowCountFor(
     SettingsPage.PROFILE_EDIT -> profileEditRowCount(activeProfileHasAvatar)
     SettingsPage.DUAL_SCREEN -> 7
     SettingsPage.PERFORMANCE -> 3
+    // One row: what sound goes on a capture. See [RecordingAudio] for why there
+    // is no game-audio option to make it two.
+    SettingsPage.RECORDING -> 1
     SettingsPage.EXTENSIONS -> EXTENSIONS_ROWS
     SettingsPage.ACCESSIBILITY -> 5
 }

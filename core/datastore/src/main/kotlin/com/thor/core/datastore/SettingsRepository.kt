@@ -18,6 +18,7 @@ import com.thor.core.model.MediaSettings
 import com.thor.core.model.StreamSettings
 import com.thor.core.model.MouseSettings
 import com.thor.core.model.PerformanceSettings
+import com.thor.core.model.RecordingSettings
 import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.ThorSettings
 import kotlinx.coroutines.flow.Flow
@@ -87,6 +88,8 @@ class SettingsRepository @Inject constructor(
     val audio: Flow<AudioSettings> = settings.map { it.audio }.distinctUntilChanged()
     val performance: Flow<PerformanceSettings> =
         settings.map { it.performance }.distinctUntilChanged()
+    val recording: Flow<RecordingSettings> =
+        settings.map { it.recording }.distinctUntilChanged()
     val accessibility: Flow<AccessibilitySettings> =
         settings.map { it.accessibility }.distinctUntilChanged()
     val cloud: Flow<CloudSettings> = settings.map { it.cloud }.distinctUntilChanged()
@@ -151,6 +154,10 @@ class SettingsRepository @Inject constructor(
 
     suspend fun updatePerformance(transform: (PerformanceSettings) -> PerformanceSettings) {
         edit { it.copy(performance = transform(it.performance)) }
+    }
+
+    suspend fun updateRecording(transform: (RecordingSettings) -> RecordingSettings) {
+        edit { it.copy(recording = transform(it.recording)) }
     }
 
     suspend fun updateAccessibility(transform: (AccessibilitySettings) -> AccessibilitySettings) {

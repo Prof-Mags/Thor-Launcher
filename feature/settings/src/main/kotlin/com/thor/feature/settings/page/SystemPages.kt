@@ -5,6 +5,7 @@ import com.thor.core.model.ColorBlindMode
 import com.thor.core.model.CouchWallpaperStyle
 import com.thor.core.model.DisplaySettings
 import com.thor.core.model.DualScreenMode
+import com.thor.core.model.RecordingAudio
 import com.thor.core.model.ThorSettings
 import com.thor.feature.settings.component.row.ChoiceRow
 import com.thor.feature.settings.component.RowDivider
@@ -96,6 +97,29 @@ internal fun DualScreenPage(settings: ThorSettings, focusedRow: Int, viewModel: 
         checked = display.keepTopScreenAwake,
         focused = focusedRow == 6,
         onCheckedChange = { on -> viewModel.updateDisplay { it.copy(keepTopScreenAwake = on) } },
+    )
+}
+
+@Composable
+internal fun RecordingPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
+    ChoiceRow(
+        title = "Sound",
+        /*
+         * Says what the microphone will actually pick up.
+         *
+         * On a handheld the speakers are a hand's width from the microphone, so
+         * "Microphone" records the game — and the room, and you. Somebody
+         * choosing it expecting clean game audio and getting a recording of their
+         * living room has been misled by one word, and the fix is the sentence
+         * underneath it. See [RecordingAudio] for why clean game audio is not on
+         * this list at all.
+         */
+        subtitle = settings.recording.audio.description,
+        options = RecordingAudio.entries,
+        selected = settings.recording.audio,
+        focused = focusedRow == 0,
+        label = RecordingAudio::label,
+        onSelected = { choice -> viewModel.updateRecording { it.copy(audio = choice) } },
     )
 }
 

@@ -22,6 +22,7 @@ import com.thor.core.model.LibrarySettings
 import com.thor.core.model.ProfileRegistry
 import com.thor.core.model.MetadataSettings
 import com.thor.core.model.PerformanceSettings
+import com.thor.core.model.RecordingSettings
 import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.Platform
 import com.thor.core.model.RetroAchievementsSettings
@@ -1503,6 +1504,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updatePerformance(transform: (PerformanceSettings) -> PerformanceSettings) {
         viewModelScope.launchSafely(TAG) { settingsRepository.updatePerformance(transform) }
+    }
+
+    fun updateRecording(transform: (RecordingSettings) -> RecordingSettings) {
+        viewModelScope.launchSafely(TAG) { settingsRepository.updateRecording(transform) }
     }
 
     fun updateAccessibility(transform: (AccessibilitySettings) -> AccessibilitySettings) {

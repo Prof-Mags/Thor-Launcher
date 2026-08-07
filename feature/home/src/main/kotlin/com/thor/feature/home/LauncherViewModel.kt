@@ -1089,12 +1089,6 @@ class LauncherViewModel @Inject constructor(
         }
     }
 
-    /** Raises it for whatever is currently on the other panel. */
-    fun openNoteEditorForRunning() {
-        val id = _runningEntryId.value ?: return
-        uiState.value.entriesById[id]?.let(::openNoteEditor)
-    }
-
     fun dismissNoteDialog() { _noteDialog.value = NoteDialogState() }
 
     /** Saves what was typed and closes; blank deletes, see the repository. */
@@ -1498,6 +1492,20 @@ class LauncherViewModel @Inject constructor(
          * taken from the panel does.
          */
         screenshots.onCaptureRequested { captureScreenshot() }
+
+        /*
+         * The recorder is told what sound to capture, rather than reading it.
+         *
+         * [ScreenRecorder] is deliberately free of settings — it is handed a size,
+         * a density and a surface and nothing else — so the choice is pushed into
+         * it from here. It only takes effect at the next `start`, because
+         * `MediaRecorder` is configured before `prepare()` and cannot be changed
+         * after; a setting changed mid-recording waits for the next one.
+         */
+        settingsRepository.recording
+            .onEach { screenRecorder.audio = it.audio }
+            .launchIn(viewModelScope)
+
         observeAchievementRefreshes()
     }
 
@@ -1938,7 +1946,10 @@ class LauncherViewModel @Inject constructor(
 
             ControllerCommand.CONFIRM -> when (COMPANION_ACTIONS[_companionAction.value]) {
                 CompanionAction.SCREENSHOT -> captureScreenshot()
-                CompanionAction.NOTE -> openNoteEditorForRunning()
+                // The screen recording rather than the launcher one: the point of
+                // this tile is the game on the other panel, which is exactly what
+                // the launcher-only recording cannot see.
+                CompanionAction.RECORD -> startScreenRecording()
                 CompanionAction.HOME -> goHome()
             }
 

@@ -1,7 +1,9 @@
 package com.thor.data.capture
 
+import android.Manifest
 import android.content.ContentValues
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.projection.MediaProjection
@@ -11,6 +13,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import com.thor.core.common.log.ThorLog
+import com.thor.core.model.RecordingAudio
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -80,6 +83,28 @@ class ScreenRecorder @Inject constructor(
     private var activeProjection: MediaProjection? = null
 
     val isRecording: Boolean get() = _state.value is RecordingState.Active
+
+    /**
+     * What sound the next recording captures.
+     *
+     * Set by the shell from the user's setting rather than read from a repository
+     * here, because this class is deliberately free of settings: it is handed a
+     * size, a density and a surface, and everything else about it is the caller's
+     * decision. See [RecordingAudio] for why there is no game-audio option.
+     */
+    var audio: RecordingAudio = RecordingAudio.OFF
+
+    /**
+     * Whether the microphone has actually been granted.
+     *
+     * Checked rather than assumed, because `setAudioSource` does not fail where it
+     * is called — it fails at `prepare()`, several lines later, by which point the
+     * output file has been created and the failure reads as "recording could not
+     * be started" rather than as "you have not allowed the microphone".
+     */
+    private fun hasMicrophonePermission(): Boolean =
+        context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
 
     /**
      * Starts a recording and returns the display to render the mock-up onto.
@@ -208,10 +233,35 @@ class ScreenRecorder @Inject constructor(
             val descriptor = context.contentResolver.openFileDescriptor(uri, "rw")
                 ?: error("No file descriptor for $uri")
 
+            /*
+             * Whether sound is going in, decided once at the moment of starting.
+             *
+             * Read here rather than held, because `MediaRecorder` is configured
+             * before `prepare()` and cannot be changed afterwards — a setting
+             * changed mid-recording must not take effect until the next one, and
+             * reading it once is the only way to be sure it does not.
+             *
+             * Falls back to silence rather than failing when the permission is
+             * missing. `setAudioSource` throws at `prepare()` without RECORD_AUDIO,
+             * and a recording that refuses to start because of a setting the user
+             * forgot is worse than one with no sound on it.
+             */
+            val withAudio = audio == RecordingAudio.MICROPHONE && hasMicrophonePermission()
+
             val newRecorder = descriptor.use { file ->
                 buildRecorder().apply {
+                    // Sources before the format, and both before the encoders:
+                    // MediaRecorder is a state machine and this is the only order
+                    // it accepts.
+                    if (withAudio) setAudioSource(MediaRecorder.AudioSource.MIC)
                     setVideoSource(MediaRecorder.VideoSource.SURFACE)
                     setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                    if (withAudio) {
+                        setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                        setAudioSamplingRate(AUDIO_SAMPLE_RATE)
+                        setAudioEncodingBitRate(AUDIO_BIT_RATE)
+                        setAudioChannels(AUDIO_CHANNELS)
+                    }
                     setVideoEncoder(MediaRecorder.VideoEncoder.H264)
                     setVideoSize(videoWidth, videoHeight)
                     setVideoFrameRate(FRAME_RATE)
@@ -334,6 +384,13 @@ class ScreenRecorder @Inject constructor(
         const val DISPLAY_NAME = "Loki capture"
         const val OUTPUT_DIRECTORY = "Movies/Loki"
         const val FRAME_RATE = 30
+
+        /** Enough for speech and game audio off a handheld's speakers. */
+        const val AUDIO_SAMPLE_RATE = 44_100
+        const val AUDIO_BIT_RATE = 128_000
+
+        /** One channel: the microphone on this device is mono whatever is asked. */
+        const val AUDIO_CHANNELS = 1
         const val MIN_DENSITY = 160
         const val MIN_BIT_RATE = 2_000_000L
         const val MAX_BIT_RATE = 24_000_000L

@@ -21,6 +21,7 @@ data class ThorSettings(
     val display: DisplaySettings = DisplaySettings(),
     val audio: AudioSettings = AudioSettings(),
     val performance: PerformanceSettings = PerformanceSettings(),
+    val recording: RecordingSettings = RecordingSettings(),
     val accessibility: AccessibilitySettings = AccessibilitySettings(),
     val cloud: CloudSettings = CloudSettings(),
     val developer: DeveloperSettings = DeveloperSettings(),
@@ -874,6 +875,40 @@ data class AudioSettings(
     val navigationSounds: Boolean = true,
     val launchSounds: Boolean = true,
 )
+
+@Serializable
+data class RecordingSettings(
+    val audio: RecordingAudio = RecordingAudio.OFF,
+)
+
+/**
+ * What, if anything, a recording captures as sound.
+ *
+ * The obvious third option is missing and its absence is the point: there is no
+ * "game audio" here, because Android will not give an ordinary app the sound
+ * another app is playing through a route [android.media.MediaRecorder] can use.
+ *
+ * The only door is `AudioPlaybackCaptureConfiguration` on a `MediaProjection`,
+ * which yields PCM through an `AudioRecord`. `MediaRecorder` cannot take an
+ * `AudioRecord` as a source at all, so using it means encoding the video and the
+ * audio separately with `MediaCodec` and interleaving them with a `MediaMuxer` —
+ * a different recorder, not a flag on this one. Worth doing; not something to
+ * pretend is done by adding a value here that silently records nothing.
+ *
+ * On a handheld the microphone is not the consolation prize it sounds like: the
+ * speakers are a hand's width from it, so what lands on the recording is the game,
+ * plus the room. That is a real answer for a clip, and an honest one as long as it
+ * says which it is.
+ */
+@Serializable
+enum class RecordingAudio(val label: String, val description: String) {
+    OFF("No sound", "Picture only"),
+
+    MICROPHONE(
+        "Microphone",
+        "Picks up the speakers, and the room with them",
+    ),
+}
 
 @Serializable
 data class PerformanceSettings(

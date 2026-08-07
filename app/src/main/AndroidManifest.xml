@@ -54,6 +54,16 @@
     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <!--
+      Sound on a recording, and only when the user has chosen it.
+
+      Asked for at the moment a recording with sound is started rather than on
+      first run, because the overwhelming majority of recordings are silent and a
+      microphone prompt during setup is a launcher asking to listen for no reason
+      it can name yet. Denied simply means the recording has no sound; nothing
+      else in Loki uses this.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--

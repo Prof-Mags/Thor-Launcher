@@ -16,9 +16,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.StopCircle
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -38,8 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.thor.core.designsystem.modifier.SurfaceLevel
-import com.thor.core.designsystem.modifier.thorSurface
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GameJournal
@@ -60,7 +59,17 @@ import kotlinx.coroutines.delay
  */
 enum class CompanionAction(val label: String) {
     SCREENSHOT("Screenshot"),
-    NOTE("Note"),
+
+    /**
+     * Start or stop capturing the screen, from beside the game being captured.
+     *
+     * Replaces the note tile, which was the wrong thing on this panel: a note is
+     * written *about* a session, usually when you stop, and it is reachable from
+     * every game's own menu. A recording is started *during* one and there was
+     * nowhere to start it from without leaving the game.
+     */
+    RECORD("Record"),
+
     HOME("Take panel back"),
 }
 
@@ -77,7 +86,7 @@ val COMPANION_ACTIONS: List<CompanionAction> = CompanionAction.entries
  *
  * What it shows is what you cannot see from inside the game: how long this sitting
  * has run, how far through the game you are against the times the scrapers
- * returned, what you wrote down last time, and the frames you kept. All of it is
+ * returned, and the frames you kept. All of it is
  * about *this* game, because the launcher records which entry it handed the panel
  * to; see `LauncherViewModel.runningEntryId`.
  *
@@ -93,10 +102,12 @@ fun CompanionPanel(
     journal: GameJournal,
     sinceEpochMs: Long?,
     canScreenshot: Boolean,
+    /** Whether a screen recording is already running, so the tile can say Stop. */
+    recording: Boolean,
     /** Which tile the controller cursor is on; see [COMPANION_ACTIONS]. */
     focusedAction: Int,
     onScreenshot: () -> Unit,
-    onEditNote: () -> Unit,
+    onToggleRecording: () -> Unit,
     onHome: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -164,8 +175,6 @@ fun CompanionPanel(
                 CompletionBar(progress = progress, accent = accent)
             }
 
-            NoteCard(journal = journal, onEdit = onEditNote)
-
             if (journal.screenshots.isNotEmpty()) {
                 ShotStrip(screenshots = journal.screenshots, accent = accent)
             }
@@ -177,15 +186,16 @@ fun CompanionPanel(
                     ActionTile(
                         icon = when (action) {
                             CompanionAction.SCREENSHOT -> Icons.Rounded.PhotoCamera
-                            CompanionAction.NOTE -> Icons.Rounded.Edit
+                            CompanionAction.RECORD ->
+                                if (recording) Icons.Rounded.StopCircle else Icons.Rounded.Videocam
+
                             CompanionAction.HOME -> Icons.Rounded.Home
                         },
-                        label = when (action) {
-                            // Says which of the two it will do, because "Note" on a
-                            // game that already has one reads as losing it.
-                            CompanionAction.NOTE ->
-                                if (journal.note == null) "Add note" else "Edit note"
-
+                        // Says which of the two it will do. A tile reading "Record"
+                        // while recording is the one label that could cost somebody
+                        // the take they were making.
+                        label = when {
+                            action == CompanionAction.RECORD && recording -> "Stop recording"
                             else -> action.label
                         },
                         accent = accent,
@@ -198,7 +208,7 @@ fun CompanionPanel(
                         onClick = {
                             when (action) {
                                 CompanionAction.SCREENSHOT -> onScreenshot()
-                                CompanionAction.NOTE -> onEditNote()
+                                CompanionAction.RECORD -> onToggleRecording()
                                 CompanionAction.HOME -> onHome()
                             }
                         },
@@ -272,46 +282,6 @@ private fun CompletionBar(progress: Float, accent: Color) {
                     .background(accent),
             )
         }
-    }
-}
-
-/**
- * What you wrote last time, or an invitation to write something.
- *
- * The empty state is a real part of the feature rather than a blank: nobody has
- * ever kept a note about a game they have not started, so the first time this
- * panel appears the card is the only thing that says the feature exists.
- */
-@Composable
-private fun NoteCard(journal: GameJournal, onEdit: () -> Unit) {
-    val colors = ThorTheme.colors
-    val dimens = ThorTheme.dimens
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .thorSurface(
-                shape = RoundedCornerShape(dimens.cornerRadiusSmall),
-                color = colors.surface,
-                level = SurfaceLevel.RAISED,
-            )
-            .clickable(onClick = onEdit)
-            .padding(dimens.spacingSmall),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(
-            text = "YOUR NOTE",
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.onSurfaceVariant,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = journal.note?.body ?: "Nothing written yet — press to say where you got to.",
-            style = MaterialTheme.typography.bodySmall,
-            color = if (journal.note == null) colors.onSurfaceVariant else colors.onSurface,
-            maxLines = NOTE_LINES,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
