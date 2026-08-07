@@ -67,8 +67,8 @@ enum class SettingsPage(
 
     // ---- Home screen -------------------------------------------------------
     GRID(
-        SettingsCategory.APPEARANCE, "Home grid",
-        "Size, spacing, icon shape and labels",
+        SettingsCategory.APPEARANCE, "Home screen",
+        "Grid or platform cards, then size, spacing, icon shape and labels",
     ),
     DOCK(
         SettingsCategory.APPEARANCE, "Dock",

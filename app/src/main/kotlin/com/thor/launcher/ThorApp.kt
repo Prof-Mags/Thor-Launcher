@@ -88,6 +88,7 @@ import com.thor.core.model.LauncherExtension
 import com.thor.core.model.LauncherFeatures
 import com.thor.core.model.GameEntry
 import com.thor.core.model.KeyboardKey
+import com.thor.core.model.HomeLayout
 import com.thor.core.model.PlatformFolders
 import com.thor.core.model.ThorSettings
 import com.thor.core.ui.feedback.FeedbackCue
@@ -388,6 +389,10 @@ fun ThorApp(
     val pendingMatch by settingsViewModel.pendingMatch.collectAsState()
     val matchFocus by settingsViewModel.matchFocus.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
+    // Which system the card flow is on, and which way it last stepped; see
+    // [com.thor.feature.home.cards.PlatformCardScreen].
+    val platformCardIndex by viewModel.platformCardIndex.collectAsState()
+    val platformCardDirection by viewModel.platformCardDirection.collectAsState()
     val navCursor by viewModel.navCursor.collectAsState()
     val couchFocus by viewModel.couchFocus.collectAsState()
     val couchPlatformIndex by viewModel.couchPlatformIndex.collectAsState()
@@ -2401,6 +2406,24 @@ fun ThorApp(
                 // control, matching whatever its top panel is showing.
                 sectionContent = sectionHost,
                 couchMode = mode == DualScreenMode.COUCH,
+                /*
+                 * The card flow, on the handheld layout only.
+                 *
+                 * Couch mode already answers "one system at a time" with its own
+                 * rails and its own platform drawer, and running both would put
+                 * two competing system browsers on one screen. The setting is not
+                 * ignored so much as already satisfied there.
+                 */
+                homeLayout = if (mode == DualScreenMode.COUCH) {
+                    HomeLayout.GRID
+                } else {
+                    settings.display.homeLayout
+                },
+                platformCardIndex = platformCardIndex,
+                platformCardDirection = platformCardDirection,
+                onPlatformCardOpened = { card ->
+                    viewModel.openFolder(PlatformFolders.idFor(card.platform.id))
+                },
                 // Couch mode has the corner for it and the top screen does not,
                 // which is why this is not behind the same flag.
                 status = shellStatus,

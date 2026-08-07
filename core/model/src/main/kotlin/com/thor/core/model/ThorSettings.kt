@@ -687,6 +687,16 @@ data class DisplaySettings(
      * ordinary phone or emulator.
      */
     val mode: DualScreenMode = DualScreenMode.AUTO,
+    /**
+     * What the Home section draws on the bottom panel.
+     *
+     * Here rather than on [GridSpec] because it decides whether there is a grid
+     * at all, and a setting that can switch its own container off does not belong
+     * inside that container. Every other value in [GridSpec] stays meaningful and
+     * untouched while this is [HomeLayout.PLATFORM_CARDS] — the grid is still what
+     * an opened system's games are laid out on.
+     */
+    val homeLayout: HomeLayout = HomeLayout.GRID,
     /** Swaps which physical panel shows the grid. */
     val swapScreens: Boolean = false,
     /** Fraction of a single display given to the top surface in split mode. */
@@ -782,6 +792,47 @@ enum class CouchWallpaperStyle(val label: String) {
 
     /** The theme's background colour, and nothing else. */
     SOLID("Solid colour"),
+}
+
+/**
+ * What the Home section puts on the bottom panel.
+ *
+ * Two answers to the same question — what is this screen *for* — and they suit
+ * different libraries rather than one being the better one. A grid is a desktop:
+ * it is worth arranging because you arranged it. A library that was scanned rather
+ * than arranged has no such claim on it, and for that one the grid is mostly
+ * auto-generated platform folders drawn as app icons.
+ */
+@Serializable
+enum class HomeLayout(val label: String, val description: String) {
+    /**
+     * Pages of cells, arranged by hand.
+     *
+     * The only layout that can hold a widget, because a widget is defined by the
+     * cells it occupies — see `GridFootprint`. That is the honest cost of the
+     * other option and the reason this stays the default.
+     */
+    GRID(
+        "Grid",
+        "Pages of cells you arrange yourself — apps, games, folders and widgets.",
+    ),
+
+    /**
+     * One system at a time, filling the panel.
+     *
+     * Draws the artwork an icon pack ships and the grid has nowhere to put: the
+     * hero as the backdrop and the logo as the title, rather than the icon shrunk
+     * into a cell. Opening a system hands over to the grid, so this replaces the
+     * top level only — everything below it is unchanged.
+     *
+     * Widgets are unavailable while this is on. They are not hidden or moved;
+     * they are still placed, and choosing [GRID] again shows them exactly where
+     * they were.
+     */
+    PLATFORM_CARDS(
+        "Platform cards",
+        "One system at a time, full screen. Uses icon-pack art. No widgets.",
+    ),
 }
 
 @Serializable

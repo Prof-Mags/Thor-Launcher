@@ -222,7 +222,7 @@ fun rowCountFor(
     SettingsPage.BUTTON_MAPPING -> buttonMappingRows(customProfileCount, editingProfile)
     SettingsPage.BACKUP -> BACKUP_ROWS
     SettingsPage.WALLPAPER -> WALLPAPER_FIXED_ROWS + wallpaperClearRows
-    SettingsPage.GRID -> 5
+    SettingsPage.GRID -> 6
     SettingsPage.DOCK -> 6
     SettingsPage.CURSOR -> 3
     SettingsPage.INTERFACE -> INTERFACE_ROWS

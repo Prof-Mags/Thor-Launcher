@@ -15,6 +15,7 @@ import com.thor.core.model.ControlSettings
 import com.thor.core.model.DualScreenMode
 import com.thor.core.model.FolderEntry
 import com.thor.core.model.GameEntry
+import com.thor.core.model.HomeLayout
 import com.thor.core.model.GameMetadata
 import com.thor.core.model.GridEntry
 import com.thor.core.model.CellSpan
@@ -29,6 +30,9 @@ import com.thor.core.model.LauncherTab
 import com.thor.core.model.NavDirection
 import com.thor.core.model.Platform
 import com.thor.core.model.PlatformFolders
+import com.thor.feature.home.cards.PlatformCard
+import com.thor.feature.home.cards.platformCards
+import com.thor.feature.home.cards.stepCard
 import com.thor.core.model.PreferredPanel
 import com.thor.core.model.ShortcutAction
 import com.thor.core.model.ShortcutGrid
@@ -221,6 +225,41 @@ class LauncherViewModel @Inject constructor(
         .map { it.mode == DualScreenMode.COUCH }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /**
+     * What Home draws on this panel; see [HomeLayout].
+     *
+     * Read here for the same reason [couchMode] is: it decides what a press
+     * *means* before it decides what is drawn, and a layout passed in with each
+     * command could disagree with the one on screen for exactly one frame — which
+     * is the frame in which Confirm launches the wrong thing.
+     */
+    private val homeLayout: StateFlow<HomeLayout> = settingsRepository.display
+        .map { it.homeLayout }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.GRID)
+
+    /**
+     * Which system the card flow is showing.
+     *
+     * Held here rather than in [LauncherUiState] because it survives things the
+     * grid's cursor does not: opening a system, launching from inside it and
+     * coming back should return to the card you left, and that is a fact about
+     * this cursor rather than about the grid's.
+     */
+    private val _platformCardIndex = MutableStateFlow(0)
+    val platformCardIndex: StateFlow<Int> = _platformCardIndex.asStateFlow()
+
+    /**
+     * Which way the last step went, for the card that slides in.
+     *
+     * Kept rather than derived by comparing the old and new index, because
+     * [stepCard] wraps: stepping right off the end lands on a *lower* index, and
+     * an animation inferred from that comparison would slide the opposite way to
+     * the button that was pressed.
+     */
+    private val _platformCardDirection = MutableStateFlow(1)
+    val platformCardDirection: StateFlow<Int> = _platformCardDirection.asStateFlow()
 
     // ---- Sections ----------------------------------------------------------
 
@@ -1563,6 +1602,20 @@ class LauncherViewModel @Inject constructor(
         }
 
         /*
+         * The card flow replaces the top level of Home and nothing under it.
+         *
+         * Gated on no folder being open, which is what makes opening a system
+         * hand straight back to the grid: the folder's contents are laid out and
+         * driven exactly as they always were, and Back closes the folder and
+         * returns here. Without the guard the flow would keep the D-pad while the
+         * user was looking at a page of games.
+         */
+        if (homeLayout.value == HomeLayout.PLATFORM_CARDS && !uiState.value.isFolderOpen) {
+            onPlatformCardCommand(command)
+            return
+        }
+
+        /*
          * Resizing takes the D-pad from the cursor.
          *
          * Tested here rather than as a case in the grid's own `when` because it
@@ -1601,6 +1654,104 @@ class LauncherViewModel @Inject constructor(
             ControllerCommand.PICK_UP -> pickUp()
             ControllerCommand.CANCEL_EDIT -> cancelEdit()
             ControllerCommand.SEARCH -> emit(LauncherEffect.OpenSearch)
+        }
+    }
+
+    /**
+     * The systems the card flow is showing, as of this press.
+     *
+     * Computed on demand rather than held as a flow, because the inputs it folds
+     * — every game and every platform — change on a scrape, a launch or a hide,
+     * while the *cursor* changes on every press. Derived as a flow off
+     * [uiState] it would be rebuilt each time the cursor moved a cell, which is
+     * the hot path; folded once per press it is work proportional to the library
+     * exactly when the library is the thing being asked about.
+     */
+    private fun currentPlatformCards(): List<PlatformCard> {
+        val state = uiState.value
+        return platformCards(
+            games = state.entriesById.values.filterIsInstance<GameEntry>(),
+            platformsById = state.platformsById,
+        )
+    }
+
+    /**
+     * Home, as a flow of systems; see [com.thor.core.model.HomeLayout].
+     *
+     * Left and Right step, and so do the shoulder buttons — the same two things
+     * turn the page on the grid, and a user who has learned one should not have
+     * to learn the other. Down reaches the section bar, as it does everywhere
+     * else on this panel.
+     */
+    private fun onPlatformCardCommand(command: ControllerCommand) {
+        val cards = currentPlatformCards()
+
+        when (command) {
+            ControllerCommand.NAVIGATE_LEFT, ControllerCommand.PAGE_PREVIOUS ->
+                stepPlatformCard(-1, cards.size)
+
+            ControllerCommand.NAVIGATE_RIGHT, ControllerCommand.PAGE_NEXT ->
+                stepPlatformCard(1, cards.size)
+
+            // The bar is below this panel, so Down is what reaches it. Back does
+            // too, because there is nothing else for Back to undo here — the flow
+            // is the top level, and a button that does nothing reads as a freeze.
+            ControllerCommand.NAVIGATE_DOWN, ControllerCommand.BACK -> enterNavBarIfShown()
+
+            ControllerCommand.CONFIRM -> openPlatformCard(cards)
+            ControllerCommand.OPEN_SIDE_MENU -> toggleSideMenu()
+            ControllerCommand.OPEN_APP_DRAWER -> openAppDrawer()
+            ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
+            ControllerCommand.GO_HOME -> goHome()
+            ControllerCommand.SEARCH -> emit(LauncherEffect.OpenSearch)
+
+            /*
+             * Everything else belongs to a cell, and there are no cells here.
+             *
+             * Favourite, the context menu, edit mode and screenshot cycling all
+             * act on one entry; a card is a whole system. Silently ignored rather
+             * than mapped onto something approximate — a Favourite button that
+             * quietly favourited a system's most recent game would be worse than
+             * one that does nothing.
+             */
+            else -> Unit
+        }
+    }
+
+    /** Steps the flow, wrapping; see [stepCard] for why it wraps. */
+    private fun stepPlatformCard(delta: Int, count: Int) {
+        if (count <= 1) return
+        _platformCardDirection.value = delta
+        _platformCardIndex.value = stepCard(_platformCardIndex.value, delta, count)
+    }
+
+    /**
+     * Opens the system under the cursor, as its folder on the grid.
+     *
+     * The same folder the grid shows, opened the same way, so everything inside
+     * it — sorting, the context menu, launching, the information panel — is what
+     * it has always been. A system whose folder does not exist is skipped rather
+     * than reported: [platformCards] only builds cards for systems with games,
+     * and a scan creates the folder, so the two disagree only in the moment
+     * between the two writes.
+     */
+    private fun openPlatformCard(cards: List<PlatformCard>) {
+        val card = cards.getOrNull(_platformCardIndex.value.coerceIn(0, cards.lastIndex)) ?: return
+        openFolder(PlatformFolders.idFor(card.platform.id))
+    }
+
+    /**
+     * Reaches the section bar, but only when it is drawn.
+     *
+     * A bar with one section on it is not rendered — see `BottomScreen` — so
+     * parking the cursor there would put it somewhere invisible with no way back.
+     * The grid has the same hazard and predates this; the flow does not inherit
+     * it because the flow has fewer places for a lost cursor to be noticed.
+     */
+    private fun enterNavBarIfShown() {
+        val state = uiState.value
+        if (LauncherTab.visible(state.enabledExtensions, couchMode.value).size > 1) {
+            enterNavBar()
         }
     }
 

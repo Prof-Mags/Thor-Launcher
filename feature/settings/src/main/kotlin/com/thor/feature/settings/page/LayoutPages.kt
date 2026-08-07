@@ -10,6 +10,7 @@ import com.thor.core.model.DockStyle
 import com.thor.core.model.FolderStyle
 import com.thor.core.model.InfoPanelStyle
 import com.thor.core.model.GridSpec
+import com.thor.core.model.HomeLayout
 import com.thor.core.model.IconShape
 import com.thor.core.model.MotionStyle
 import com.thor.core.model.ThorSettings
@@ -84,6 +85,26 @@ internal const val WALLPAPER_FIXED_ROWS = 4
 @Composable
 internal fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
     val grid = settings.grid
+    val cards = settings.display.homeLayout == HomeLayout.PLATFORM_CARDS
+
+    /*
+     * First, because it decides whether anything below it is on screen at all.
+     *
+     * The rows underneath are not hidden when the flow is on, and that is
+     * deliberate: they still describe the grid an opened system's games are laid
+     * out on, so they are neither dead nor irrelevant — and a page that empties
+     * itself when a switch is thrown makes the switch look destructive.
+     */
+    ChoiceRow(
+        title = "Home shows",
+        subtitle = settings.display.homeLayout.description,
+        options = HomeLayout.entries,
+        selected = settings.display.homeLayout,
+        focused = focusedRow == 0,
+        label = HomeLayout::label,
+        onSelected = { layout -> viewModel.updateDisplay { it.copy(homeLayout = layout) } },
+    )
+    RowDivider()
 
     // One picker rather than separate column and row sliders. The two together
     // could reach a matrix with another size's spacing, which is the crowded
@@ -91,10 +112,14 @@ internal fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
     // through exactly this list, so the two controls now agree.
     ChoiceRow(
         title = "Layout",
-        subtitle = "Also reachable by pinching the grid",
+        subtitle = if (cards) {
+            "Used inside a system, where its games are laid out"
+        } else {
+            "Also reachable by pinching the grid"
+        },
         options = GridSpec.PRESETS,
         selected = grid.preset,
-        focused = focusedRow == 0,
+        focused = focusedRow == 1,
         label = { it.label },
         // The dimensions belong here, not in the button: at rest the row reports
         // which preset is on, and "Comfortable  ·  5 × 4" did not fit the pill,
@@ -108,7 +133,7 @@ internal fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
         subtitle = "Fine-tunes how much of each cell the artwork fills",
         value = grid.iconScale,
         range = GridSpec.MIN_ICON_SCALE..GridSpec.MAX_ICON_SCALE,
-        focused = focusedRow == 1,
+        focused = focusedRow == 2,
         valueLabel = { "${(it * 100).toInt()}%" },
         onValueChange = { scale -> viewModel.updateGrid { it.copy(iconScale = scale) } },
     )
@@ -118,7 +143,7 @@ internal fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
         subtitle = "Percent of a cell left as gutter",
         value = grid.spacingDp,
         range = 0..48,
-        focused = focusedRow == 2,
+        focused = focusedRow == 3,
         suffix = "%",
         onValueChange = { spacing -> viewModel.updateGrid { it.copy(spacingDp = spacing) } },
     )
@@ -127,7 +152,7 @@ internal fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
         title = "Icon shape",
         options = IconShape.entries,
         selected = grid.iconShape,
-        focused = focusedRow == 3,
+        focused = focusedRow == 4,
         label = IconShape::label,
         onSelected = { shape -> viewModel.updateGrid { it.copy(iconShape = shape) } },
     )
@@ -135,7 +160,7 @@ internal fun GridPage(settings: ThorSettings, focusedRow: Int, viewModel: Settin
     SwitchRow(
         title = "Show labels",
         checked = grid.showLabels,
-        focused = focusedRow == 4,
+        focused = focusedRow == 5,
         onCheckedChange = { on -> viewModel.updateGrid { it.copy(showLabels = on) } },
     )
 }

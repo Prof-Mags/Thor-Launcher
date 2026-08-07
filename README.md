@@ -70,6 +70,12 @@ Couch mode builds its rails directly from the library and caches its platform sh
 
 ## The grid
 
+The bottom screen draws Home one of two ways, and the choice is a single setting. **Grid** is the default and everything below describes it. **Platform cards** replaces it with a flow of systems — one filling the panel at a time, the icon pack's wide banner as the backdrop and its wordmark as the title, with the game count, how long you have played the system and how much of it you have never touched along the bottom. Left and Right step between systems and wrap at both ends, so the system filed last is one press from the system filed first rather than twenty-four.
+
+Cards exist because an icon pack ships three images per system — an icon, a wide hero and a wordmark — and a grid has room for exactly one of them, shrunk into a square. The other two were being imported, stored and never drawn. A system with no pack artwork borrows the backdrop of the last game you played on it, and one with no artwork at all falls back to its own colour and the platform icon Loki draws.
+
+Opening a system hands straight back to the grid, showing that system's folder, so sorting, launching, the context menu and the information panel are all exactly what they always were — cards replace the top level and nothing underneath it. The honest cost is widgets: a widget is defined by the cells it occupies, and a flow of full-screen cards has no cells. They are not moved or deleted, and switching Home back to the grid shows every one of them exactly where it was.
+
 Every icon stays where you put it. Empty cells stay empty, and nothing reflows. Placements survive rescans, so moving a ROM or reinstalling an app keeps its cell.
 
 Hold **A** to pick an icon up, move it, and press **A** again to drop it. Pinch to change density between eight presets running from three columns by two rows up to eight by five, each with its own spacing and padding so every size the pinch can reach is one that was designed rather than merely computed. **L2** and **R2** turn pages, **X** favourites whatever is selected, and **Y** raises the context menu.

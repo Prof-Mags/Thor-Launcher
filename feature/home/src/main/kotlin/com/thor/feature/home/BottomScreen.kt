@@ -40,6 +40,7 @@ import com.thor.core.model.DisplaySettings
 import com.thor.core.model.DockSettings
 import com.thor.core.model.GameEntry
 import com.thor.core.model.GridEntry
+import com.thor.core.model.HomeLayout
 import com.thor.core.model.LauncherAction
 import com.thor.core.model.LauncherFeatures.DOCK_ENABLED
 import com.thor.core.model.LauncherTab
@@ -59,6 +60,9 @@ import com.thor.feature.home.couch.CouchPlatformSummary
 import com.thor.feature.home.couch.CouchQuickDetails
 import com.thor.feature.home.couch.CouchScreen
 import com.thor.feature.home.couch.platform
+import com.thor.feature.home.cards.PlatformCard
+import com.thor.feature.home.cards.PlatformCardScreen
+import com.thor.feature.home.cards.platformCards
 import com.thor.feature.home.dialog.FolderPickerDialog
 import com.thor.feature.home.dialog.FolderPickerState
 import com.thor.feature.home.dialog.SortDialog
@@ -96,6 +100,12 @@ fun BottomScreen(
     wallpaper: AnimatedWallpaper,
     wallpaperUri: String?,
     showPageIndicators: Boolean,
+    /** What Home draws on this panel: the grid, or a flow of systems. */
+    homeLayout: HomeLayout = HomeLayout.GRID,
+    /** Which system the card flow is showing, and which way it last stepped. */
+    platformCardIndex: Int = 0,
+    platformCardDirection: Int = 1,
+    onPlatformCardOpened: (PlatformCard) -> Unit = {},
     currentSort: SortOrder,
     focusedDockSlot: Int?,
     focusedMenuAction: SideMenuAction?,
@@ -242,6 +252,24 @@ fun BottomScreen(
     val adaptiveTint = (state.selection as? GameEntry)
         ?.let { game -> state.platformsById[game.platformId] }
         ?.let { platform -> Color(platform.accentArgb) }
+    /*
+     * Folded once per library change, not once per frame.
+     *
+     * Keyed on the two maps it actually reads rather than on the whole state,
+     * which changes every time the cursor moves — a card carries a play-time
+     * total and an unplayed count over every game in a system, and recomputing
+     * those on each press would make the flow slower the larger the library got.
+     */
+    val platformCardList = remember(homeLayout, state.entriesById, state.platformsById) {
+        if (homeLayout != HomeLayout.PLATFORM_CARDS) {
+            emptyList()
+        } else {
+            platformCards(
+                games = state.entriesById.values.filterIsInstance<GameEntry>(),
+                platformsById = state.platformsById,
+            )
+        }
+    }
     val couchPlatformSummaries = remember(couchMode, state.entriesById) {
         if (!couchMode) {
             emptyMap()
@@ -355,21 +383,47 @@ fun BottomScreen(
                  * Back closes a folder, from the B button and from the system
                  * gesture alike — see `ControllerProfiles`, which maps both.
                  */
-                LauncherGrid(
-                    state = state,
-                    onCellTapped = onCellTapped,
-                    onCellLongPressed = onCellLongPressed,
-                    onPageChanged = onPageChanged,
-                    onPinch = onPinch,
-                    createWidgetView = createWidgetView,
-                    onWidgetMeasured = onWidgetMeasured,
-                    onWidgetLaunch = onWidgetLaunch,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                )
+                /*
+                 * The card flow stands in for the grid at the top level only.
+                 *
+                 * Gated on no folder being open, which is what makes opening a
+                 * system hand back to the grid: the folder's contents are laid
+                 * out by [LauncherGrid] exactly as they always were. The same
+                 * condition gates the input side; see
+                 * `LauncherViewModel.onPlatformCardCommand`, and the two must
+                 * agree or the buttons drive a surface that is not on screen.
+                 */
+                val showCards = homeLayout == HomeLayout.PLATFORM_CARDS && !state.isFolderOpen
 
-                if (showPageIndicators) {
+                if (showCards) {
+                    PlatformCardScreen(
+                        cards = platformCardList,
+                        focusedIndex = platformCardIndex,
+                        stepDirection = platformCardDirection,
+                        onOpen = { card -> onPlatformCardOpened(card) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    )
+                } else {
+                    LauncherGrid(
+                        state = state,
+                        onCellTapped = onCellTapped,
+                        onCellLongPressed = onCellLongPressed,
+                        onPageChanged = onPageChanged,
+                        onPinch = onPinch,
+                        createWidgetView = createWidgetView,
+                        onWidgetMeasured = onWidgetMeasured,
+                        onWidgetLaunch = onWidgetLaunch,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    )
+                }
+
+                // Never under the flow: its own position line says where it is,
+                // and page dots beneath that would be a second, disagreeing one.
+                if (showPageIndicators && !showCards) {
                     PageIndicators(
                         // The folder's own pages while one is open, so the dots
                         // match what the grid is actually showing.
