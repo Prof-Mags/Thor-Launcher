@@ -408,9 +408,10 @@ class LibraryRepository @Inject constructor(
      *
      * Marked as the user's, which is what makes it stick — see
      * [PlatformArtwork.isUserChosen]. Every rule that already respects pack
-     * ownership then leaves it alone: the folder scraper skips it, a newly
-     * installed pack does not overwrite it, and removing a pack does not strip
-     * it.
+     * ownership then leaves it alone: the folder scraper skips it, the artwork
+     * the launcher ships does not show through over it, and removing a pack does
+     * not strip it. Installing a pack is the one thing that covers it, and that
+     * is deliberate; the image is kept and comes back if the pack is removed.
      *
      * A null for either field leaves that one as it is, so choosing a backdrop
      * does not clear an icon.

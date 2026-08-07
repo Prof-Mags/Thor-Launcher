@@ -14,6 +14,7 @@ import com.thor.core.model.PlatformFolders
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,7 +37,15 @@ class IconPackRepository @Inject constructor(
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
 ) {
 
-    val installed: Flow<List<IconPack>> = settings.iconPacks
+    /**
+     * Packs the user installed, which is not everything the list holds.
+     *
+     * The reserved [PlatformArtwork.USER_PACK_ID] record is a stash of images a
+     * pack displaced — see [stashWith] — rather than something installed, and
+     * showing it would put a pack in the settings list that cannot be uninstalled
+     * and was never installed.
+     */
+    val installed: Flow<List<IconPack>> = settings.iconPacks.map(::realPacks)
 
     /**
      * Drops pack records whose artwork is not on disk, and undresses what they
@@ -92,18 +101,37 @@ class IconPackRepository @Inject constructor(
     /**
      * Writes a pack's artwork onto every platform it covers.
      *
-     * Last one installed wins, which is the only rule that matches what the user
-     * just did: installing a pack is a request to see it.
+     * Last one installed wins, on every platform the pack covers and without
+     * exception, which is the only rule that matches what the user just did:
+     * installing a pack is a request to see it.
+     *
+     * That includes platforms dressed by hand. It did not, once — a hand-picked
+     * image was treated as outranking a pack — and the result was a pack that
+     * installed, reported success, and visibly changed nothing on the systems the
+     * user cared enough about to dress themselves. An exception nobody asked for
+     * is indistinguishable from the feature being broken.
+     *
+     * Displacing is not discarding: what comes off is kept, so uninstalling the
+     * pack gives it back. See [stashWith] and [fallbackFor].
      */
     private suspend fun applyToPlatforms(pack: IconPack) {
         val platforms = platformDao.getAll()
-        platforms.forEach { platform ->
-            // Never over a hand-picked image. Installing a pack is a request to
-            // see it, but not a request to undo a choice already made — and the
-            // one thing a user cannot recover is the file they browsed to.
-            if (PlatformArtwork(packId = platform.artworkPackId).isUserChosen) return@forEach
+        val displaced = mutableMapOf<String, PlatformArtwork>()
 
+        platforms.forEach { platform ->
             val artwork = pack.artworkFor(platform.id) ?: return@forEach
+
+            // Read before the upsert overwrites it — this is the one image the
+            // user cannot recover by reinstalling anything.
+            if (PlatformArtwork(packId = platform.artworkPackId).isUserChosen) {
+                displaced[platform.id] = PlatformArtwork(
+                    iconUri = platform.artworkIconUri,
+                    heroUri = platform.artworkHeroUri,
+                    logoUri = platform.artworkLogoUri,
+                    packId = PlatformArtwork.USER_PACK_ID,
+                )
+            }
+
             platformDao.upsert(
                 platform.copy(
                     artworkIconUri = artwork.iconUri,
@@ -114,6 +142,12 @@ class IconPackRepository @Inject constructor(
             )
             dressFolder(platform.id, artwork.iconUri)
         }
+
+        if (displaced.isEmpty()) return
+        settings.updateIconPacks { packs ->
+            realPacks(packs) + stashWith(userStash(packs), displaced)
+        }
+        ThorLog.i(TAG, "${pack.id} covered ${displaced.size} hand-picked image(s), kept to restore")
     }
 
     /**
@@ -148,7 +182,7 @@ class IconPackRepository @Inject constructor(
      * the user made by installing something else.
      */
     suspend fun applyToNewPlatforms() = withContext(ioDispatcher) {
-        val packs = settings.iconPacks.first()
+        val packs = realPacks(settings.iconPacks.first())
         if (packs.isEmpty()) return@withContext
 
         val bare = platformDao.getAll().filter { it.artworkPackId == null }
@@ -182,17 +216,21 @@ class IconPackRepository @Inject constructor(
      *
      * Platforms it dressed fall back to whatever *other* installed pack covers
      * them, rather than to nothing — with two packs installed, uninstalling the
-     * newer should reveal the older, not strip the platform bare.
+     * newer should reveal the older, not strip the platform bare. Failing that,
+     * to the image the user picked by hand before any pack covered it.
      */
     suspend fun remove(packId: String) = withContext(ioDispatcher) {
-        val remaining = settings.iconPacks.first().filterNot { it.id == packId }
+        val current = settings.iconPacks.first()
+        val stash = userStash(current)
+        val remaining = realPacks(current).filterNot { it.id == packId }
 
+        val handedBack = mutableSetOf<String>()
         platformDao.getAll()
             .filter { it.artworkPackId == packId }
             .forEach { platform ->
-                val fallback = remaining.asReversed().firstNotNullOfOrNull { pack ->
-                    pack.artworkFor(platform.id)?.let { pack.id to it }
-                }
+                val fallback = fallbackFor(platform.id, remaining, stash)
+                if (fallback?.first == PlatformArtwork.USER_PACK_ID) handedBack += platform.id
+
                 val artwork = fallback?.second ?: PlatformArtwork.NONE
                 platformDao.upsert(
                     platform.copy(
@@ -205,7 +243,16 @@ class IconPackRepository @Inject constructor(
                 dressFolder(platform.id, artwork.iconUri)
             }
 
-        settings.updateIconPacks { remaining }
+        /*
+         * What was handed back is on its platform again, and holding a second
+         * copy of it here would be a stale one: the user is free to change that
+         * image now, and the next uninstall would put this one back over the top
+         * of their newer choice.
+         */
+        val kept = stash
+            ?.let { it.copy(artworkBySlug = it.artworkBySlug - handedBack) }
+            ?.takeIf { it.artworkBySlug.isNotEmpty() }
+        settings.updateIconPacks { remaining + listOfNotNull(kept) }
         // Files last: if anything above fails the pack is still installed and
         // still has its artwork, rather than being a record pointing at a
         // directory that has already gone.
@@ -216,6 +263,63 @@ class IconPackRepository @Inject constructor(
         const val TAG = "IconPack"
     }
 }
+
+/**
+ * The packs the user actually installed.
+ *
+ * [PlatformArtwork.USER_PACK_ID] shares this list because it answers the same
+ * question every pack does — who put this artwork here — but it is not one: it has
+ * no files, cannot be uninstalled, and must never be offered as a fallback ahead
+ * of something the user chose more recently.
+ */
+internal fun realPacks(packs: List<IconPack>): List<IconPack> =
+    packs.filterNot { it.id == PlatformArtwork.USER_PACK_ID }
+
+/** The stash of hand-picked images that packs have covered over, if there is one. */
+internal fun userStash(packs: List<IconPack>): IconPack? =
+    packs.firstOrNull { it.id == PlatformArtwork.USER_PACK_ID }
+
+/**
+ * The stash, updated with what a pack has just covered over.
+ *
+ * Keyed by platform id rather than by the pack's slug, because this is not a pack's
+ * naming — it is a record of what was on a platform, and the platform is the only
+ * thing that identifies it.
+ *
+ * Newer displacements win. The case that decides it: a user picks an image by hand,
+ * a pack covers it, they pick a *different* image by hand, and a second pack covers
+ * that. Keeping the first would hand back an image they had already replaced, which
+ * looks exactly like the launcher losing their change.
+ */
+internal fun stashWith(existing: IconPack?, displaced: Map<String, PlatformArtwork>): IconPack {
+    val base = existing ?: IconPack(
+        id = PlatformArtwork.USER_PACK_ID,
+        name = "Images you picked",
+        author = "",
+        version = "1",
+    )
+    return base.copy(artworkBySlug = base.artworkBySlug + displaced)
+}
+
+/**
+ * What a platform should wear once the pack dressing it is uninstalled.
+ *
+ * Ordered by how recently the user asked for each thing. Another installed pack
+ * first, newest first among those — uninstalling the top pack of two should reveal
+ * the one underneath. Only when no pack covers this platform at all does the
+ * hand-picked image come back, because by then it is the most recent choice left.
+ *
+ * Null means nothing is left to put back, and the platform falls through to the
+ * artwork Loki ships. That is a real outcome, not a failure.
+ */
+internal fun fallbackFor(
+    platformId: String,
+    remaining: List<IconPack>,
+    stash: IconPack?,
+): Pair<String, PlatformArtwork>? =
+    remaining.asReversed().firstNotNullOfOrNull { pack ->
+        pack.artworkFor(platformId)?.let { pack.id to it }
+    } ?: stash?.artworkBySlug?.get(platformId)?.let { PlatformArtwork.USER_PACK_ID to it }
 
 /**
  * Pack records describing artwork that is not there.

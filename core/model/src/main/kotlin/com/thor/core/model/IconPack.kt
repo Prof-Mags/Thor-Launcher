@@ -29,13 +29,19 @@ data class PlatformArtwork(
     val isEmpty: Boolean get() = iconUri == null && heroUri == null && logoUri == null
 
     /**
-     * Chosen by hand, and therefore nobody else's to change.
+     * Chosen by hand, and therefore nobody else's to change *by accident*.
      *
      * Recorded in [packId] rather than as a separate flag because it answers the
      * same question every other owner does — who put this here — and every rule
      * that already respects pack ownership then respects a hand-picked image for
-     * free: the scraper leaves it alone, a newly installed pack does not
-     * overwrite it, and removing a pack does not take it away.
+     * free: the scraper leaves it alone, and the artwork the launcher ships does
+     * not show through over the top of it.
+     *
+     * Installing an icon pack is the deliberate exception and does cover it. A
+     * pack is something the user went and found, and one that silently skipped
+     * the systems they had dressed themselves looked like a pack that had not
+     * installed at all. What it covers is kept and handed back if the pack is
+     * uninstalled, so the choice is displaced rather than lost.
      */
     val isUserChosen: Boolean get() = packId == USER_PACK_ID
 
