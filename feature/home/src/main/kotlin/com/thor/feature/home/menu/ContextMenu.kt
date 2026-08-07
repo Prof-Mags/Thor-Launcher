@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.ManageSearch
 import androidx.compose.material.icons.rounded.Monitor
 import androidx.compose.material.icons.rounded.OpenWith
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
@@ -109,6 +110,22 @@ enum class ContextAction(
         "Open on the bottom display",
         Icons.Rounded.Tablet,
         "Bottom screen",
+    ),
+
+    /**
+     * A standing preference, as opposed to the two above it.
+     *
+     * Those send this launch somewhere; this decides where every launch goes,
+     * including the ones started from search, from a widget, or from couch mode —
+     * none of which has a context menu to reach for. It cycles rather than opening
+     * a sub-menu, because there are three states and a menu inside a menu is a
+     * long way to go for a three-way switch.
+     */
+    ALWAYS_ON_PANEL(
+        "Always open on…",
+        "Remember which screen this uses, everywhere",
+        Icons.Rounded.PushPin,
+        "Always on",
     ),
     ADD_TO_GRID(
         "Add to grid",
@@ -324,7 +341,12 @@ fun contextActionsFor(
     add(ContextAction.LAUNCH)
     if (entry !is FolderEntry) {
         add(ContextAction.LAUNCH_MAIN_SCREEN)
-        if (hasSecondScreen) add(ContextAction.LAUNCH_SECOND_SCREEN)
+        if (hasSecondScreen) {
+            add(ContextAction.LAUNCH_SECOND_SCREEN)
+            // Only where there are two panels to choose between. On one screen a
+            // standing preference for a panel is a preference between one thing.
+            add(ContextAction.ALWAYS_ON_PANEL)
+        }
     }
 
     // The drawer's whole purpose is choosing what reaches the grid, so that is

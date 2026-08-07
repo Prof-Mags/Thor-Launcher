@@ -42,6 +42,20 @@ enum class SettingsPage(
         SettingsCategory.APPEARANCE, "Surfaces",
         "Panel material, corners, depth and texture",
     ),
+
+    /**
+     * Building a theme, as opposed to choosing one and adjusting it.
+     *
+     * Third rather than first: the overwhelming majority of visits to
+     * Personalization are somebody picking from the gallery, and a rail whose
+     * opening row is an authoring tool tells them the easy thing is somewhere
+     * further down. It sits directly under the two pages whose values it is the
+     * source of, which is where somebody who has run out of adjustment will look.
+     */
+    THEME_EDITOR(
+        SettingsCategory.APPEARANCE, "Theme editor",
+        "Build a theme of your own, and share it",
+    ),
     WALLPAPER(
         SettingsCategory.APPEARANCE, "Wallpaper",
         "Background image, animated effect and how far it is dimmed",
@@ -83,6 +97,18 @@ enum class SettingsPage(
         "Default library order",
     ),
 
+    /**
+     * Folders defined by a query rather than by what was filed into them.
+     *
+     * Under Library beside Sorting, because both answer "how is my library
+     * arranged" — and a smart folder is closer to a saved sort than it is to the
+     * folders you make by hand, which are made from the grid where they live.
+     */
+    SMART_FOLDERS(
+        SettingsCategory.LIBRARY, "Smart folders",
+        "Folders that fill themselves from a query",
+    ),
+
     // ---- Artwork -----------------------------------------------------------
     METADATA(
         SettingsCategory.LIBRARY, "Metadata & scraping",
@@ -122,6 +148,17 @@ enum class SettingsPage(
         SettingsCategory.CONTROLS, "Navigation",
         "Cursor movement and stick behaviour",
     ),
+
+    /**
+     * First in Controls, because it is the one that decides what the rest mean.
+     *
+     * Navigation and Feedback tune how a press behaves; this decides which press
+     * it was.
+     */
+    BUTTON_MAPPING(
+        SettingsCategory.CONTROLS, "Button mapping",
+        "Which button does what, and how it feels",
+    ),
     POINTER(
         SettingsCategory.CONTROLS, "Pointer",
         "Controller mouse for apps and games",
@@ -154,6 +191,18 @@ enum class SettingsPage(
     PERFORMANCE(
         SettingsCategory.SYSTEM, "Performance",
         "Animation and visual effects",
+    ),
+
+    /**
+     * Copying a profile out and putting it back.
+     *
+     * Under System beside Extensions rather than under Profiles: it is about the
+     * device and its storage, and it is where somebody looks after deciding to
+     * reinstall — which is the same visit as "how do I get my launcher back".
+     */
+    BACKUP(
+        SettingsCategory.SYSTEM, "Backup",
+        "Save this profile to a file, or restore one",
     ),
 
     EXTENSIONS(

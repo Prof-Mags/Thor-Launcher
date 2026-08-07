@@ -10,6 +10,8 @@ import com.thor.core.model.AccessibilitySettings
 import com.thor.core.model.ControllerCommand
 import com.thor.core.model.AppEntry
 import com.thor.core.model.AudioSettings
+import com.thor.core.input.ControllerProfiles
+import com.thor.core.model.ControllerProfile
 import com.thor.core.model.ControlSettings
 import com.thor.core.model.DeveloperSettings
 import com.thor.core.model.DisplaySettings
@@ -24,8 +26,18 @@ import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.Platform
 import com.thor.core.model.RetroAchievementsSettings
 import com.thor.core.model.RomDirectory
+import com.thor.core.model.CustomTheme
+import com.thor.core.model.FolderEntry
+import com.thor.core.model.SmartFolderPreset
+import com.thor.core.model.MotionStyle
+import com.thor.core.model.SmartQuery
+import com.thor.core.model.SurfaceStyle
+import com.thor.core.model.ThemeFile
 import com.thor.core.model.ThemeId
 import com.thor.core.model.ThemeRecipe
+import com.thor.core.model.sanitizeThemeName
+import com.thor.core.model.uniqueProfileName
+import com.thor.core.model.uniqueThemeName
 import com.thor.core.model.ThorSettings
 import android.net.Uri
 import android.content.Context
@@ -56,6 +68,8 @@ import com.thor.data.metadata.MetadataAggregator
 import com.thor.data.metadata.ProviderStatus
 import com.thor.data.library.GridLayoutRepository
 import com.thor.data.achievements.AchievementRepository
+import com.thor.data.backup.BackupManager
+import com.thor.data.backup.BackupResult
 import com.thor.data.achievements.AchievementSyncManager
 import com.thor.data.achievements.AchievementSyncState
 import com.thor.data.achievements.RetroAchievementsClient
@@ -141,6 +155,7 @@ class SettingsViewModel @Inject constructor(
     private val achievementRepository: AchievementRepository,
     private val achievementSyncManager: AchievementSyncManager,
     private val retroAchievements: RetroAchievementsClient,
+    private val backupManager: BackupManager,
     mouse: MouseController,
     @Dispatcher(ThorDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val appContext: Context,
@@ -1058,14 +1073,399 @@ class SettingsViewModel @Inject constructor(
      * wallpaper remains independently changeable afterwards, so this is a
      * starting point rather than a lock.
      */
-    fun selectTheme(themeId: ThemeId) {
+    fun selectTheme(recipe: ThemeRecipe) {
         viewModelScope.launchSafely(TAG) {
             settingsRepository.updatePersonalization {
                 it.copy(
-                    themeId = themeId,
-                    animatedWallpaper = ThemeRecipe.of(themeId).defaultWallpaper,
+                    // A custom theme sets the custom id; a bundled one *clears* it,
+                    // which is what makes the gallery a single row rather than two
+                    // competing selections. Leaving a stale custom id behind meant
+                    // picking a bundled card changed nothing on screen.
+                    themeId = if (recipe.isCustom) it.themeId else recipe.id,
+                    activeCustomThemeId = recipe.customId,
+                    animatedWallpaper = recipe.defaultWallpaper,
                 )
             }
+        }
+    }
+
+    // ---- Backup ------------------------------------------------------------
+
+    private val _backupStatus = MutableStateFlow<String?>(null)
+    val backupStatus: StateFlow<String?> = _backupStatus.asStateFlow()
+
+    /**
+     * True once a restore has replaced the files the launcher is still holding open.
+     *
+     * The page turns into an instruction when this is set, because there is
+     * nothing useful the user can do next except restart — and nothing here can
+     * restart for them; see [BackupManager.restore].
+     */
+    private val _restartRequired = MutableStateFlow(false)
+    val restartRequired: StateFlow<Boolean> = _restartRequired.asStateFlow()
+
+    fun backUpProfile(uri: String) {
+        viewModelScope.launchSafely(TAG) {
+            val id = profiles.value.active?.id ?: return@launchSafely
+            _backupStatus.value = "Backing up…"
+            _backupStatus.value = when (val result = backupManager.backUp(id, uri)) {
+                is BackupResult.Written ->
+                    "Backed up ${result.entryCount} files. Keep it somewhere off the device."
+                is BackupResult.Failed -> result.reason
+                else -> "That backup could not be written."
+            }
+        }
+    }
+
+    fun restoreProfile(uri: String) {
+        viewModelScope.launchSafely(TAG) {
+            val id = profiles.value.active?.id ?: return@launchSafely
+            _backupStatus.value = "Restoring…"
+            when (val result = backupManager.restore(id, uri)) {
+                is BackupResult.Restored -> {
+                    _backupStatus.value =
+                        "Restored ${result.entryCount} files. Close and reopen Loki to use them."
+                    _restartRequired.value = true
+                }
+                is BackupResult.Failed -> _backupStatus.value = result.reason
+                BackupResult.NotABackup ->
+                    _backupStatus.value = "That is not a Loki backup."
+                is BackupResult.Written -> Unit
+            }
+        }
+    }
+
+    // ---- Smart folders -----------------------------------------------------
+
+    /** Every smart folder, for the editor's list. */
+    val smartFolders: StateFlow<List<FolderEntry>> = gridRepository.smartFolders
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Which smart folder the editor has open. View state, as [editingThemeId] is. */
+    private val _editingSmartFolderId = MutableStateFlow<String?>(null)
+    val editingSmartFolderId: StateFlow<String?> = _editingSmartFolderId.asStateFlow()
+
+    private val _smartFolderStatus = MutableStateFlow<String?>(null)
+    val smartFolderStatus: StateFlow<String?> = _smartFolderStatus.asStateFlow()
+
+    /**
+     * Creates a folder from a preset and opens it.
+     *
+     * The folder lands on the grid immediately — `createSmartFolder` places it —
+     * so the thing being edited is already somewhere the user can see it rather
+     * than appearing only once they leave settings.
+     */
+    fun createSmartFolder(preset: SmartFolderPreset) {
+        viewModelScope.launchSafely(TAG) {
+            val id = gridRepository.createSmartFolder(preset.folderTitle, preset.query)
+            _editingSmartFolderId.value = id
+            _smartFolderStatus.value = "${preset.folderTitle} added to the grid."
+        }
+    }
+
+    fun editSmartFolder(id: String?) {
+        _editingSmartFolderId.value = id
+        _smartFolderStatus.value = null
+    }
+
+    /**
+     * Applies a change to one folder's query.
+     *
+     * Reads the current query from the observed list rather than taking it as a
+     * parameter, so two rows changed in quick succession compose instead of the
+     * second overwriting the first with a stale copy.
+     */
+    fun updateSmartQuery(folderId: String, transform: (SmartQuery) -> SmartQuery) {
+        viewModelScope.launchSafely(TAG) {
+            val current = smartFolders.value
+                .firstOrNull { it.id == folderId }
+                ?.smartQuery
+                ?: SmartQuery()
+            gridRepository.updateSmartQuery(folderId, transform(current))
+        }
+    }
+
+    fun renameSmartFolder(folderId: String, title: String) {
+        viewModelScope.launchSafely(TAG) {
+            gridRepository.renameFolder(folderId, title.trim().ifBlank { "Smart folder" })
+        }
+    }
+
+    fun deleteSmartFolder(folderId: String) {
+        viewModelScope.launchSafely(TAG) {
+            gridRepository.deleteFolder(folderId)
+            if (_editingSmartFolderId.value == folderId) _editingSmartFolderId.value = null
+            _smartFolderStatus.value = "Folder deleted."
+        }
+    }
+
+    // ---- Theme editor ------------------------------------------------------
+
+    /**
+     * Which custom theme the editor has open, if any.
+     *
+     * View state rather than a setting: it says where the user is, not what the
+     * launcher looks like, and it should not survive the app being killed any more
+     * than a scroll position should. Held here rather than in the composable
+     * because the page is rebuilt on every settings emission and an edit is a
+     * settings emission.
+     */
+    private val _editingThemeId = MutableStateFlow<String?>(null)
+    val editingThemeId: StateFlow<String?> = _editingThemeId.asStateFlow()
+
+    private val _themeStatus = MutableStateFlow<String?>(null)
+    val themeStatus: StateFlow<String?> = _themeStatus.asStateFlow()
+
+    /**
+     * Starts a new theme from an existing one and opens it.
+     *
+     * Seeded rather than blank, and applied immediately — see [editTheme] for why
+     * opening the editor applies what it is editing.
+     */
+    fun createTheme(seed: ThemeRecipe) {
+        viewModelScope.launchSafely(TAG) {
+            var created: CustomTheme? = null
+            settingsRepository.updatePersonalization { personalization ->
+                val themes = personalization.customThemes
+                val theme = CustomTheme.seededFrom(
+                    recipe = seed,
+                    id = CustomTheme.freshId(themes.map(CustomTheme::id)),
+                    name = uniqueThemeName(seed.displayName, themes.map(CustomTheme::name)),
+                )
+                created = theme
+                personalization.copy(
+                    customThemes = themes + theme,
+                    activeCustomThemeId = theme.id,
+                    animatedWallpaper = theme.wallpaper,
+                )
+            }
+            _editingThemeId.value = created?.id
+            _themeStatus.value = created?.let { "${it.name} created." }
+        }
+    }
+
+    /**
+     * Opens a theme in the editor, and applies it.
+     *
+     * Applying is the preview. A palette is the whole interface across both
+     * screens, and no swatch or card in a settings row can stand in for that — the
+     * only honest preview of a theme is the launcher wearing it. It also removes
+     * the state where a slider moves and nothing visible happens, which is what a
+     * card-sized preview actually delivers on a device held at arm's length.
+     *
+     * Leaving the editor deliberately does *not* put the old theme back. The user
+     * has been looking at this one for the whole session; reverting it on exit
+     * would undo a choice they have already seen and accepted.
+     */
+    fun editTheme(id: String?) {
+        _editingThemeId.value = id
+        _themeStatus.value = null
+        if (id == null) return
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updatePersonalization { it.copy(activeCustomThemeId = id) }
+        }
+    }
+
+    /** Applies a change to the theme currently open in the editor. */
+    fun updateEditedTheme(transform: (CustomTheme) -> CustomTheme) {
+        val id = _editingThemeId.value ?: return
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updatePersonalization { personalization ->
+                personalization.copy(
+                    customThemes = personalization.customThemes.map { theme ->
+                        // The id is re-pinned after the transform so a caller that
+                        // copies the whole object cannot rename the thing it is
+                        // editing into a different theme.
+                        if (theme.id == id) transform(theme).copy(id = id) else theme
+                    },
+                )
+            }
+        }
+    }
+
+    /**
+     * Rolls a new colour and material for the open theme.
+     *
+     * Within the bands the bundled themes occupy rather than across each field's
+     * full range. A uniform roll over every range produces the same theme almost
+     * every time — a muddy ground under a lurid accent — because most of each
+     * range exists to be reachable rather than to be chosen, and only a narrow
+     * part of it is somewhere a theme wants to be.
+     *
+     * The name and the wallpaper are left alone: one is the user's, and the other
+     * is a whole second decision that rolling would quietly undo.
+     */
+    fun randomiseEditedTheme() {
+        updateEditedTheme { theme ->
+            theme.copy(
+                accentHue = (0 until 360).random().toFloat(),
+                // Above the neutral ceiling, so a roll always produces a theme
+                // that has committed to a colour.
+                accentChroma = randomIn(0.09f, 0.19f),
+                secondaryHueShift = randomIn(-60f, 60f),
+                accentSpread = randomIn(0f, 40f),
+                neutralChroma = randomIn(0.004f, 0.028f),
+                groundShift = if ((0..3).random() == 0) randomIn(0.08f, 0.22f) else 0f,
+                surfaceStyle = SurfaceStyle.entries.random(),
+                cornerRadiusDp = listOf(0, 4, 8, 14, 20, 28).random(),
+                surfaceAlpha = randomIn(0.86f, 1f),
+                grain = randomIn(0f, 0.06f),
+                backgroundDepth = randomIn(0f, 0.14f),
+                motion = MotionStyle.entries.random(),
+            ).let { rolled ->
+                // The greys follow the accent unless the roll says otherwise, which
+                // is what every bundled theme does — greys pointing somewhere the
+                // accent is not read as a mistake rather than as a choice.
+                rolled.copy(neutralHue = rolled.accentHue)
+            }
+        }
+        _themeStatus.value = "Rolled a new look. Keep going, or roll again."
+    }
+
+    private fun randomIn(from: Float, to: Float): Float =
+        from + (to - from) * (0..1_000).random() / 1_000f
+
+    /** Renames the open theme, keeping names distinct so the gallery stays readable. */
+    fun renameEditedTheme(name: String) {
+        val id = _editingThemeId.value ?: return
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updatePersonalization { personalization ->
+                val others = personalization.customThemes
+                    .filterNot { it.id == id }
+                    .map(CustomTheme::name)
+                personalization.copy(
+                    customThemes = personalization.customThemes.map { theme ->
+                        if (theme.id == id) {
+                            theme.copy(name = uniqueThemeName(name, others))
+                        } else {
+                            theme
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    /** Copies a theme and opens the copy, leaving the original untouched. */
+    fun duplicateTheme(id: String) {
+        viewModelScope.launchSafely(TAG) {
+            var copyId: String? = null
+            settingsRepository.updatePersonalization { personalization ->
+                val themes = personalization.customThemes
+                val source = themes.firstOrNull { it.id == id }
+                    ?: return@updatePersonalization personalization
+                val copy = source.copy(
+                    id = CustomTheme.freshId(themes.map(CustomTheme::id)),
+                    name = uniqueThemeName(source.name, themes.map(CustomTheme::name)),
+                )
+                copyId = copy.id
+                personalization.copy(
+                    customThemes = themes + copy,
+                    activeCustomThemeId = copy.id,
+                )
+            }
+            copyId?.let { _editingThemeId.value = it }
+        }
+    }
+
+    /**
+     * Removes a theme.
+     *
+     * Clearing [PersonalizationSettings.activeCustomThemeId] when the deleted theme
+     * was the applied one is what makes the launcher fall back to the bundled theme
+     * still named by `themeId` rather than to no palette at all.
+     */
+    fun deleteTheme(id: String) {
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updatePersonalization { personalization ->
+                personalization.copy(
+                    customThemes = personalization.customThemes.filterNot { it.id == id },
+                    activeCustomThemeId = personalization.activeCustomThemeId
+                        ?.takeIf { it != id },
+                )
+            }
+            if (_editingThemeId.value == id) _editingThemeId.value = null
+            _themeStatus.value = "Theme deleted."
+        }
+    }
+
+    /**
+     * Writes a theme to a document the user picked.
+     *
+     * Off the main thread for the same reason [importExtension] reads off it: the
+     * document may live on a network provider, and the launcher must not freeze
+     * while it is reached.
+     */
+    fun exportTheme(id: String, uri: String) {
+        viewModelScope.launchSafely(TAG) {
+            val theme = settings.value.personalization.customThemes.firstOrNull { it.id == id }
+            if (theme == null) {
+                _themeStatus.value = "That theme no longer exists."
+                return@launchSafely
+            }
+            val text = THEME_JSON.encodeToString(
+                ThemeFile.serializer(),
+                ThemeFile(theme = theme),
+            )
+            val written = withContext(ioDispatcher) {
+                runCatching {
+                    appContext.contentResolver.openOutputStream(uri.toUri())
+                        ?.use { it.write(text.encodeToByteArray()) }
+                }.isSuccess
+            }
+            _themeStatus.value = if (written) {
+                "${theme.name} saved. Share the file and anyone can import it."
+            } else {
+                "That file could not be written."
+            }
+        }
+    }
+
+    /**
+     * Reads a theme file and adds what it holds.
+     *
+     * The imported theme is given a *fresh* id rather than the one in the file. An
+     * id says which theme this is on this device, so honouring one from elsewhere
+     * would let an imported file silently overwrite a theme of the user's that
+     * happened to share it.
+     */
+    fun importTheme(uri: String) {
+        viewModelScope.launchSafely(TAG) {
+            val text = withContext(ioDispatcher) {
+                runCatching {
+                    appContext.contentResolver.openInputStream(uri.toUri())
+                        ?.use { it.readBytes().decodeToString() }
+                }.getOrNull()
+            }
+
+            if (text.isNullOrBlank()) {
+                _themeStatus.value = "That file could not be read."
+                return@launchSafely
+            }
+
+            val file = runCatching {
+                THEME_JSON.decodeFromString(ThemeFile.serializer(), text)
+            }.getOrNull()
+
+            if (file == null || !file.isValid) {
+                _themeStatus.value = "That is not a Loki theme file."
+                return@launchSafely
+            }
+
+            var addedName: String? = null
+            settingsRepository.updatePersonalization { personalization ->
+                val themes = personalization.customThemes
+                val added = file.theme.copy(
+                    id = CustomTheme.freshId(themes.map(CustomTheme::id)),
+                    name = uniqueThemeName(
+                        sanitizeThemeName(file.theme.name),
+                        themes.map(CustomTheme::name),
+                    ),
+                )
+                addedName = added.name
+                personalization.copy(customThemes = themes + added)
+            }
+            _themeStatus.value = addedName?.let { "$it imported. Pick it from the gallery." }
         }
     }
 
@@ -1394,9 +1794,186 @@ class SettingsViewModel @Inject constructor(
      * the end.
      */
     fun onKeyCaptured(press: RawKeyPress) {
+        /*
+         * A press claimed by the remapper never reaches the tester's list.
+         *
+         * Both features want the same stream, and the router can only be in one
+         * capture mode — so rather than a second mechanism, arming a binding
+         * borrows this one and takes the next press out of it. See [armBinding].
+         */
+        _awaitingBindingFor.value?.let { command ->
+            bindKey(press.keyCode, command)
+            return
+        }
         _capturedKeys.update { current ->
             (listOf(press) + current.filterNot { it.keyCode == press.keyCode })
                 .take(MAX_CAPTURED_KEYS)
+        }
+    }
+
+    // ---- Button mapping ----------------------------------------------------
+
+    /** Which custom profile the editor has open. View state, as the others are. */
+    private val _editingProfileId = MutableStateFlow<String?>(null)
+    val editingProfileId: StateFlow<String?> = _editingProfileId.asStateFlow()
+
+    /**
+     * The command waiting to be given a button, if any.
+     *
+     * Non-null means the next physical press is a *binding* rather than input.
+     * The row says so while it is set, because a launcher that has silently
+     * stopped answering its own buttons is indistinguishable from one that has
+     * crashed.
+     */
+    private val _awaitingBindingFor = MutableStateFlow<ControllerCommand?>(null)
+    val awaitingBindingFor: StateFlow<ControllerCommand?> = _awaitingBindingFor.asStateFlow()
+
+    /**
+     * Copies a profile and opens the copy.
+     *
+     * There is no "new empty profile", deliberately. A mapping with no bindings is
+     * a launcher no button can escape — including the button that would fix it —
+     * so every profile starts from one that already works.
+     */
+    fun createControllerProfile(from: ControllerProfile) {
+        viewModelScope.launchSafely(TAG) {
+            var created: String? = null
+            settingsRepository.updateControls { controls ->
+                val taken = controls.customProfiles.map(ControllerProfile::id).toSet()
+                var counter = 1
+                while ("custom-$counter" in taken) counter++
+                val id = "custom-$counter"
+                created = id
+                val names = (ControllerProfiles.BUILT_IN + controls.customProfiles)
+                    .map(ControllerProfile::name)
+                controls.copy(
+                    customProfiles = controls.customProfiles + from.copy(
+                        id = id,
+                        name = uniqueProfileName(from.name, names),
+                        isBuiltIn = false,
+                    ),
+                    // Applied at once, so the buttons being edited are the buttons
+                    // in use and a mistake is felt immediately rather than later.
+                    activeProfileId = id,
+                )
+            }
+            _editingProfileId.value = created
+        }
+    }
+
+    fun editControllerProfile(id: String?) {
+        _editingProfileId.value = id
+        _awaitingBindingFor.value = null
+        setKeyCapture(false)
+        if (id == null) return
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateControls { it.copy(activeProfileId = id) }
+        }
+    }
+
+    /** Arms the next press to become [command]'s button. */
+    fun armBinding(command: ControllerCommand?) {
+        _awaitingBindingFor.value = command
+        // The router only diverts raw keys while capture is on, so this is what
+        // stops the armed press also navigating the settings page it was made on.
+        setKeyCapture(command != null)
+    }
+
+    private fun bindKey(keyCode: Int, command: ControllerCommand) {
+        val id = _editingProfileId.value ?: return
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateControls { controls ->
+                controls.copy(
+                    customProfiles = controls.customProfiles.map { profile ->
+                        if (profile.id != id) return@map profile
+                        // The code is removed from whatever else held it first: one
+                        // button doing two things is a profile that cannot be
+                        // described, and the map cannot express it anyway.
+                        profile.copy(bindings = profile.bindings + (keyCode to command))
+                    },
+                )
+            }
+            _awaitingBindingFor.value = null
+            setKeyCapture(false)
+        }
+    }
+
+    /** Frees every button bound to a command, leaving it unreachable until rebound. */
+    fun clearBinding(command: ControllerCommand) {
+        val id = _editingProfileId.value ?: return
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateControls { controls ->
+                controls.copy(
+                    customProfiles = controls.customProfiles.map { profile ->
+                        if (profile.id != id) return@map profile
+                        profile.copy(bindings = profile.bindings.filterValues { it != command })
+                    },
+                )
+            }
+        }
+    }
+
+    fun updateEditedProfile(transform: (ControllerProfile) -> ControllerProfile) {
+        val id = _editingProfileId.value ?: return
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateControls { controls ->
+                controls.copy(
+                    customProfiles = controls.customProfiles.map { profile ->
+                        if (profile.id == id) {
+                            transform(profile).copy(id = id, isBuiltIn = false)
+                        } else {
+                            profile
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    fun renameEditedProfile(name: String) {
+        val id = _editingProfileId.value ?: return
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateControls { controls ->
+                val taken = (ControllerProfiles.BUILT_IN + controls.customProfiles)
+                    .filterNot { it.id == id }
+                    .map(ControllerProfile::name)
+                controls.copy(
+                    customProfiles = controls.customProfiles.map { profile ->
+                        if (profile.id == id) {
+                            profile.copy(name = uniqueProfileName(name, taken))
+                        } else {
+                            profile
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    fun selectControllerProfile(id: String) {
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateControls { it.copy(activeProfileId = id) }
+        }
+    }
+
+    /**
+     * Removes a profile, falling back to the default if it was in use.
+     *
+     * The fallback is the point: an active profile id naming nothing would leave
+     * `ControllerProfiles.byId` returning the default anyway, but writing it down
+     * means the settings page agrees with the buttons.
+     */
+    fun deleteControllerProfile(id: String) {
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateControls { controls ->
+                controls.copy(
+                    customProfiles = controls.customProfiles.filterNot { it.id == id },
+                    activeProfileId = controls.activeProfileId
+                        .takeIf { it != id }
+                        ?: ControllerProfile.DEFAULT_ID,
+                )
+            }
+            if (_editingProfileId.value == id) _editingProfileId.value = null
         }
     }
 
@@ -1560,6 +2137,24 @@ class SettingsViewModel @Inject constructor(
         val EXTENSION_JSON = Json {
             ignoreUnknownKeys = true
             isLenient = true
+        }
+
+        /**
+         * Theme files, read leniently and written to be read by a person.
+         *
+         * `encodeDefaults` so an exported theme states every parameter rather than
+         * only the ones that differ from a default — the file is meant to be
+         * legible and hand-editable, and a sparse one asks the reader to know what
+         * is missing. `coerceInputValues` so a file naming a retired material or
+         * wallpaper still imports, with that one field falling back, instead of
+         * failing whole.
+         */
+        val THEME_JSON = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            encodeDefaults = true
+            prettyPrint = true
+            coerceInputValues = true
         }
 
         /** Log tag for guarded background work. */

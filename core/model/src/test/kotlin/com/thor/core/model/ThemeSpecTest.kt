@@ -524,7 +524,6 @@ class ThemeSpecTest {
                 .isEqualTo(recipe.material.backgroundDepth)
             assertWithMessage("${recipe.id} radius").that(spec.cornerRadiusDp)
                 .isEqualTo(recipe.material.cornerRadiusDp)
-            assertWithMessage("${recipe.id} font").that(spec.fontFamily).isEqualTo(recipe.font)
             assertWithMessage("${recipe.id} motion").that(spec.motion).isEqualTo(recipe.motion)
         }
     }
@@ -548,8 +547,7 @@ class ThemeSpecTest {
                 )
                 .isLessThan(HUE_TOLERANCE)
             assertThat(dark.id).isEqualTo(light.id)
-            assertThat(dark.fontFamily).isEqualTo(light.fontFamily)
-            assertThat(dark.cornerRadiusDp).isEqualTo(light.cornerRadiusDp)
+                assertThat(dark.cornerRadiusDp).isEqualTo(light.cornerRadiusDp)
         }
     }
 

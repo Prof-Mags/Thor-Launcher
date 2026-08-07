@@ -29,7 +29,6 @@ import com.thor.core.model.InfoPanelStyle
 import com.thor.core.model.PersonalizationSettings
 import com.thor.core.model.SurfaceStyle
 import com.thor.core.model.SurfaceTreatment
-import com.thor.core.model.ThemeRecipe
 import com.thor.core.model.ThemeSpec
 
 /**
@@ -283,7 +282,10 @@ fun ThorTheme(
             // on has said the default is not enough for them.
             if (accessibility.highContrast) it.copy(contrast = ContrastLevel.MAXIMUM) else it
         }
-        ThemeRecipe.of(personalization.themeId).resolve(options)
+        // The applied custom theme if there is one, and the bundled theme otherwise;
+        // see [PersonalizationSettings.activeRecipe] for what happens when the
+        // custom theme it names has been deleted.
+        personalization.activeRecipe.resolve(options)
     }
 
     val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -394,10 +396,10 @@ fun ThorTheme(
         )
     }
 
-    val fontChoice = personalization.fontOverride ?: spec.fontFamily
+    // One family for every theme; only the scale is the user's. See [ThorTypography].
     val fontScale = personalization.fontScale * if (accessibility.largeText) 1.2f else 1f
-    val typography = remember(fontChoice, fontScale) {
-        ThorTypography.build(ThorTypography.familyFor(fontChoice), fontScale)
+    val typography = remember(fontScale) {
+        ThorTypography.build(ThorTypography.FAMILY, fontScale)
     }
 
     val materialScheme = remember(colors, useDynamic, systemDark) {

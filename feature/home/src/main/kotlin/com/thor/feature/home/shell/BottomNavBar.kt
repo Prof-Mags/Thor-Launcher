@@ -3,6 +3,7 @@ package com.thor.feature.home.shell
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -29,11 +30,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.modifier.thorCursor
@@ -84,6 +87,12 @@ fun BottomNavBar(
     val dimens = ThorTheme.dimens
     val colors = ThorTheme.colors
 
+    // Resolved outside the draw lambda: a draw scope has no access to the theme,
+    // and reading density here keeps the hairline one physical pixel rather than
+    // one dp, which is what a hairline means.
+    val edgeColor = colors.outline.copy(alpha = BAR_EDGE_ALPHA)
+    val edgeStroke = with(LocalDensity.current) { 1.dp.toPx() }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -112,6 +121,16 @@ fun BottomNavBar(
                 color = colors.surfaceElevated,
                 level = SurfaceLevel.RAISED,
             )
+            // The edge the bar meets the grid along; see [BAR_EDGE_ALPHA].
+            .drawWithContent {
+                drawContent()
+                drawLine(
+                    color = edgeColor,
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width, 0f),
+                    strokeWidth = edgeStroke,
+                )
+            }
             .padding(
                 horizontal = dimens.spacingSmall,
             ),
@@ -170,6 +189,26 @@ private fun NavTab(
         label = "navTabLift",
     )
 
+    /*
+     * One animated value for "this is the section you are in", driving all of it.
+     *
+     * Selection used to be said three times over and quietly by each: a gradient
+     * wash at 18% alpha, an eighteen-dp underline, and a colour change. Three
+     * weak signals do not add up to one strong one — on the flat themes the wash
+     * was invisible, the underline was a detail at arm's length, and the tint was
+     * the only thing left carrying it. Worse, all three snapped: the underline
+     * went from nothing to full width in a single frame, so switching sections
+     * read as a glitch rather than as a move.
+     *
+     * Now one value crossfades and every part of the treatment is a function of
+     * it, so the pill fills, the underline grows and the colour warms together.
+     */
+    val selection by animateFloatAsState(
+        targetValue = if (selected) 1f else 0f,
+        animationSpec = motion.tweenSpec(motion.selectionMillis),
+        label = "navTabSelection",
+    )
+
     // The pill follows the interface-wide corner setting, so a squared launcher
     // does not keep one capsule in the middle of the bar.
     val shape = ThorTheme.shapes.pill
@@ -195,12 +234,24 @@ private fun NavTab(
             )
             .clip(shape)
             .then(
-                if (selected) {
-                    Modifier.background(
-                        Brush.horizontalGradient(colors.accentStops),
-                        shape = shape,
-                        alpha = SELECTED_PILL_ALPHA,
-                    )
+                // Drawn at all only while there is something to draw, so an
+                // unselected tab still costs no brush and no border.
+                if (selection > 0f) {
+                    Modifier
+                        .background(
+                            Brush.horizontalGradient(colors.accentStops),
+                            shape = shape,
+                            alpha = SELECTED_PILL_ALPHA * selection,
+                        )
+                        // An edge as well as a fill. The fill alone disappears on
+                        // the themes whose accent is nearly the surface colour —
+                        // Obsidian's accent is a warm white — and an accent-tinted
+                        // hairline is legible on every one of them.
+                        .border(
+                            width = SELECTED_PILL_BORDER.dp,
+                            color = colors.cursor.copy(alpha = SELECTED_PILL_BORDER_ALPHA * selection),
+                            shape = shape,
+                        )
                 } else {
                     Modifier
                 },
@@ -230,16 +281,14 @@ private fun NavTab(
                     maxLines = 1,
                 )
 
-        // A short underline under the selected tab, because on the flat themes
-        // the pill behind it is barely there and colour alone is not enough to
-        // say which section you are in.
+        // The underline grows out of the centre rather than appearing whole, which
+        // is what turns switching sections into a movement you can follow. Its
+        // width is the same animated value as the pill, so nothing arrives early.
         Box(
             modifier = Modifier
                 .padding(top = 2.dp)
                 .height(UNDERLINE_HEIGHT.dp)
-                .width(
-if (selected) UNDERLINE_WIDTH.dp else 0.dp,
-                )
+                .width(UNDERLINE_WIDTH.dp * selection)
                 .clip(ThorTheme.shapes.pill)
                 .background(colors.cursor),
         )
@@ -255,16 +304,6 @@ private val LauncherTab.icon: ImageVector
         LauncherTab.SHOWS -> Icons.Rounded.Tv
     }
 
-private val LauncherTab.indexLabel: String
-    get() = when (this) {
-        LauncherTab.HOME -> "01"
-        LauncherTab.MOVIES -> "02"
-        LauncherTab.STREAM -> "03"
-        // This bar never draws Shows - it is a couch-mode tab - but the label has
-        // to exist for the same reason every branch here does.
-        LauncherTab.SHOWS -> "04"
-    }
-
 private const val BAR_HEIGHT = PanelLayout.NAV_BAR_HEIGHT
 
 /**
@@ -278,10 +317,39 @@ private const val TAB_PADDING = 2
 
 private const val ICON_SIZE = 20
 private const val ICON_LIFT = 3
-private const val UNDERLINE_HEIGHT = 2
-private const val UNDERLINE_WIDTH = 18
-private const val SEGMENT_UNDERLINE_WIDTH = 42
-private const val INDEX_UNDERLINE_WIDTH = 54
 
-/** The selected pill is a wash, not a fill: a solid accent bar is too loud here. */
-private const val SELECTED_PILL_ALPHA = 0.18f
+/**
+ * The underline, widened from eighteen.
+ *
+ * Eighteen dp under a tab that is a fifth of a 640dp panel is a tick mark rather
+ * than an indicator — it read as a dot at arm's length and disappeared entirely
+ * across a room. This is about a third of the tab, which is enough to be seen as
+ * a bar without becoming a second pill under the first.
+ */
+private const val UNDERLINE_HEIGHT = 3
+private const val UNDERLINE_WIDTH = 28
+
+/**
+ * The selected pill is a wash, not a fill: a solid accent bar is too loud here.
+ *
+ * Raised from 0.18. At that value the pill was doing nothing on any theme whose
+ * accent sits near its surface colour, which left the tint carrying selection on
+ * its own — and the tint is the weakest of the three signals, because it is the
+ * one a colour-vision mode can flatten.
+ */
+private const val SELECTED_PILL_ALPHA = 0.26f
+
+/** The accent hairline round the pill, for the themes the fill cannot reach. */
+private const val SELECTED_PILL_BORDER = 1
+private const val SELECTED_PILL_BORDER_ALPHA = 0.45f
+
+/**
+ * The line where the bar meets the grid.
+ *
+ * The bar takes the theme's raised treatment, which on the flat presets is an
+ * opaque rectangle in a surface colour a shade off the page behind it — so on
+ * those themes there was no edge at all and the tabs looked like they were
+ * floating at the bottom of the wallpaper. One hairline is the whole fix, and on
+ * the themes that already cast a shadow it is invisible under it.
+ */
+private const val BAR_EDGE_ALPHA = 0.5f

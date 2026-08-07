@@ -195,6 +195,23 @@ enum class ContrastLevel(
  */
 data class ThemeRecipe(
     val id: ThemeId,
+    /**
+     * Set when this recipe came from a [CustomTheme] rather than from the list below.
+     *
+     * Identity for a user-made theme had to live *beside* [id] rather than inside
+     * it. [ThemeId] is a sealed set the bundled gallery is built from and that
+     * `ThemeSpecTest` holds to a shelf count, so a `CUSTOM` constant would have been
+     * an entry with no recipe behind it — and every exhaustive `when` over the enum
+     * would have gained a branch that could not answer. A nullable string beside the
+     * enum leaves the bundled themes exactly as they were and says the one extra
+     * thing that needs saying.
+     *
+     * [id] on a custom recipe is only the fallback identity. Nothing about the
+     * palette comes from it.
+     */
+    val customId: String? = null,
+    /** The name a custom theme was saved under; null for the bundled ones. */
+    val customName: String? = null,
     val family: ThemeFamily,
     /** Hue of the accent, in OKLCH degrees. See [Oklch] for the landmarks. */
     val accentHue: Float,
@@ -243,10 +260,25 @@ data class ThemeRecipe(
     val groundShift: Float = 0f,
     val material: ThemeMaterial,
     val motion: MotionStyle = MotionStyle.SMOOTH,
-    val font: FontChoice = FontChoice.SYSTEM,
     /** Wallpaper applied when this theme is selected from the gallery. */
     val defaultWallpaper: AnimatedWallpaper = AnimatedWallpaper.MESH,
 ) {
+    /**
+     * What identifies this theme among all of them, bundled or made.
+     *
+     * The gallery keys its cards on this and the settings file stores it, so it has
+     * to be unique across both sets. Custom ids are checked to be inert and are
+     * generated with a `custom-` prefix, which no [ThemeId] constant can collide
+     * with.
+     */
+    val key: String get() = customId ?: id.name
+
+    /** What the gallery writes under the card. */
+    val displayName: String get() = customName ?: id.displayName
+
+    /** True for a theme the user made, which is the only kind that can be edited. */
+    val isCustom: Boolean get() = customId != null
+
     /**
      * Builds the palette.
      *
@@ -302,6 +334,8 @@ data class ThemeRecipe(
 
         return ThemeSpec(
             id = id,
+            customId = customId,
+            displayName = displayName,
             family = family,
             isDark = dark,
             primaryArgb = accent.toArgb(),
@@ -354,7 +388,6 @@ data class ThemeRecipe(
             },
             defaultWallpaper = defaultWallpaper,
             motion = motion,
-            fontFamily = font,
             // An overridden style takes its preset whole rather than keeping the
             // theme's adjustments to the style it replaced: "glass, but with
             // Terminal's hard 1.5dp border" is not glass, and the label said glass.
@@ -436,7 +469,6 @@ data class ThemeRecipe(
                     cornerRadiusDp = 14, surfaceAlpha = 0.97f, blurRadiusDp = 10,
                     grain = 0.085f, backgroundDepth = 0.03f,
                 ),
-                font = FontChoice.SERIF,
                 defaultWallpaper = AnimatedWallpaper.NONE,
             ),
 
@@ -466,7 +498,7 @@ data class ThemeRecipe(
                     cornerRadiusDp = 20, surfaceAlpha = 1f, blurRadiusDp = 0,
                     grain = 0.03f, backgroundDepth = 0.12f,
                 ),
-                motion = MotionStyle.SNAPPY, font = FontChoice.ROUNDED,
+                motion = MotionStyle.SNAPPY,
                 defaultWallpaper = AnimatedWallpaper.BOKEH,
             ),
             ThemeRecipe(
@@ -478,7 +510,7 @@ data class ThemeRecipe(
                     cornerRadiusDp = 28, surfaceAlpha = 0.9f, blurRadiusDp = 30,
                     grain = 0.035f, backgroundDepth = 0.14f,
                 ),
-                motion = MotionStyle.FLUID, font = FontChoice.ROUNDED,
+                motion = MotionStyle.FLUID,
                 defaultWallpaper = AnimatedWallpaper.MESH,
             ),
             ThemeRecipe(
@@ -497,7 +529,7 @@ data class ThemeRecipe(
                     cornerRadiusDp = 2, surfaceAlpha = 0.9f, blurRadiusDp = 20,
                     grain = 0.075f, backgroundDepth = 0.22f,
                 ),
-                motion = MotionStyle.SNAPPY, font = FontChoice.MONO,
+                motion = MotionStyle.SNAPPY,
                 defaultWallpaper = AnimatedWallpaper.WAVES,
             ),
 
@@ -548,7 +580,7 @@ data class ThemeRecipe(
                     cornerRadiusDp = 0, surfaceAlpha = 0.94f, blurRadiusDp = 0,
                     grain = 0.11f, backgroundDepth = 0.2f,
                 ),
-                motion = MotionStyle.MECHANICAL, font = FontChoice.MONO,
+                motion = MotionStyle.MECHANICAL,
                 defaultWallpaper = AnimatedWallpaper.PARTICLES,
             ),
 
@@ -563,10 +595,10 @@ data class ThemeRecipe(
              * another two dark launchers — hence `groundShift`, which exists for
              * these two and nothing else.
              *
-             * What does not carry over is the typography. These ship on
-             * [FontChoice.SYSTEM] rather than mono, because a whole launcher set in
-             * a monospace face is a costume rather than a theme — and anybody who
-             * wants it now has a Typeface row to say so, which is new.
+             * What does not carry over is the typography. A theme no longer
+             * carries a typeface at all: a whole launcher set in a monospace face
+             * is a costume rather than a theme, and the launcher has one family
+             * everywhere now. See `ThorTypography`.
              */
             ThemeRecipe(
                 // Atom's One Dark, by way of the editor extension. Ground #282C34,
@@ -726,6 +758,10 @@ data class ThemeOptions(
  */
 data class ThemeSpec(
     val id: ThemeId,
+    /** Set when the recipe behind this was a [CustomTheme]. See [ThemeRecipe.customId]. */
+    val customId: String? = null,
+    /** What to write under a gallery card: the theme's own name, or the bundled one's. */
+    val displayName: String = id.displayName,
     val family: ThemeFamily,
     val isDark: Boolean,
     val primaryArgb: Long,
@@ -761,10 +797,12 @@ data class ThemeSpec(
     val grain: Float,
     val defaultWallpaper: AnimatedWallpaper,
     val motion: MotionStyle,
-    val fontFamily: FontChoice,
     val surface: SurfaceTreatment,
     val backgroundDepth: Float,
-)
+) {
+    /** Unique across bundled and custom themes alike. See [ThemeRecipe.key]. */
+    val key: String get() = customId ?: id.name
+}
 
 /**
  * The four surface lightnesses, ground first.
@@ -1080,11 +1118,3 @@ enum class MotionStyle(val label: String, val durationScale: Float) {
     MECHANICAL("Mechanical", 0.9f),
 }
 
-@Serializable
-enum class FontChoice(val label: String) {
-    SYSTEM("System"),
-    ROUNDED("Rounded"),
-    MONO("Monospace"),
-    PIXEL("Pixel"),
-    SERIF("Serif"),
-}

@@ -703,44 +703,16 @@ class LibraryRepository @Inject constructor(
      */
     suspend fun evaluateSmartQuery(query: SmartQuery): List<GridEntry> =
         withContext(defaultDispatcher) {
-            val now = System.currentTimeMillis()
-            val allGames = gameDao.getVisible().map(GameEntity::toDomain)
-
-            allGames.asSequence()
-                .filter { query.platformIds.isEmpty() || it.platformId in query.platformIds }
-                .filter { game ->
-                    query.genres.isEmpty() ||
-                        game.metadata.genres.any { it in query.genres }
-                }
-                .filter { query.tags.isEmpty() || it.tags.any { tag -> tag in query.tags } }
-                .filter { !query.favoritesOnly || it.isFavorite }
-                .filter { !query.unplayedOnly || !it.stats.hasBeenPlayed }
-                .filter { game ->
-                    val within = query.playedWithinDays ?: return@filter true
-                    val last = game.stats.lastPlayedEpochMs ?: return@filter false
-                    now - last <= within * MILLIS_PER_DAY
-                }
-                .filter { game ->
-                    query.minRating?.let { min -> (game.metadata.rating ?: 0) >= min } ?: true
-                }
-                .filter { game ->
-                    query.releasedAfterYear?.let { year ->
-                        (game.metadata.releaseYear ?: Int.MIN_VALUE) >= year
-                    } ?: true
-                }
-                .filter { game ->
-                    query.releasedBeforeYear?.let { year ->
-                        (game.metadata.releaseYear ?: Int.MAX_VALUE) <= year
-                    } ?: true
-                }
-                .filter { game ->
-                    query.titleContains?.let { needle ->
-                        game.sortTitle.contains(TitleNormalizer.sortKey(needle))
-                    } ?: true
-                }
-                .toList()
-                .sortedWith(comparatorFor(query.sort, query.sortDescending))
-                .let { results -> query.limit?.let(results::take) ?: results }
+            // Delegated, so this and the grid agree by construction. The rule lived
+            // here alone and nothing ever called it, while the grid resolved a
+            // smart folder from stored children that a smart folder does not have.
+            // Two evaluations that could drift apart would have been the next bug
+            // rather than the fix for this one.
+            SmartQueryEvaluator.evaluate(
+                entries = gameDao.getVisible().map(GameEntity::toDomain),
+                query = query,
+                now = System.currentTimeMillis(),
+            )
         }
 
     /** Applies a browsing filter to an entry list. */
@@ -772,51 +744,15 @@ class LibraryRepository @Inject constructor(
             }
         }
 
-    /** Comparator matching a [SortOrder]. */
-    fun comparatorFor(order: SortOrder, descending: Boolean): Comparator<GridEntry> {
-        val base: Comparator<GridEntry> = when (order) {
-            SortOrder.TITLE, SortOrder.MANUAL -> compareBy { it.sortTitle }
-            SortOrder.PLATFORM -> compareBy<GridEntry> { (it as? GameEntry)?.platformId ?: "" }
-                .thenBy { it.sortTitle }
-
-            SortOrder.RELEASE_DATE -> compareBy<GridEntry> {
-                (it as? GameEntry)?.metadata?.releaseYear ?: Int.MAX_VALUE
-            }.thenBy { it.sortTitle }
-
-            SortOrder.RATING -> compareByDescending<GridEntry> {
-                (it as? GameEntry)?.metadata?.rating ?: -1
-            }.thenBy { it.sortTitle }
-
-            SortOrder.LAST_PLAYED -> compareByDescending<GridEntry> { entry ->
-                when (entry) {
-                    is GameEntry -> entry.stats.lastPlayedEpochMs ?: 0L
-                    is AppEntry -> entry.lastPlayedEpochMs ?: 0L
-                    else -> 0L
-                }
-            }.thenBy { it.sortTitle }
-
-            SortOrder.PLAY_TIME -> compareByDescending<GridEntry> {
-                (it as? GameEntry)?.stats?.totalPlayMillis ?: 0L
-            }.thenBy { it.sortTitle }
-
-            SortOrder.LAUNCH_COUNT -> compareByDescending<GridEntry> { entry ->
-                when (entry) {
-                    is GameEntry -> entry.stats.launchCount
-                    is AppEntry -> entry.launchCount
-                    else -> 0
-                }
-            }.thenBy { it.sortTitle }
-
-            SortOrder.DATE_ADDED -> compareByDescending<GridEntry> {
-                (it as? AppEntry)?.installedAtEpochMs ?: 0L
-            }.thenBy { it.sortTitle }
-
-            SortOrder.FILE_SIZE -> compareByDescending<GridEntry> {
-                (it as? GameEntry)?.fileSizeBytes ?: 0L
-            }.thenBy { it.sortTitle }
-        }
-        return if (descending) base.reversed() else base
-    }
+    /**
+     * Comparator matching a [SortOrder].
+     *
+     * Kept as a method because the grid calls it through the repository, but the
+     * rule itself is [gridEntryComparator] — shared with the smart-folder
+     * evaluator, which is pure and cannot reach a repository.
+     */
+    fun comparatorFor(order: SortOrder, descending: Boolean): Comparator<GridEntry> =
+        gridEntryComparator(order, descending)
 
     private companion object {
         const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000

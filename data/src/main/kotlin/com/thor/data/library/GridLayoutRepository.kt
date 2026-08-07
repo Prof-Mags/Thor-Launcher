@@ -11,6 +11,7 @@ import com.thor.core.database.model.PageEntity
 import com.thor.core.database.model.PlacementEntity
 import com.thor.core.datastore.SettingsRepository
 import com.thor.core.model.CellSpan
+import com.thor.core.model.FolderEntry
 import com.thor.core.model.FolderIcons
 import com.thor.core.model.GridFootprint
 import com.thor.core.model.GridPage
@@ -181,21 +182,63 @@ class GridLayoutRepository @Inject constructor(
         val spec = settings.grid.first()
         val spans = spans()
         val span = spans[entryId] ?: CellSpan.SINGLE
-        if (!GridFootprint.fits(row, column, span, spec)) return@withContext MoveResult.Blocked
-
         val source = gridDao.getPlacement(entryId) ?: return@withContext MoveResult.Blocked
         val onPage = pagePlacements(pageIndex)
+
+        /*
+         * A clear landing first, and separately from the displacement chain.
+         *
+         * These were one condition, and the `span.isSingle` in it was applied
+         * whether or not anything was actually in the way — so a widget dropped
+         * onto entirely empty cells was refused for being a widget. Since every
+         * widget has a span greater than one by definition, that meant *no widget
+         * could ever be moved anywhere*, and the launcher said "that does not fit
+         * here" while pointing at an empty half of the page.
+         *
+         * The span only ever mattered to the *displacement* case below, where a
+         * multi-cell entry has no sensible hand-back. It has no bearing on landing
+         * somewhere nothing is standing.
+         *
+         * Covering rather than anchoring, for the same reason placement does; see
+         * [GridFootprint.anchorCovering]. Without it a three-wide widget still
+         * could not be dropped anywhere in the last two columns.
+         */
+        GridFootprint.anchorCovering(
+            row = row,
+            column = column,
+            span = span,
+            placements = onPage,
+            spans = spans,
+            pageIndex = pageIndex,
+            spec = spec,
+            ignoring = entryId,
+        )?.let { clear ->
+            ensurePageExists(pageIndex)
+            gridDao.upsert(
+                source.copy(
+                    pageIndex = pageIndex,
+                    row = clear.row,
+                    column = clear.column,
+                    parentFolderId = null,
+                ),
+            )
+            return@withContext MoveResult.Moved
+        }
+
+        // Nothing is clear, so the only move left is onto something — which the
+        // held cursor can carry on from, but only when both sides are one cell.
+        // A widget in the way, or several entries under one drop, has no
+        // hand-back and is left alone.
+        if (!span.isSingle) return@withContext MoveResult.Blocked
+        if (!GridFootprint.fits(row, column, span, spec)) return@withContext MoveResult.Blocked
+
         val occupants = GridFootprint.occupants(onPage, spans, pageIndex, spec)
         val blockers = GridFootprint.cells(row, column, span, spec)
             .mapNotNull(occupants::get)
             .filterNot { it == entryId }
             .distinct()
 
-        // One single-cell occupant is the case the held cursor can carry on with;
-        // anything else — a widget in the way, or several entries under one — has
-        // no sensible hand-back and is left alone.
-        val displaceable = blockers.size <= 1 &&
-            span.isSingle &&
+        val displaceable = blockers.size == 1 &&
             blockers.all { (spans[it] ?: CellSpan.SINGLE).isSingle }
         if (!displaceable) return@withContext MoveResult.Blocked
 
@@ -204,7 +247,9 @@ class GridLayoutRepository @Inject constructor(
             source.copy(pageIndex = pageIndex, row = row, column = column, parentFolderId = null),
         )
 
-        val displaced = blockers.firstOrNull() ?: return@withContext MoveResult.Moved
+        // Exactly one, guaranteed by [displaceable] — the clear-landing branch
+        // above already returned for the case where there was nothing here.
+        val displaced = blockers.first()
         // Removed rather than parked somewhere: the caller picks it straight back
         // up, and leaving it on the grid meanwhile would put two icons in one
         // cell for as long as the user took to decide.
@@ -252,6 +297,52 @@ class GridLayoutRepository @Inject constructor(
                 pageIndex = pageIndex,
                 row = row,
                 column = column,
+            ),
+        )
+        true
+    }
+
+    /**
+     * Places an entry so that its footprint covers ([row], [column]).
+     *
+     * The placement call for anything that can be bigger than one cell. A widget
+     * chosen from a cell menu should land on the cell the menu was raised from,
+     * and [placeEntryAt] can only hang it from that cell's top-left corner — which
+     * a widget wider or taller than the space remaining can never do. See
+     * [GridFootprint.anchorCovering] for how often that is, and why it made adding
+     * a widget look broken.
+     *
+     * @return false only when no position on this page covers that cell, which
+     *   means the page genuinely has no room rather than the corner being wrong.
+     */
+    suspend fun placeEntryCovering(
+        entryId: String,
+        pageIndex: Int,
+        row: Int,
+        column: Int,
+    ): Boolean = withContext(defaultDispatcher) {
+        val spec = settings.grid.first()
+        val spans = spans()
+
+        val slot = GridFootprint.anchorCovering(
+            row = row,
+            column = column,
+            span = spans[entryId] ?: CellSpan.SINGLE,
+            placements = pagePlacements(pageIndex),
+            spans = spans,
+            pageIndex = pageIndex,
+            spec = spec,
+            // As in [placeEntryAt]: an entry is never an obstacle to itself.
+            ignoring = entryId,
+        ) ?: return@withContext false
+
+        ensurePageExists(pageIndex)
+        gridDao.upsert(
+            PlacementEntity(
+                entryId = entryId,
+                pageIndex = pageIndex,
+                row = slot.row,
+                column = slot.column,
             ),
         )
         true
@@ -664,6 +755,31 @@ class GridLayoutRepository @Inject constructor(
             )
             placeUnplacedEntries(listOf(folderId))
             folderId
+        }
+
+    /**
+     * Every smart folder, as the editor lists them.
+     *
+     * Observed rather than fetched: editing a query rewrites the folder, and the
+     * page showing it has to follow that without being told twice.
+     */
+    val smartFolders: Flow<List<FolderEntry>> =
+        folderDao.observeAll().map { folders ->
+            folders.map(FolderEntity::toDomain).filter(FolderEntry::isSmart)
+        }
+
+    /**
+     * Replaces a smart folder's query.
+     *
+     * The contents are not stored, so there is nothing to recompute here — the
+     * folder is its query, and changing it changes what is inside on the next
+     * read. That is the whole appeal of a smart folder and the reason this is a
+     * single column write rather than a re-filing pass.
+     */
+    suspend fun updateSmartQuery(folderId: String, query: SmartQuery) =
+        withContext(defaultDispatcher) {
+            val folder = folderDao.getById(folderId) ?: return@withContext
+            folderDao.upsert(folder.copy(smartQuery = query))
         }
 
     suspend fun addPage(): Int = withContext(defaultDispatcher) {

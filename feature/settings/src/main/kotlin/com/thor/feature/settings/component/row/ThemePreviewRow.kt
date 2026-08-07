@@ -70,11 +70,21 @@ import com.thor.feature.settings.component.SettingsTextButton
  */
 @Composable
 fun ThemePreviewRow(
-    selected: ThemeId,
+    /** The applied theme's [ThemeRecipe.key] — a [ThemeId] name, or a custom id. */
+    selected: String,
+    /**
+     * Every theme on offer, bundled shelves first and the user's own after.
+     *
+     * Passed rather than read from [ThemeRecipe.ALL], which is what lets a theme
+     * the user built appear here at all: `ALL` is the bundled fourteen and is
+     * deliberately closed, so the caller composes the two sets and this row draws
+     * whatever it is handed.
+     */
+    recipes: List<ThemeRecipe>,
     /** The user's own appearance dials, so each card previews what they would get. */
     options: ThemeOptions,
     focused: Boolean,
-    onSelected: (ThemeId) -> Unit,
+    onSelected: (ThemeRecipe) -> Unit,
     /** Declares this row as one that navigates sideways while it holds the cursor. */
     onTakesHorizontalInput: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -88,7 +98,7 @@ fun ThemePreviewRow(
      * searches for readable text — trivial once, wasteful sixty times a second
      * while the row is being scrolled past.
      */
-    val themes = remember(options) { ThemeRecipe.ALL.map { it.resolve(options) } }
+    val themes = remember(options, recipes) { recipes.map { it.resolve(options) } }
     val listState = rememberLazyListState()
 
     /*
@@ -100,7 +110,7 @@ fun ThemePreviewRow(
      * and themes changed with no indication of what was about to be picked.
      */
     var highlighted by remember {
-        mutableIntStateOf(themes.indexOfFirst { it.id == selected }.coerceAtLeast(0))
+        mutableIntStateOf(themes.indexOfFirst { it.key == selected }.coerceAtLeast(0))
     }
 
     /*
@@ -113,7 +123,7 @@ fun ThemePreviewRow(
      */
     LaunchedEffect(selected, focused) {
         if (!focused) {
-            highlighted = themes.indexOfFirst { it.id == selected }.coerceAtLeast(0)
+            highlighted = themes.indexOfFirst { it.key == selected }.coerceAtLeast(0)
         }
     }
 
@@ -130,7 +140,7 @@ fun ThemePreviewRow(
 
     // Confirm applies whatever the cursor has arrived at.
     ActivateOnConfirm(focused) {
-        themes.getOrNull(highlighted)?.let { theme -> onSelected(theme.id) }
+        recipes.getOrNull(highlighted)?.let(onSelected)
     }
 
     /*
@@ -150,7 +160,7 @@ fun ThemePreviewRow(
         val index = if (focused) {
             highlighted
         } else {
-            themes.indexOfFirst { it.id == selected }
+            themes.indexOfFirst { it.key == selected }
         }
         if (index < 0) return@LaunchedEffect
 
@@ -187,7 +197,11 @@ fun ThemePreviewRow(
                     fontWeight = FontWeight.Medium,
                 )
                 SettingsTextButton(
-                    label = selected.displayName.uppercase(),
+                    // Named from the resolved list rather than from the key, so a
+                    // theme the user renamed says its new name here immediately.
+                    label = (themes.firstOrNull { it.key == selected }?.displayName
+                        ?: ThemeRecipe.of(ThemeRecipe.DEFAULT).displayName)
+                        .uppercase(),
                     containerColor = colors.cursor.copy(alpha = 0.12f),
                     contentColor = colors.cursor,
                     borderColor = colors.cursor.copy(alpha = 0.34f),
@@ -198,14 +212,14 @@ fun ThemePreviewRow(
                 state = listState,
                 horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
             ) {
-                itemsIndexed(themes, key = { _, spec -> spec.id.name }) { index, spec ->
+                itemsIndexed(themes, key = { _, spec -> spec.key }) { index, spec ->
                     ThemeCard(
                         spec = spec,
-                        selected = spec.id == selected,
+                        selected = spec.key == selected,
                         cursorOn = focused && index == highlighted,
                         onClick = {
                             highlighted = index
-                            onSelected(spec.id)
+                            recipes.getOrNull(index)?.let(onSelected)
                         },
                     )
                 }
@@ -413,7 +427,7 @@ private fun ThemeCard(
         }
 
         Text(
-            text = spec.id.displayName,
+            text = spec.displayName,
             style = MaterialTheme.typography.labelSmall,
             color = if (selected) activeColors.cursor else activeColors.onSurfaceVariant,
             maxLines = 1,

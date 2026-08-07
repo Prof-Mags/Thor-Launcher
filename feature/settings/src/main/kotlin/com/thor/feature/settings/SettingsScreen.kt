@@ -112,6 +112,15 @@ fun SettingsScreen(
     val extensionStatus by viewModel.extensionStatus.collectAsStateWithLifecycle()
     val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
     val profileRegistry by viewModel.profiles.collectAsStateWithLifecycle()
+    val editingThemeId by viewModel.editingThemeId.collectAsStateWithLifecycle()
+    val themeStatus by viewModel.themeStatus.collectAsStateWithLifecycle()
+    val smartFolders by viewModel.smartFolders.collectAsStateWithLifecycle()
+    val editingSmartFolderId by viewModel.editingSmartFolderId.collectAsStateWithLifecycle()
+    val smartFolderStatus by viewModel.smartFolderStatus.collectAsStateWithLifecycle()
+    val editingProfileId by viewModel.editingProfileId.collectAsStateWithLifecycle()
+    val awaitingBindingFor by viewModel.awaitingBindingFor.collectAsStateWithLifecycle()
+    val backupStatus by viewModel.backupStatus.collectAsStateWithLifecycle()
+    val restartRequired by viewModel.restartRequired.collectAsStateWithLifecycle()
 
     // Recomputed with the registry: the picture row adds a "Remove" row beneath
     // it, and a row count that misses it leaves the last row unreachable.
@@ -156,6 +165,20 @@ fun SettingsScreen(
             },
             profileRegistry = profileRegistry,
             activeProfileHasAvatar = activeProfileHasAvatar,
+            customProfileCount = settings.controls.customProfiles.size,
+            editingProfile = settings.controls.customProfiles.any { it.id == editingProfileId },
+            smartFolderCount = smartFolders.size,
+            // Same guard as the theme editor: deleting the open folder leaves its
+            // id behind for a frame, and counting the long page over rows that are
+            // no longer drawn strands the cursor past the end.
+            editingSmartFolder = smartFolders.any { it.id == editingSmartFolderId },
+            customThemeCount = settings.personalization.customThemes.size,
+            // Only counts as open if the theme it names still exists — deleting the
+            // open theme leaves the id behind for a frame, and a count for the long
+            // page over rows that are no longer drawn strands the cursor past the end.
+            editingTheme = settings.personalization.customThemes.any {
+                it.id == editingThemeId
+            },
         )
         // About is a pane rather than a list of pages, and it now carries the
         // diagnostics controls, so it has rows of its own to walk.
@@ -408,6 +431,15 @@ fun SettingsScreen(
                                 extensionStatus = extensionStatus,
                                 importStatus = importStatus,
                                 profileRegistry = profileRegistry,
+                                editingThemeId = editingThemeId,
+                                themeStatus = themeStatus,
+                                smartFolders = smartFolders,
+                                editingSmartFolderId = editingSmartFolderId,
+                                smartFolderStatus = smartFolderStatus,
+                                editingProfileId = editingProfileId,
+                                awaitingBindingFor = awaitingBindingFor,
+                                backupStatus = backupStatus,
+                                restartRequired = restartRequired,
                             )
                         }
 

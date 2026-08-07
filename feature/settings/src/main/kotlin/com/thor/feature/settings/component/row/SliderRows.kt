@@ -44,10 +44,22 @@ fun SliderRow(
     range: ClosedFloatingPointRange<Float>,
     steps: Int = 0,
     focused: Boolean = false,
+    /**
+     * Overrides the derived step, for a range the ten-press rule reads wrongly.
+     *
+     * [niceStep] aims to cross any range in about ten presses, which is right for
+     * a setting somebody adjusts and wrong for one they *compose*. A hue runs
+     * 0..360, so the rule chose fifty-degree steps — eight reachable colours on a
+     * wheel — and an accent chroma of 0..0.24 stepped straight over the entire
+     * band that separates a neutral theme from a coloured one. Both are the
+     * primary controls of the theme editor and neither could express what it was
+     * for. Passed only where that is true; everything else still derives.
+     */
+    stepOverride: Float? = null,
     valueLabel: (Float) -> String = { "%.2f".format(it) },
     onValueChange: (Float) -> Unit,
 ) {
-    val step = niceStep(range.endInclusive - range.start)
+    val step = stepOverride ?: niceStep(range.endInclusive - range.start)
     val clamped = value.coerceIn(range.start, range.endInclusive)
 
     StepperRow(

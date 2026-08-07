@@ -29,6 +29,7 @@ import com.thor.core.model.LauncherTab
 import com.thor.core.model.NavDirection
 import com.thor.core.model.Platform
 import com.thor.core.model.PlatformFolders
+import com.thor.core.model.PreferredPanel
 import com.thor.core.model.ShortcutAction
 import com.thor.core.model.ShortcutGrid
 import com.thor.core.model.SortOrder
@@ -44,6 +45,7 @@ import com.thor.data.launcher.SystemPanel
 import com.thor.data.library.GridLayoutRepository
 import com.thor.data.library.LibraryRepository
 import com.thor.data.library.MoveResult
+import com.thor.data.library.SmartQueryEvaluator
 import com.thor.data.achievements.AchievementRepository
 import com.thor.data.metadata.MetadataCandidate
 import com.thor.data.widget.WidgetOption
@@ -2249,7 +2251,59 @@ class LauncherViewModel @Inject constructor(
             openFolder(entry.id)
             return
         }
-        launchEntryOn(entry, defaultLaunchTarget)
+        /*
+         * The entry's own preference, where it has one.
+         *
+         * Set from its context menu and stored per id, so a game that wants the
+         * top screen gets it from the grid, from search, from a widget and from
+         * couch mode without any of them knowing about the setting. Sending
+         * something to the other panel *once* is still the context menu's
+         * `LAUNCH_*` actions; this is the answer for "always".
+         */
+        launchEntryOn(entry, preferredTargetFor(entry.id) ?: defaultLaunchTarget)
+    }
+
+    /**
+     * Per-entry panel preferences, held hot so a launch does not have to wait.
+     *
+     * A launch is the one path where a suspend read would be felt: the button has
+     * already been pressed, and reading the settings document first puts a frame
+     * or two between the press and the app appearing.
+     */
+    private val launchPanels: StateFlow<Map<String, PreferredPanel>> =
+        settingsRepository.library
+            .map { it.launchPanels }
+            .distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    /** The stored panel for an entry, mapped onto a launch target. */
+    private fun preferredTargetFor(entryId: String): LaunchTarget? =
+        when (launchPanels.value[entryId]) {
+            PreferredPanel.TOP -> LaunchTarget.MAIN_SCREEN
+            PreferredPanel.BOTTOM -> LaunchTarget.SECOND_SCREEN
+            PreferredPanel.DEFAULT, null -> null
+        }
+
+    /**
+     * Remembers which panel an entry should open on from now on.
+     *
+     * [PreferredPanel.DEFAULT] removes the key rather than storing it, so the map
+     * holds only entries that actually have an opinion and never grows a row per
+     * game in the library.
+     */
+    fun setPreferredPanel(entryId: String, panel: PreferredPanel) {
+        viewModelScope.launchSafely(TAG) {
+            settingsRepository.updateLibrary { library ->
+                library.copy(
+                    launchPanels = if (panel == PreferredPanel.DEFAULT) {
+                        library.launchPanels - entryId
+                    } else {
+                        library.launchPanels + (entryId to panel)
+                    },
+                )
+            }
+            emit(LauncherEffect.ShowMessage(panel.confirmation))
+        }
     }
 
     private suspend fun handleResult(result: LaunchResult, entryId: String) {
@@ -2865,6 +2919,12 @@ class LauncherViewModel @Inject constructor(
 
             ContextAction.LAUNCH_SECOND_SCREEN ->
                 launchEntryOn(entry, LaunchTarget.SECOND_SCREEN, explicit = true)
+
+            // Cycles rather than opening a picker; the message says where it landed.
+            ContextAction.ALWAYS_ON_PANEL -> setPreferredPanel(
+                entryId = entry.id,
+                panel = (launchPanels.value[entry.id] ?: PreferredPanel.DEFAULT).next,
+            )
 
             ContextAction.ADD_TO_GRID -> addToGrid(entry)
 
@@ -3774,10 +3834,18 @@ class LauncherViewModel @Inject constructor(
     /**
      * Gives a stored widget its cell.
      *
-     * The cell the menu was raised on when it fits there, and the first place it
-     * does otherwise. Refusing outright would be the wrong answer to a widget
-     * three cells wide chosen from the last column — the user asked for the
-     * widget, and the position is the part they could not have known about.
+     * The cell the menu was raised on, covered rather than anchored — a widget
+     * three cells wide chosen from the last column slides left so it still sits
+     * under the cell that was pressed. That is what the press meant, and treating
+     * it as the widget's top-left corner instead is what made adding one report
+     * no room on a page that was mostly empty: the cells a user long-presses to
+     * add a widget are the free ones at the end of the grid, and those are exactly
+     * the cells a large widget can never be hung from. See
+     * [com.thor.core.model.GridFootprint.anchorCovering].
+     *
+     * The first free space on any page remains the fallback, and it is now a real
+     * one — reached only when the page has no room for the widget anywhere, rather
+     * than on nearly every attempt.
      */
     private suspend fun placeWidgetEntry(
         entryId: String,
@@ -3786,10 +3854,10 @@ class LauncherViewModel @Inject constructor(
         row: Int,
         column: Int,
     ) {
-        if (gridRepository.placeEntryAt(entryId, page, row, column)) return
+        if (gridRepository.placeEntryCovering(entryId, page, row, column)) return
         val slot = gridRepository.firstFreeCellFor(span)
         gridRepository.placeEntryAt(entryId, slot.pageIndex, slot.row, slot.column)
-        emit(LauncherEffect.ShowMessage("No room there, so it went to the first space"))
+        emit(LauncherEffect.ShowMessage("No room on this page, so it went to the first space"))
     }
 
     /** The consent dialog for the widget waiting to be placed. */
@@ -4114,6 +4182,25 @@ class LauncherViewModel @Inject constructor(
             folderId: String?,
         ): List<GridEntry> {
             val folder = folderId?.let { layout.entries[it] } as? FolderEntry ?: return emptyList()
+            /*
+             * A smart folder has no children to look up — it *is* its query, and
+             * storing what it matched would be the one thing it exists not to do.
+             * Resolving from `childIds` regardless is why a smart folder could be
+             * created, placed and opened and was always empty.
+             *
+             * Evaluated against the whole entry map rather than against what is
+             * placed, because a game filed inside a platform folder is still a game
+             * the query should see. Doing it here rather than in a suspending call
+             * also means the contents follow the library for free: favourite a game
+             * and it appears in a Favourites folder with nothing told to refresh.
+             */
+            folder.smartQuery?.let { query ->
+                return SmartQueryEvaluator.evaluate(
+                    entries = layout.entries.values,
+                    query = query,
+                    now = System.currentTimeMillis(),
+                )
+            }
             return folder.childIds.mapNotNull { layout.entries[it] }
         }
 

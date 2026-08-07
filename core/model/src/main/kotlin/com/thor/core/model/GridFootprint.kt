@@ -176,6 +176,79 @@ object GridFootprint {
     }
 
     /**
+     * An anchor for [span] whose footprint still covers ([row], [column]).
+     *
+     * The cell a user presses is a cell they want the widget *on*, not the corner
+     * they want it hung from — and treating it as the corner is why adding a
+     * widget almost always failed. [fits] refuses any anchor whose span would run
+     * off the edge, so on the default 5×3 grid a three-wide widget can only be
+     * anchored in columns 0–2 and a 3×2 one only in rows 0–1: six of fifteen
+     * cells. Widgets are added by long-pressing an *empty* cell, and empty cells
+     * are the ones at the end of the grid, because everything fills from the top
+     * left. So the press was nearly always somewhere a large widget could not be
+     * hung, and the launcher said there was no room while looking at a page that
+     * was largely free.
+     *
+     * Sliding left and up is the whole fix. The widget lands under the finger
+     * that asked for it, which is what "put it here" means when the thing being
+     * placed is bigger than the thing being pointed at.
+     *
+     * Candidates are ordered by how far they move: the exact anchor first, then
+     * the smallest displacement, so a widget that *does* fit where it was asked
+     * for never slides. Null when no position on this page covers that cell,
+     * which the caller answers by looking elsewhere.
+     */
+    fun anchorCovering(
+        row: Int,
+        column: Int,
+        span: CellSpan,
+        placements: Collection<GridPlacement>,
+        spans: Map<String, CellSpan>,
+        pageIndex: Int,
+        spec: GridSpec,
+        ignoring: String? = null,
+    ): GridSlot? {
+        val wanted = span.coercedTo(spec)
+        if (row < 0 || column < 0 || row >= spec.rows || column >= spec.columns) return null
+
+        val occupied = occupants(placements, spans, pageIndex, spec)
+
+        // Every anchor whose footprint would still cover the pressed cell, and
+        // which sits inside the matrix. Both ends are clamped, so this is empty
+        // only when the span cannot be placed on this page at all.
+        val firstRow = (row - wanted.rows + 1).coerceAtLeast(0)
+        val lastRow = row.coerceAtMost(spec.rows - wanted.rows)
+        val firstColumn = (column - wanted.columns + 1).coerceAtLeast(0)
+        val lastColumn = column.coerceAtMost(spec.columns - wanted.columns)
+
+        val candidates = buildList {
+            for (r in firstRow..lastRow) {
+                for (c in firstColumn..lastColumn) {
+                    add(GridSlot(pageIndex, r, c))
+                }
+            }
+        }
+
+        return candidates
+            // Least movement wins, so a widget only slides as far as it must.
+            // Row displacement breaks a tie ahead of column, which keeps the
+            // pressed row as the widget's top edge wherever that is possible.
+            .sortedWith(
+                compareBy(
+                    { (row - it.row) + (column - it.column) },
+                    { row - it.row },
+                    { column - it.column },
+                ),
+            )
+            .firstOrNull { slot ->
+                cells(slot.row, slot.column, wanted, spec).none { cell ->
+                    val owner = occupied[cell]
+                    owner != null && owner != ignoring
+                }
+            }
+    }
+
+    /**
      * The first cell on [pageIndex] where [span] fits, in reading order.
      *
      * Null when the page cannot hold it, which the caller answers by trying the

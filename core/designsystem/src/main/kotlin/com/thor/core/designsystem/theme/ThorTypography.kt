@@ -6,25 +6,26 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
-import com.thor.core.model.FontChoice
 
 /**
  * Type scale.
  *
- * The launcher only ships families that are guaranteed present on any Android
- * device, so a theme can never fail to render because a font failed to
- * download. Custom user fonts are layered on top by the personalization screen
- * via an explicit [FontFamily] override.
+ * One family, everywhere. The launcher used to offer five — system, rounded,
+ * monospace, pixel and serif — as a theme property *and* again as a global
+ * override. Three of the five resolved to the same platform family as another, so
+ * most of the choice was the same typeface under different names; what was left
+ * was a setting that mostly did nothing, could be set in two places that
+ * disagreed, and made every screen depend on a value chosen for looks rather than
+ * for legibility. This device is read at arm's length and across a room, and the
+ * system sans is what stays readable at both.
+ *
+ * Text *size* still belongs to the user — see [build]'s scale — because that is
+ * the part of typography that is an accessibility need rather than a preference.
  */
 object ThorTypography {
 
-    fun familyFor(choice: FontChoice): FontFamily = when (choice) {
-        FontChoice.SYSTEM -> FontFamily.SansSerif
-        FontChoice.ROUNDED -> FontFamily.SansSerif
-        FontChoice.MONO -> FontFamily.Monospace
-        FontChoice.PIXEL -> FontFamily.Monospace
-        FontChoice.SERIF -> FontFamily.Serif
-    }
+    /** The one family. Guaranteed present on any Android device. */
+    val FAMILY: FontFamily = FontFamily.SansSerif
 
     /**
      * Builds the Material scale.

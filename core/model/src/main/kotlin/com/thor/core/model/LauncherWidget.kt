@@ -60,6 +60,36 @@ enum class LauncherWidget(
         defaultRows = 1,
     ),
 
+    BACKLOG(
+        title = "Backlog",
+        description = "Games you own and have never started",
+        defaultColumns = 3,
+        defaultRows = 1,
+    ),
+
+    MOST_PLAYED(
+        title = "Most played",
+        description = "Where the hours have actually gone",
+        defaultColumns = 3,
+        defaultRows = 1,
+    ),
+
+    /**
+     * One game to try, chosen for you.
+     *
+     * The answer to a full backlog, which is a list nobody reads. It prefers
+     * something unplayed and falls back to the whole library when there is
+     * nothing left to start, and it holds its choice for the day rather than
+     * re-rolling on every recomposition — a suggestion that changes as the cursor
+     * moves past it is not one anybody can act on.
+     */
+    SURPRISE(
+        title = "Surprise me",
+        description = "One game to try, with its artwork",
+        defaultColumns = 3,
+        defaultRows = 2,
+    ),
+
     LIBRARY(
         title = "Library",
         description = "How many games you have, and how long you have played",

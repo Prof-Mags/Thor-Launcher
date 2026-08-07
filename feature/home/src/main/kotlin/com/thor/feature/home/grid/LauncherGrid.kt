@@ -139,6 +139,32 @@ fun LauncherGrid(
                     .filter(GameEntry::isFavorite)
                     .sortedBy(GameEntry::sortTitle)
                     .take(WIDGET_GAME_LIMIT),
+                unplayed = games
+                    .filterNot { it.stats.hasBeenPlayed }
+                    .sortedBy(GameEntry::sortTitle)
+                    .take(WIDGET_GAME_LIMIT),
+                mostPlayed = games
+                    .filter { it.stats.totalPlayMillis > 0L }
+                    .sortedByDescending { it.stats.totalPlayMillis }
+                    .take(WIDGET_GAME_LIMIT),
+                /*
+                 * Stable for as long as the library is.
+                 *
+                 * Picked by hashing the library's size and the day rather than at
+                 * random, so the tile does not change every time the grid
+                 * recomposes — which is on every cursor move. A suggestion that
+                 * flickers past is not one anybody can act on.
+                 */
+                surprise = games
+                    .filterNot { it.stats.hasBeenPlayed }
+                    .ifEmpty { games }
+                    .let { pool ->
+                        pool.getOrNull(
+                            (System.currentTimeMillis() / MILLIS_PER_DAY)
+                                .toInt()
+                                .mod(pool.size.coerceAtLeast(1)),
+                        )
+                    },
                 gameCount = games.size,
                 totalPlayMillis = games.sumOf { it.stats.totalPlayMillis },
                 platformsById = state.platformsById,
@@ -289,3 +315,6 @@ private const val FOLDER_PREVIEW_COUNT = 4
  * being sorted in full for a strip that shows five.
  */
 private const val WIDGET_GAME_LIMIT = 8
+
+/** What "held steady for the day" is measured in, for the Surprise me widget. */
+private const val MILLIS_PER_DAY = 86_400_000L

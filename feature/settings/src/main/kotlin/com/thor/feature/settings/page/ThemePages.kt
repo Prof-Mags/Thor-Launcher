@@ -39,7 +39,11 @@ internal fun ThemePage(settings: ThorSettings, focusedRow: Int, viewModel: Setti
     // A gallery rather than a dropdown of names: choosing from a list meant
     // leaving Settings to see each one.
     ThemePreviewRow(
-        selected = personalization.themeId,
+        selected = personalization.activeThemeKey,
+        // The bundled shelves and then the user's own, so a theme built in the
+        // editor is chosen from the same row as everything else rather than from a
+        // second list somewhere that would have to explain itself.
+        recipes = personalization.galleryRecipes,
         // Previewed through the user's own dials rather than at each theme's
         // defaults, so a card is a promise about what selecting it would give.
         options = personalization.themeOptions(systemDark = isSystemInDarkTheme()),

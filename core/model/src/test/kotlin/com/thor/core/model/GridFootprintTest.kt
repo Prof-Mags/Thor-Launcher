@@ -164,6 +164,183 @@ class GridFootprintTest {
         assertThat(box.contains(0, 3)).isFalse()
     }
 
+    // ---- Covering an asked-for cell ----------------------------------------
+
+    @Test
+    fun `a widget asked for at the last column slides left instead of being refused`() {
+        /*
+         * The bug this is here for. On the default 5x3 grid a three-wide widget
+         * can only be *anchored* in columns 0 to 2, so pressing column 4 — which
+         * is where the empty cells are, because everything fills from the top
+         * left — reported no room on an entirely empty page.
+         */
+        val slot = GridFootprint.anchorCovering(
+            row = 2,
+            column = 4,
+            span = CellSpan(columns = 3, rows = 1),
+            placements = emptyList(),
+            spans = emptyMap(),
+            pageIndex = 0,
+            spec = spec,
+        )
+
+        assertThat(slot).isNotNull()
+        assertThat(slot!!.column).isEqualTo(2)
+        assertThat(slot.row).isEqualTo(2)
+        // And having slid, it still covers the cell that was actually pressed.
+        assertThat(
+            GridFootprint.cells(slot.row, slot.column, CellSpan(3, 1), spec),
+        ).contains(2 * spec.columns + 4)
+    }
+
+    @Test
+    fun `a widget that fits where it was asked for does not move`() {
+        // Sliding is a fallback, not a policy: a press that already works has to
+        // put the widget exactly there, or every placement drifts left.
+        val slot = GridFootprint.anchorCovering(
+            row = 0,
+            column = 1,
+            span = CellSpan(columns = 3, rows = 1),
+            placements = emptyList(),
+            spans = emptyMap(),
+            pageIndex = 0,
+            spec = spec,
+        )
+
+        assertThat(slot?.row).isEqualTo(0)
+        assertThat(slot?.column).isEqualTo(1)
+    }
+
+    @Test
+    fun `a tall widget asked for on the last row slides up`() {
+        // Spotlight is 3x2 on a 3-row grid, so row 2 can never anchor it either.
+        val slot = GridFootprint.anchorCovering(
+            row = 2,
+            column = 4,
+            span = CellSpan(columns = 3, rows = 2),
+            placements = emptyList(),
+            spans = emptyMap(),
+            pageIndex = 0,
+            spec = spec,
+        )
+
+        assertThat(slot?.row).isEqualTo(1)
+        assertThat(slot?.column).isEqualTo(2)
+    }
+
+    @Test
+    fun `it slides past something already standing there`() {
+        // The nearest covering anchor is taken, so an occupied one is stepped
+        // over rather than the whole press being refused.
+        val placements = listOf(GridPlacement("game:a", pageIndex = 0, row = 0, column = 0))
+
+        val slot = GridFootprint.anchorCovering(
+            row = 0,
+            column = 2,
+            span = CellSpan(columns = 3, rows = 1),
+            placements = placements,
+            spans = emptyMap(),
+            pageIndex = 0,
+            spec = spec,
+        )
+
+        // Columns 0 and 1 as anchors would both cover the occupied cell 0, so the
+        // only covering anchor left is column 2.
+        assertThat(slot?.column).isEqualTo(2)
+    }
+
+    @Test
+    fun `a page with no room for it anywhere reports none`() {
+        // The honest answer, and the one the caller turns into "it went to the
+        // first space" — which should now be rare rather than routine.
+        val placements = (0 until spec.columns * spec.rows).map { cell ->
+            GridPlacement.fromCellIndex("game:$cell", 0, cell, spec.columns)
+        }
+
+        val slot = GridFootprint.anchorCovering(
+            row = 1,
+            column = 1,
+            span = CellSpan(columns = 3, rows = 1),
+            placements = placements,
+            spans = emptyMap(),
+            pageIndex = 0,
+            spec = spec,
+        )
+
+        assertThat(slot).isNull()
+    }
+
+    @Test
+    fun `a widget is not an obstacle to itself when it is moved`() {
+        // Nudging a placed widget one cell across its own footprint has to work,
+        // or a widget can be placed and then never moved again.
+        val placements = listOf(GridPlacement("widget:7", pageIndex = 0, row = 0, column = 0))
+        val spans = mapOf("widget:7" to CellSpan(columns = 3, rows = 1))
+
+        val slot = GridFootprint.anchorCovering(
+            row = 0,
+            column = 1,
+            span = CellSpan(columns = 3, rows = 1),
+            placements = placements,
+            spans = spans,
+            pageIndex = 0,
+            spec = spec,
+            ignoring = "widget:7",
+        )
+
+        assertThat(slot?.column).isEqualTo(1)
+    }
+
+    @Test
+    fun `a widget wider than the grid is shrunk rather than refused`() {
+        // The span is coerced first, so a 4-wide widget on a 3-wide grid lands at
+        // column 0 instead of finding no legal anchor at all.
+        val tiny = GridSpec(columns = 3, rows = 2)
+
+        val slot = GridFootprint.anchorCovering(
+            row = 1,
+            column = 2,
+            span = CellSpan(columns = 4, rows = 1),
+            placements = emptyList(),
+            spans = emptyMap(),
+            pageIndex = 0,
+            spec = tiny,
+        )
+
+        assertThat(slot?.row).isEqualTo(1)
+        assertThat(slot?.column).isEqualTo(0)
+    }
+
+    @Test
+    fun `every cell on an empty page can take every built-in widget`() {
+        /*
+         * The regression guard for the reported symptom, stated as the property
+         * the user actually cares about: on an empty grid, pressing *anywhere*
+         * gets you the widget. Before the slide, six of these fifteen worked for
+         * a 3x2 and nine for a 3x1.
+         */
+        LauncherWidget.entries.forEach { widget ->
+            for (row in 0 until spec.rows) {
+                for (column in 0 until spec.columns) {
+                    val slot = GridFootprint.anchorCovering(
+                        row = row,
+                        column = column,
+                        span = widget.span,
+                        placements = emptyList(),
+                        spans = emptyMap(),
+                        pageIndex = 0,
+                        spec = spec,
+                    )
+                    assertThat(slot).isNotNull()
+                    // And it lands on the cell that was pressed, every time.
+                    assertThat(
+                        GridFootprint.cells(slot!!.row, slot.column, widget.span, spec),
+                    ).contains(row * spec.columns + column)
+                }
+            }
+        }
+    }
+
     @Test
     fun `a span is shrunk to what the matrix can hold`() {
         val tiny = GridSpec(columns = 3, rows = 2)

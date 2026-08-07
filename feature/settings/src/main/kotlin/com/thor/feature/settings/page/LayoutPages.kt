@@ -9,7 +9,6 @@ import com.thor.core.model.CursorStyle
 import com.thor.core.model.DockStyle
 import com.thor.core.model.FolderStyle
 import com.thor.core.model.InfoPanelStyle
-import com.thor.core.model.FontChoice
 import com.thor.core.model.GridSpec
 import com.thor.core.model.IconShape
 import com.thor.core.model.MotionStyle
@@ -246,23 +245,11 @@ internal fun CursorPage(settings: ThorSettings, focusedRow: Int, viewModel: Sett
 internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: SettingsViewModel) {
     val personalization = settings.personalization
 
-    ChoiceRow(
-        title = "Typeface",
-        subtitle = "Used everywhere in the launcher",
-        options = FONT_OPTIONS,
-        selected = personalization.fontOverride,
-        label = { it?.label ?: THEME_DEFAULT },
-        focused = focusedRow == 0,
-        onSelected = { font ->
-            viewModel.updatePersonalization { it.copy(fontOverride = font) }
-        },
-    )
-    RowDivider()
     SliderRow(
         title = "Text size",
         value = personalization.fontScale,
         range = 0.8f..1.5f,
-        focused = focusedRow == 1,
+        focused = focusedRow == 0,
         valueLabel = { "${(it * 100).toInt()}%" },
         onValueChange = { scale ->
             viewModel.updatePersonalization { it.copy(fontScale = scale) }
@@ -275,7 +262,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
         options = MOTION_OPTIONS,
         selected = personalization.motionOverride,
         label = { it?.label ?: THEME_DEFAULT },
-        focused = focusedRow == 2,
+        focused = focusedRow == 1,
         onSelected = { motion ->
             viewModel.updatePersonalization { it.copy(motionOverride = motion) }
         },
@@ -286,7 +273,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
         subtitle = "Higher is faster",
         value = personalization.transitionSpeed,
         range = 0.5f..2f,
-        focused = focusedRow == 3,
+        focused = focusedRow == 2,
         valueLabel = { "${"%.1f".format(it)}x" },
         onValueChange = { speed ->
             viewModel.updatePersonalization { it.copy(transitionSpeed = speed) }
@@ -297,7 +284,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
         title = "Clock",
         options = ClockStyle.entries,
         selected = personalization.clockStyle,
-        focused = focusedRow == 4,
+        focused = focusedRow == 3,
         label = ClockStyle::label,
         onSelected = { style -> viewModel.updatePersonalization { it.copy(clockStyle = style) } },
     )
@@ -306,7 +293,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
         title = "Status bar",
         subtitle = "Clock and battery above the grid",
         checked = personalization.showStatusBar,
-        focused = focusedRow == 5,
+        focused = focusedRow == 4,
         onCheckedChange = { on ->
             viewModel.updatePersonalization { it.copy(showStatusBar = on) }
         },
@@ -316,7 +303,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
         title = "Folder style",
         options = FolderStyle.entries,
         selected = personalization.folderStyle,
-        focused = focusedRow == 6,
+        focused = focusedRow == 5,
         label = FolderStyle::label,
         onSelected = { style -> viewModel.updatePersonalization { it.copy(folderStyle = style) } },
     )
@@ -324,7 +311,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
     SwitchRow(
         title = "Page indicators",
         checked = personalization.showPageIndicators,
-        focused = focusedRow == 7,
+        focused = focusedRow == 6,
         onCheckedChange = { on ->
             viewModel.updatePersonalization { it.copy(showPageIndicators = on) }
         },
@@ -343,7 +330,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
             ?.description,
         options = InfoPanelStyle.entries,
         selected = personalization.infoPanelStyle,
-        focused = focusedRow == 8,
+        focused = focusedRow == 7,
         label = InfoPanelStyle::label,
         onSelected = { style ->
             viewModel.updatePersonalization { it.copy(infoPanelStyle = style) }
@@ -355,7 +342,7 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
         subtitle = "Play a game's trailer on the info panel while it is highlighted; " +
             "L1 or R1 shows screenshots instead",
         checked = personalization.autoplayTrailers,
-        focused = focusedRow == 9,
+        focused = focusedRow == 8,
         onCheckedChange = { on ->
             viewModel.updatePersonalization { it.copy(autoplayTrailers = on) }
         },
@@ -366,7 +353,6 @@ internal fun InterfacePage(settings: ThorSettings, focusedRow: Int, viewModel: S
  * Typeface, size, motion, speed, clock, status bar, folders, indicators, panel
  * edge, trailers.
  */
-internal const val INTERFACE_ROWS = 10
+internal const val INTERFACE_ROWS = 9
 
-private val FONT_OPTIONS: List<FontChoice?> = listOf(null) + FontChoice.entries
 private val MOTION_OPTIONS: List<MotionStyle?> = listOf(null) + MotionStyle.entries

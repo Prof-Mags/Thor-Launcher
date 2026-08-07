@@ -8,6 +8,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.thor.core.input.RawKeyPress
 import com.thor.core.model.IconPack
+import com.thor.core.model.ControllerCommand
+import com.thor.core.model.FolderEntry
 import com.thor.core.model.MediaSettings
 import com.thor.core.model.MouseButton
 import com.thor.core.model.Platform
@@ -74,6 +76,20 @@ fun SettingsPageContent(
     importStatus: String? = null,
     /** Everyone on the device, for the profiles page. */
     profileRegistry: ProfileRegistry = ProfileRegistry.EMPTY,
+    /** Which custom theme the editor has open, or null when it is showing the list. */
+    editingThemeId: String? = null,
+    /** What the last theme action said, or null if there has not been one. */
+    themeStatus: String? = null,
+    /** Every smart folder, and which one the editor has open. */
+    smartFolders: List<FolderEntry> = emptyList(),
+    editingSmartFolderId: String? = null,
+    smartFolderStatus: String? = null,
+    /** Which controller profile is open, and the command waiting for a button. */
+    editingProfileId: String? = null,
+    awaitingBindingFor: ControllerCommand? = null,
+    /** What the last backup or restore said, and whether a restart is pending. */
+    backupStatus: String? = null,
+    restartRequired: Boolean = false,
 ) {
     Column(
         modifier = Modifier
@@ -83,6 +99,13 @@ fun SettingsPageContent(
         when (page) {
             SettingsPage.THEME -> ThemePage(settings, focusedRow, viewModel)
             SettingsPage.SURFACES -> SurfacesPage(settings, focusedRow, viewModel)
+            SettingsPage.THEME_EDITOR -> ThemeEditorPage(
+                settings,
+                focusedRow,
+                viewModel,
+                editingThemeId,
+                themeStatus,
+            )
             SettingsPage.WALLPAPER -> WallpaperPage(settings, focusedRow, viewModel)
             SettingsPage.GRID -> GridPage(settings, focusedRow, viewModel)
             SettingsPage.DOCK -> DockPage(settings, focusedRow, viewModel)
@@ -105,6 +128,17 @@ fun SettingsPageContent(
                 screenScraperKeyMissing,
             )
             SettingsPage.SORTING -> SortingPage(settings, focusedRow, viewModel)
+            SettingsPage.SMART_FOLDERS -> SmartFoldersPage(
+                folders = smartFolders,
+                // The systems the user has actually added, not every system Loki
+                // knows: a folder narrowed to a console with no games on the
+                // device would simply be empty.
+                platforms = platformOptions.map(PlatformEmulatorOption::platform),
+                focusedRow = focusedRow,
+                viewModel = viewModel,
+                editingId = editingSmartFolderId,
+                status = smartFolderStatus,
+            )
             SettingsPage.ACHIEVEMENTS -> AchievementsPage(
                 settings, focusedRow, viewModel, achievementSync, retroAchievementsStatus,
                 checkingRetroAchievements,
@@ -124,6 +158,13 @@ fun SettingsPageContent(
             SettingsPage.STREAM_HOSTS -> StreamHostsPage(settings, focusedRow, viewModel)
 
             SettingsPage.NAVIGATION -> NavigationPage(settings, focusedRow, viewModel)
+            SettingsPage.BUTTON_MAPPING -> ButtonMappingPage(
+                settings = settings,
+                focusedRow = focusedRow,
+                viewModel = viewModel,
+                editingId = editingProfileId,
+                awaiting = awaitingBindingFor,
+            )
             SettingsPage.POINTER -> PointerPage(
                 settings, focusedRow, viewModel, pointerServiceEnabled, pointerRunning,
             )
@@ -134,6 +175,13 @@ fun SettingsPageContent(
             SettingsPage.DUAL_SCREEN -> DualScreenPage(settings, focusedRow, viewModel)
             SettingsPage.PERFORMANCE -> PerformancePage(settings, focusedRow, viewModel)
 
+            SettingsPage.BACKUP -> BackupPage(
+                activeProfile = profileRegistry.active,
+                focusedRow = focusedRow,
+                viewModel = viewModel,
+                status = backupStatus,
+                restartRequired = restartRequired,
+            )
             SettingsPage.EXTENSIONS -> ExtensionsPage(settings, focusedRow, viewModel, extensionStatus)
             SettingsPage.ACCESSIBILITY -> AccessibilityPage(settings, focusedRow, viewModel)
         }
@@ -157,9 +205,22 @@ fun rowCountFor(
     /** Profile rows depend on how many there are and whether the active one has a picture. */
     profileRegistry: ProfileRegistry = ProfileRegistry.EMPTY,
     activeProfileHasAvatar: Boolean = false,
+    /** The editor is a short list until a theme is opened, and long once one is. */
+    customThemeCount: Int = 0,
+    editingTheme: Boolean = false,
+    /** As the theme editor: a short list until a folder is opened, long once one is. */
+    smartFolderCount: Int = 0,
+    editingSmartFolder: Boolean = false,
+    /** As the other two editors: a short list until one is opened. */
+    customProfileCount: Int = 0,
+    editingProfile: Boolean = false,
 ): Int = when (page) {
     SettingsPage.THEME -> THEME_ROWS
     SettingsPage.SURFACES -> SURFACES_ROWS
+    SettingsPage.THEME_EDITOR -> themeEditorRows(customThemeCount, editingTheme)
+    SettingsPage.SMART_FOLDERS -> smartFolderRows(smartFolderCount, editingSmartFolder)
+    SettingsPage.BUTTON_MAPPING -> buttonMappingRows(customProfileCount, editingProfile)
+    SettingsPage.BACKUP -> BACKUP_ROWS
     SettingsPage.WALLPAPER -> WALLPAPER_FIXED_ROWS + wallpaperClearRows
     SettingsPage.GRID -> 5
     SettingsPage.DOCK -> 6

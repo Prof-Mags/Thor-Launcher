@@ -55,6 +55,12 @@ import java.util.Locale
 data class LauncherWidgetData(
     val recent: List<GameEntry> = emptyList(),
     val favourites: List<GameEntry> = emptyList(),
+    /** Never started, for the backlog strip. */
+    val unplayed: List<GameEntry> = emptyList(),
+    /** Where the hours have actually gone. */
+    val mostPlayed: List<GameEntry> = emptyList(),
+    /** One game to suggest, held steady for the day; see how it is chosen. */
+    val surprise: GameEntry? = null,
     val gameCount: Int = 0,
     val totalPlayMillis: Long = 0L,
     val platformsById: Map<String, Platform> = emptyMap(),
@@ -99,6 +105,30 @@ fun LauncherWidgetCard(
 
             LauncherWidget.SPOTLIGHT -> Spotlight(
                 game = data.recent.firstOrNull(),
+                data = data,
+                onLaunch = onLaunch,
+            )
+
+            LauncherWidget.BACKLOG -> GameStrip(
+                heading = "Backlog",
+                games = data.unplayed,
+                data = data,
+                empty = "You have started everything",
+                onLaunch = onLaunch,
+            )
+
+            LauncherWidget.MOST_PLAYED -> GameStrip(
+                heading = "Most played",
+                games = data.mostPlayed,
+                data = data,
+                empty = "No play time recorded yet",
+                onLaunch = onLaunch,
+            )
+
+            // The same treatment Spotlight gets, because it is the same shape of
+            // answer — one game, given room to be a picture rather than an icon.
+            LauncherWidget.SURPRISE -> Spotlight(
+                game = data.surprise,
                 data = data,
                 onLaunch = onLaunch,
             )

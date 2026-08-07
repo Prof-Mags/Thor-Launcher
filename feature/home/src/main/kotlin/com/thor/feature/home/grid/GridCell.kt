@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -33,15 +34,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.thor.core.designsystem.modifier.SurfaceLevel
 import com.thor.core.designsystem.modifier.thorCursor
+import com.thor.core.designsystem.modifier.thorSurface
 import com.thor.core.designsystem.theme.ThorTheme
 import com.thor.core.model.AppEntry
 import com.thor.core.model.CornerStyle
@@ -176,6 +181,40 @@ fun GridCell(
         Modifier
     }
 
+    /*
+     * The plate the icon sits on, in the theme's own material.
+     *
+     * This was a flat `background(surfaceElevated)` — a colour and nothing else —
+     * which is how the grid came to be the one surface in the launcher the theme
+     * could not reach. [SurfaceLevel.RAISED] names grid cells in its own
+     * documentation, and every panel, card and sheet had been moved onto
+     * [thorSurface] except the several hundred boxes that make up the thing the
+     * user actually looks at. So choosing Glass, Raised, Flat or Tinted changed
+     * the settings pages and the info panel and left the home screen identical.
+     * Now the grid carries the shadow, the lit edge, the border and the elevation
+     * tint the theme asks for, like everything else.
+     *
+     * An empty cell gets *no* plate. A page of empty plates reads as a form to be
+     * filled in rather than as a grid with room on it, and the plate was never
+     * saying anything about the cell — it was saying "something could go here",
+     * which is true of every empty cell and therefore worth saying nowhere. The
+     * exception is arrange mode, where "something could go here" is precisely the
+     * question being asked, so the outline comes back while icons are jiggling.
+     */
+    val plate = when {
+        entry != null -> Modifier.thorSurface(
+            shape = shape,
+            color = theme.surfaceElevated,
+            level = SurfaceLevel.RAISED,
+        )
+
+        jiggling -> Modifier
+            .clip(shape)
+            .border(EMPTY_CELL_BORDER.dp, theme.outline.copy(alpha = EMPTY_CELL_ALPHA), shape)
+
+        else -> Modifier
+    }
+
     Column(
         // No inset here: the gap between cells is applied by the page's own
         // arrangement. Padding each cell instead shrank every icon and produced
@@ -229,8 +268,7 @@ fun GridCell(
                     // and a circular one a ring, rather than a fixed rounded box
                     // that matched only one of the five shapes on offer.
                     .thorCursor(focused = highlighted, shape = shape)
-                    .clip(shape)
-                    .background(theme.surfaceElevated, shape),
+                    .then(plate),
                 contentAlignment = Alignment.Center,
             ) {
                 when (entry) {
@@ -308,15 +346,35 @@ fun GridCell(
                 }
 
                 if (entry?.isFavorite == true) {
-                    Icon(
-                        imageVector = Icons.Rounded.Star,
-                        contentDescription = "Favourite",
-                        tint = theme.cursor,
+                    /*
+                     * A badge rather than a bare glyph.
+                     *
+                     * The star was drawn straight onto the artwork in the cursor
+                     * colour, which is a colour chosen to read against the
+                     * launcher's own surfaces and not against several hundred
+                     * pieces of box art. Over a light cover it disappeared
+                     * entirely, so whether a game was favourited depended on the
+                     * game. A disc behind it costs one small circle and makes the
+                     * answer the same everywhere.
+                     */
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(3.dp)
-                            .fillMaxSize(FAVOURITE_BADGE_FRACTION),
-                    )
+                            .padding(FAVOURITE_INSET.dp)
+                            .fillMaxSize(FAVOURITE_BADGE_FRACTION)
+                            .background(
+                                theme.background.copy(alpha = FAVOURITE_DISC_ALPHA),
+                                CircleShape,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Star,
+                            contentDescription = "Favourite",
+                            tint = theme.cursor,
+                            modifier = Modifier.fillMaxSize(FAVOURITE_GLYPH_FRACTION),
+                        )
+                    }
                 }
             }
         }
@@ -324,14 +382,36 @@ fun GridCell(
         if (spec.showLabels && entry != null) {
             Text(
                 text = entry.title,
-                style = MaterialTheme.typography.labelSmall,
-                color = theme.onBackground,
+                /*
+                 * Carried on a shadow, and brightened under the cursor.
+                 *
+                 * A label is the one part of a cell drawn straight onto the
+                 * wallpaper with nothing behind it, and the wallpaper is a
+                 * user-chosen photograph or one of nine animated effects. Against
+                 * a light region the text simply went. A soft drop shadow is what
+                 * every launcher that draws labels over a wallpaper uses, costs no
+                 * layout, and does nothing visible on a dark ground where the text
+                 * was already fine.
+                 *
+                 * The cursor tint is the other half: the focused cell now says so
+                 * twice — the plate lifts and its name lights up — which is what
+                 * makes the selection readable across the room in couch mode and
+                 * at a glance on the handheld.
+                 */
+                style = MaterialTheme.typography.labelSmall.copy(
+                    shadow = Shadow(
+                        color = Color.Black.copy(alpha = LABEL_SHADOW_ALPHA),
+                        offset = Offset(0f, LABEL_SHADOW_OFFSET),
+                        blurRadius = LABEL_SHADOW_BLUR,
+                    ),
+                ),
+                color = if (highlighted) theme.cursor else theme.onBackground,
                 maxLines = spec.labelLines,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 2.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
             )
         }
     }
@@ -517,6 +597,27 @@ private const val ARTWORK_INSET = 2
  */
 private const val BUILT_IN_ICON_FRACTION = 0.88f
 
-private const val FAVOURITE_BADGE_FRACTION = 0.24f
+/** The disc, and the star inside it. */
+private const val FAVOURITE_BADGE_FRACTION = 0.26f
+private const val FAVOURITE_GLYPH_FRACTION = 0.72f
+private const val FAVOURITE_INSET = 3
+
+/** Enough to separate the star from artwork without becoming a blob of its own. */
+private const val FAVOURITE_DISC_ALPHA = 0.55f
+
+/**
+ * The outline an empty cell wears while the grid is being arranged.
+ *
+ * Faint on purpose: it marks where an icon could land, and a page of bright boxes
+ * would compete with the icon actually being carried.
+ */
+private const val EMPTY_CELL_BORDER = 1
+private const val EMPTY_CELL_ALPHA = 0.35f
+
+/** A soft drop shadow, so a label survives a light wallpaper. */
+private const val LABEL_SHADOW_ALPHA = 0.65f
+private const val LABEL_SHADOW_OFFSET = 1f
+private const val LABEL_SHADOW_BLUR = 3f
+
 private const val JIGGLE_DEGREES = 2.6f
 private const val JIGGLE_PERIOD_MS = 140

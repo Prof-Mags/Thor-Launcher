@@ -113,6 +113,44 @@ fun FilePickerRow(
 }
 
 /**
+ * A row that opens the system's "save as" dialog and reports where to write.
+ *
+ * The mirror of [FilePickerRow], and it has to be a separate contract rather than
+ * a flag on that one: `OpenDocument` can only return a document that already
+ * exists, so there is no way to express "somewhere new called this" through it.
+ *
+ * No permission is persisted, deliberately. The grant that comes back lasts as
+ * long as this process needs it, the write happens immediately, and the launcher
+ * has no business holding a lasting claim on a file it exported once.
+ */
+@Composable
+fun FileSaverRow(
+    title: String,
+    subtitle: String?,
+    /** Offered as the file name; the user is free to change it. */
+    suggestedName: String,
+    mimeType: String = "application/json",
+    focused: Boolean = false,
+    trailingLabel: String = "EXPORT",
+    onChosen: (uri: String) -> Unit,
+) {
+    val saver = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument(mimeType),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        onChosen(uri.toString())
+    }
+
+    ActionRow(
+        title = title,
+        subtitle = subtitle,
+        focused = focused,
+        trailingLabel = trailingLabel,
+        onClick = { saver.launch(suggestedName) },
+    )
+}
+
+/**
  * A row that opens the system directory picker and reports a ROM folder.
  *
  * Directory grants must be persisted for the same reason as wallpapers, and

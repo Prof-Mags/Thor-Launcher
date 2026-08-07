@@ -124,6 +124,26 @@ data class PersonalizationSettings(
      * yet.
      */
     val themeId: ThemeId = ThemeId.MATERIAL,
+
+    /**
+     * Themes the user built, in the order they were made.
+     *
+     * Stored whole rather than as overrides over a bundled theme; see [CustomTheme]
+     * for why. They are held here rather than in a store of their own because they
+     * are a *preference* — one of these is only ever meaningful alongside the
+     * light/dark, contrast and intensity dials sitting beside it.
+     */
+    val customThemes: List<CustomTheme> = emptyList(),
+
+    /**
+     * Which custom theme is applied, if one is.
+     *
+     * Beside [themeId] rather than replacing it, and that is what makes deleting a
+     * theme safe: clearing this falls back to whichever bundled theme was last
+     * chosen instead of to a launcher with no palette at all. Same reasoning as
+     * [ThemeRecipe.of] never throwing for an id it cannot find.
+     */
+    val activeCustomThemeId: String? = null,
     /**
      * Light or dark, for whichever theme is chosen.
      *
@@ -226,14 +246,6 @@ data class PersonalizationSettings(
      * a decoder per dwell is exactly the sort of cost that switch exists to avoid.
      */
     val autoplayTrailers: Boolean = true,
-    /**
-     * Overrides the theme's typeface. Null keeps the theme's own.
-     *
-     * Five faces have shipped since the first theme and none of them were
-     * selectable: the launcher's font was whatever the chosen palette happened to
-     * declare, so reading it in a serif meant living with Linen's colours.
-     */
-    val fontOverride: FontChoice? = null,
     /** Overrides the theme's motion personality. Null keeps the theme's own. */
     val motionOverride: MotionStyle? = null,
     val fontScale: Float = 1.0f,
@@ -286,9 +298,30 @@ data class PersonalizationSettings(
         grainScale = grainAmount,
     )
 
-    /** The finished palette: [themeId] resolved against everything else chosen. */
+    /**
+     * The recipe in use: the applied custom theme, or the bundled one.
+     *
+     * Falls through to [themeId] whenever [activeCustomThemeId] names nothing —
+     * which is the state left behind by deleting the applied theme, and by a
+     * settings file that arrived from a backup without the theme it refers to. The
+     * launcher has to be able to draw in both cases.
+     */
+    val activeRecipe: ThemeRecipe
+        get() = activeCustomThemeId
+            ?.let { active -> customThemes.firstOrNull { it.id == active } }
+            ?.toRecipe()
+            ?: ThemeRecipe.of(themeId)
+
+    /** Every theme the gallery offers: the bundled shelves, then the user's own. */
+    val galleryRecipes: List<ThemeRecipe>
+        get() = ThemeRecipe.ALL + customThemes.map(CustomTheme::toRecipe)
+
+    /** What the gallery draws a tick on. See [ThemeRecipe.key]. */
+    val activeThemeKey: String get() = activeRecipe.key
+
+    /** The finished palette: [activeRecipe] resolved against everything else chosen. */
     fun resolveTheme(systemDark: Boolean = true): ThemeSpec =
-        ThemeRecipe.of(themeId).resolve(themeOptions(systemDark))
+        activeRecipe.resolve(themeOptions(systemDark))
 }
 
 /**
@@ -493,9 +526,53 @@ data class LibrarySettings(
     val showHiddenEntries: Boolean = false,
     val defaultSort: SortOrder = SortOrder.MANUAL,
     val sortDescending: Boolean = false,
+
+    /**
+     * Which panel an entry opens on, for the entries that have an opinion.
+     *
+     * A map rather than a column on the entry, because it is a *preference* and
+     * not a property of the game: it belongs to the person and their device, and
+     * it should survive a rescan that rebuilds the library row. Entries with no
+     * entry here take [PreferredPanel.DEFAULT] and behave exactly as before.
+     *
+     * Keyed by grid entry id. A stale key costs nothing — it is read only when an
+     * entry of that id is launched — so nothing has to prune this when a game goes.
+     */
+    val launchPanels: Map<String, PreferredPanel> = emptyMap(),
 )
 
 /** One user-granted ROM location. */
+/**
+ * Which screen an entry should open on.
+ *
+ * Named for the panels as the user sees them rather than for the displays, which
+ * swap: "top" is whichever panel is currently the top one, so a preference set
+ * before swapping the screens still means what it said.
+ *
+ * Lives here rather than beside `LaunchTarget` because it is a stored preference
+ * and `:core:model` is where those go; the launcher maps it onto a target at the
+ * moment of launch.
+ */
+@Serializable
+enum class PreferredPanel(val label: String) {
+    /** Whatever the launcher would do anyway. */
+    DEFAULT("Ask the launcher"),
+    TOP("Always the top screen"),
+    BOTTOM("Always the bottom screen"),
+    ;
+
+    /** What the launcher says after the choice is made. */
+    val confirmation: String
+        get() = when (this) {
+            DEFAULT -> "This will open wherever the launcher decides"
+            TOP -> "This will always open on the top screen"
+            BOTTOM -> "This will always open on the bottom screen"
+        }
+
+    /** The next option, for a context action that cycles rather than opening a menu. */
+    val next: PreferredPanel get() = entries[(ordinal + 1) % entries.size]
+}
+
 @Serializable
 data class RomDirectory(
     val uri: String,

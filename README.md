@@ -40,9 +40,9 @@ A walkthrough then takes you through everything the launcher does, moving across
 
 ## Two screens, one launcher
 
-One panel holds the grid: your icons, your menus, the section bar along the bottom edge. The other holds information: artwork, details, ratings, genres, release dates, developer and publisher, screenshots and play time for whatever the cursor is currently on. Which panel is which is yours to choose in **Settings → System & accessibility → Dual screen**, and swapping them is also one of the tiles in the shortcut panel.
+One panel holds the grid: your icons, your menus, and the section bar along the bottom edge, where the section you are in fills as an accent pill with an indicator that grows into place rather than appearing whole. The other holds information: artwork, details, ratings, genres, release dates, developer and publisher, screenshots and play time for whatever the cursor is currently on. Which panel is which is yours to choose in **Settings → System & accessibility → Dual screen**, and swapping them is also one of the tiles in the shortcut panel.
 
-Launch a game and it takes the grid's panel, while the other panel stays on the launcher. Touch a panel to give it the controller — tap the game to play, tap the launcher to browse, any time you like. Pressing Home gives a panel back to Loki from either screen, because Loki registers a home activity on both displays rather than only on the default one. An entry's context menu can send it to the other panel instead, leaving the grid where it is, so you can decide per launch which screen a game lands on.
+Launch a game and it takes the grid's panel, while the other panel stays on the launcher. Touch a panel to give it the controller — tap the game to play, tap the launcher to browse, any time you like. Pressing Home gives a panel back to Loki from either screen, because Loki registers a home activity on both displays rather than only on the default one. An entry's context menu can send it to the other panel instead, leaving the grid where it is, so you can decide per launch which screen a game lands on — or set **Always open on…** from the same menu and that game uses the screen you chose from then on, whether it is started from the grid, from search, from a widget or from couch mode.
 
 Five screen modes are available. Automatic uses the second display when there is one. Dual display forces it. Split single display divides one screen into a top and bottom half, which is the fallback when only one display is present. Single screen uses the bottom surface alone and turns the information panel into an overlay sheet. Couch mode moves everything to the top screen and holds the bottom panel dark.
 
@@ -74,7 +74,9 @@ Every icon stays where you put it. Empty cells stay empty, and nothing reflows. 
 
 Hold **A** to pick an icon up, move it, and press **A** again to drop it. Pinch to change density between eight presets running from three columns by two rows up to eight by five, each with its own spacing and padding so every size the pinch can reach is one that was designed rather than merely computed. **L2** and **R2** turn pages, **X** favourites whatever is selected, and **Y** raises the context menu.
 
-Icons take one of five shapes — square, rounded, squircle, circle or hexagon — and the selection cursor traces whichever shape the cell it is standing on has. The default library order is yours to set from ten choices: title, platform, release date, rating, last played, play time, times played, date added, file size, or a custom order you arrange by hand.
+Icons take one of five shapes — square, rounded, squircle, circle or hexagon — and the selection cursor traces whichever shape the cell it is standing on has. Each icon sits on a plate built in the theme's own material, so choosing Glass, Raised, Flat or Tinted changes the home screen and not only the settings pages: the grid carries the shadow, the lit edge, the border and the elevation tint the theme asks for. Empty cells are genuinely empty and draw nothing at all, except while you are arranging, when they outline themselves to show where an icon can land. Labels are carried on a soft shadow so they stay readable over any wallpaper, and the one under the cursor lights up with it.
+
+The default library order is yours to set from ten choices: title, platform, release date, rating, last played, play time, times played, date added, file size, or a custom order you arrange by hand.
 
 The context menu is a grid of half-width tiles, so a game's eleven actions are on screen at once, with the full name and description of whichever tile holds the cursor shown on one line underneath. From it you can launch, launch on either specific screen, favourite, add to or remove from the grid, file into a folder or a new folder, edit the entry, pick a different emulator, hide it, open its app info, uninstall it, or delete it.
 
@@ -88,9 +90,9 @@ Folders hold entries, scrape their own artwork, and can be made from any entry's
 
 ### Widgets
 
-Long-press an empty cell to add a widget. Loki hosts ordinary Android app widgets through a proper widget host, which is the part that owns and preserves their ids across restarts, and asks for the platform's consent dialog and runs a provider's own configuration screen where one is declared.
+Long-press any cell to add a widget, and it lands on the cell you pressed. A widget wider or taller than the space to the right and below simply slides left or up so that it still covers that cell, rather than refusing to be placed there — the cell you press is a cell you want the widget on, not the corner you want it hung from. Loki hosts ordinary Android app widgets through a proper widget host, which is the part that owns and preserves their ids across restarts, and asks for the platform's consent dialog and runs a provider's own configuration screen where one is declared.
 
-Alongside those, Loki draws five widgets from your own library, which app widgets cannot do because nothing outside the launcher has ever heard of it: Continue Playing shows the last few games you played ready to start, Spotlight gives the last game its artwork at full size, Favourites shows what you have starred, Library counts how many games you have and how long you have played them, and Clock shows the time and date.
+Alongside those, Loki draws eight widgets from your own library, which app widgets cannot do because nothing outside the launcher has ever heard of it. Continue Playing shows the last few games you played ready to start. Spotlight gives the last game its artwork at full size. Favourites shows what you have starred. Backlog shows what you own and have never begun. Most Played shows where the hours have actually gone. Surprise Me picks one game to try, preferring something unstarted and holding its choice for the day rather than re-rolling every time the cursor moves past it. Library counts how many games you have and how long you have played them, and Clock shows the time and date.
 
 Widgets resize and move in edit mode, with on-screen buttons as well as the controller, since the panel they run on is a touchscreen. A widget is a single stop for the cursor and consumes every cell it covers, and a resize can be abandoned with Back rather than merely stopped at whatever size it had reached.
 
@@ -104,7 +106,7 @@ Widgets resize and move in edit mode, with on-screen buttons as well as the cont
 
 **A** launches, and holding it picks an icon up. **B** goes back. **X** favourites. **Y** opens the context menu. **L1** and **R1** step through screenshots, **L2** and **R2** turn pages. Clicking either stick raises the shortcut panel, **Start** opens the side panel, **Select** opens the app drawer, and **Guide** goes Home. Holding a trigger speeds up whatever else you press. A paired keyboard works too, using WASD, E, F, Tab, Enter and Escape.
 
-Two controller profiles ship — the Loki default and one with A and B swapped — and both apply live without a restart. Stick sensitivity is a slider, applied as an inverse dead zone so a more sensitive stick registers a direction at a smaller deflection, and it is bounded at both ends so no setting can make the stick unusable. Navigation can wrap at the edges or stop dead, the edge of a page can turn to the next one, and touch input on the grid can be turned off entirely so only the pad drives it.
+Two controller profiles ship — the Loki default and one with A and B swapped — and both apply live without a restart. Copy either from **Settings → Controls → Button mapping** and every command becomes rebindable: pick one, press the button you want, and it is bound. Binding works by listening for the next physical press rather than by offering a list of key codes, because the only way to know which button is which on a given pad is to press it. Hold-to-pick-up, repeat delay, repeat speed and the stick dead zone are all adjustable per profile, and the built-in two cannot be edited — they are the way back when a custom mapping has painted itself into a corner. Stick sensitivity is a slider, applied as an inverse dead zone so a more sensitive stick registers a direction at a smaller deflection, and it is bounded at both ends so no setting can make the stick unusable. Navigation can wrap at the edges or stop dead, the edge of a page can turn to the next one, and touch input on the grid can be turned off entirely so only the pad drives it.
 
 The AYN button's firmware does not send anything an app can read, so Loki cannot use it — the stick clicks do the same job and work everywhere. If a button ever seems dead, **Settings → About → Button tester** shows exactly what it sends.
 
@@ -178,6 +180,20 @@ Platform artwork can be imported from an icon pack; Loki ships none of its own, 
 
 <br>
 
+### Smart folders
+
+A smart folder holds whatever matches a query rather than what you filed into it, so it maintains itself as the library changes. **Settings → Games & artwork → Smart folders** starts one from a preset — Continue, Backlog, Favourites, Best of, New, Most played, Retro, or an empty query — and then every field is yours: which system, favourites only, unplayed only, played within so many days, a minimum rating, released between two years, a title fragment, the order, the direction, and a cap on how many it keeps. The folder appears on the grid immediately and fills itself from then on. Star a game and it turns up in a Favourites folder with nothing asked to refresh.
+
+<br>
+
+### Backup
+
+**Settings → System & accessibility → Backup** writes everything belonging to the profile you are signed in as — settings, the library with its artwork and play time, your themes, and the grid layout — into a single file wherever you choose to put it. Your ROMs and emulators are not in it and are not touched.
+
+Restoring reads one back. It unpacks to a staging area first and only swaps the files in once the whole archive has been read, so a truncated file leaves your existing profile alone rather than half-replacing it. The launcher has to be closed and reopened afterwards, because the library and the settings file are both open while it is running and nothing reads the restored ones until it starts again.
+
+<br>
+
 ### Achievements
 
 RetroAchievements is fully integrated. Sign in with your username and API key in **Settings → Games & artwork → Achievements**, and Loki shows both what you have earned and what is still left in a set, rather than only what has been done. Hardcore-only mode is available, and achievement data refreshes in the background alongside the rest of the library.
@@ -240,9 +256,25 @@ What panels are made of is separate from what colour they are. Surfaces can be f
 
 Wallpaper is set per panel, and can be a still image of your own or one of nine drawn effects: waves, mesh, aurora, bokeh, particles, starfield, gradient drift, parallax, or an adaptive one that takes its hue from the selected game's platform accent so the background shifts as the cursor moves across systems. A static setting turns the effect off, a dim slider controls how far the wallpaper is pushed back, and the selected game's own video preview can play as the background instead.
 
-The selection cursor draws as a ring, a fill, corner brackets, an underline or a spotlight, and animates by breathing, pulsing, rotating, shimmering, or not at all, with an adjustable glow. Typeface can be system, rounded, monospace, pixel or serif, and text scales independently of the interface. Motion has four characters — fluid, smooth, snappy and mechanical — with a separate transition speed multiplier on top. The clock can be hidden, twelve-hour, twenty-four-hour or analog. The status bar and the page indicators can each be turned off, folders and the information panel each have their own styles, and the information panel can be drawn as an opaque card with a defined edge or blended into the artwork with no visible edge at all.
+The selection cursor draws as a ring, a fill, corner brackets, an underline or a spotlight, and animates by breathing, pulsing, rotating, shimmering, or not at all, with an adjustable glow. Text size scales independently of the interface. There is deliberately no typeface choice: the launcher sets everything in the system sans, because this device is read at arm's length and across a room and that is the face which stays legible at both — where the five that used to be offered were three real typefaces under five names, settable in two places that could disagree. Motion has four characters — fluid, smooth, snappy and mechanical — with a separate transition speed multiplier on top. The clock can be hidden, twelve-hour, twenty-four-hour or analog. The status bar and the page indicators can each be turned off, folders and the information panel each have their own styles, and the information panel can be drawn as an opaque card with a defined edge or blended into the artwork with no visible edge at all.
 
 Interface sounds are a master switch with separate navigation and launch categories and a volume of their own, and haptics have an intensity slider beside them.
+
+<br>
+
+### The theme editor
+
+If none of the fourteen is quite it, build your own. **Settings → Personalization → Theme editor** starts a theme from any of the built-in ones and hands over every number that theme was made from — not the adjustments over the top of it, but the recipe itself.
+
+A **preview panel** sits at the top showing the theme as a small launcher — the grid, the information panel, the selection cursor and the section bar, all in the palette you are building. Every value in it is real, so a preview that looks wrong means the theme is wrong. It is there because the editor already applies what it is editing, which makes the launcher itself the truest preview, except for the parts hidden behind the settings page — and those are exactly the parts a palette has to be judged on.
+
+A **colour picker** is the main control: a spectrum you walk with Left and Right, or tap. The strip is drawn at the theme's own strength rather than at full saturation, so what you see on the bar is what the launcher will wear. Underneath it, Strength decides how colourful the theme is at all — from a grey launcher with a coloured cursor to one that leads with the colour. Then what the panels are made of, how round they are, how far the background graduates toward the colour, how it moves, and the wallpaper it pairs with.
+
+That is the whole page, and deliberately so. A theme has about seven decisions in it; everything else — the second accent, the gradient's far end, the cursor's offset, how far the greys are tinted, the panel opacity and blur — is a *consequence* of those, and asking for each one separately means doing the palette generator's job by hand on a page long enough that the colour you came to change has scrolled off the top. Those values still exist, still travel in an exported theme, and are still rolled by **Randomise**, which rolls within the bands the built-in themes actually occupy so the result is always a theme rather than a muddy ground under a lurid accent.
+
+**Opening a theme applies it,** because a palette is the entire interface across both panels and no swatch in a settings row is a substitute for seeing it. Every slider moves the launcher you are looking at. Your themes appear in the same gallery as the built-in ones and are chosen the same way, and each can be renamed, duplicated and deleted; deleting the one in use falls back to the built-in theme underneath rather than leaving the launcher without a palette.
+
+A theme is also a file. Export one and you get a small readable JSON document stating every parameter, which anyone can import from the same page — the same idea as an extension file, and equally not a licence key. An imported theme is always given a fresh identity on arrival, so a file can never quietly overwrite a theme of your own.
 
 <br>
 
@@ -294,7 +326,7 @@ It is not a licence key. Anyone can write one in a text editor; it is a way of s
 
 Settings is two levels — a rail of categories, each holding a short list of pages small enough to fit a screen, so opening one shows all of it at once rather than asking you to walk thirty rows with a D-pad.
 
-Profiles covers who is signed in, and the name, picture and colour of whoever that is. Personalization covers theme and colour, surfaces, wallpaper, interface and the home grid and selection cursor. Games & artwork covers platforms, extra ROM folders, scanning, sorting, metadata and scraping, platform artwork and achievements. Films & shows covers sources and accounts, and playback. PC streaming covers picture, controls and PCs. Controls covers navigation, the pointer, and feedback. System & accessibility covers dual screen, performance, extensions and accessibility. About covers version and device information, the default launcher prompt, replaying the walkthrough, logging, the button tester and a reset.
+Profiles covers who is signed in, and the name, picture and colour of whoever that is. Personalization covers theme and colour, surfaces, the theme editor, wallpaper, interface and the home grid and selection cursor. Games & artwork covers platforms, extra ROM folders, scanning, sorting, smart folders, metadata and scraping, platform artwork and achievements. Films & shows covers sources and accounts, and playback. PC streaming covers picture, controls and PCs. Controls covers navigation, button mapping, the pointer, and feedback. System & accessibility covers dual screen, performance, backup, extensions and accessibility. About covers version and device information, the default launcher prompt, replaying the walkthrough, logging, the button tester and a reset.
 
 Categories belonging to an extension you have not enabled are absent from the rail entirely rather than shown greyed out, along with every page under them, and their settings are kept in case the extension comes back. Every row works with the controller.
 
@@ -306,7 +338,9 @@ Categories belonging to an extension you have not enabled are absent from the ra
 
 ## Not built yet
 
-Desktop Mode is planned. Mouse and keyboard while streaming is partial — the controller and the trackpad work, but full pointer and text paths are not wired. HDR while streaming is accepted but not applied. Two controller profiles ship and apply live, but there is no remapping editor. Cloud sync and backup are modelled with no transport behind them. Collections have tables but no screens. Smart folders work, but their queries can only be written in code. A theme editor, plugins and third-party extensions are not started.
+Desktop Mode is planned. Mouse and keyboard while streaming is partial — the controller and the trackpad work, but full pointer and text paths are not wired. HDR while streaming is accepted but not applied. Cloud sync is modelled with no transport behind it, though local backup and restore are built and are the half that matters. Collections have tables but no screens. Plugins and third-party extensions are not started.
+
+Two smaller limits are worth stating precisely. A smart folder's genre and tag filters are not exposed in the editor, because neither has a fixed vocabulary — they are whatever the scrapers returned for your particular library, so a picker over them would be several hundred strings that differ per install; "title contains" covers the same ground for now. And a restore replaces the profile you are signed in as rather than offering to create a new one from the file, so moving a profile between devices means making the profile first and then restoring into it.
 
 Two finished features are switched off rather than missing. The floating dock — five assignable slots, its placements, and its whole settings page — is kept intact behind a flag while the bottom nav bar owns the bottom edge of the grid panel. The profile and notification cluster on the information panel is likewise held back while that corner is settled, though couch mode still draws it and profiles themselves are entirely unaffected.
 
