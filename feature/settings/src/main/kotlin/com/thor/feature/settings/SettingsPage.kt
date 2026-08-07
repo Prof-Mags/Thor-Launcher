@@ -21,11 +21,33 @@ enum class SettingsPage(
     val category: SettingsCategory,
     val title: String,
     val summary: String,
+    /**
+     * The heading this page sits under, or null for a category short enough not
+     * to need one.
+     *
+     * Headings rather than more categories, and that is the whole of this
+     * reorganisation. Personalization and Games & artwork had grown to eight
+     * pages each — long enough that finding one meant reading all of them — and
+     * the obvious fix, splitting them, is the one this file has already tried
+     * twice and folded back twice: see [SettingsCategory], where Home screen and
+     * Artwork are both kept as invisible ids from those attempts. A rail entry
+     * holding three pages is a stop on the way to somewhere else, and the rail is
+     * walked far more often than any one category.
+     *
+     * A heading costs nothing to walk past. It is drawn, not focused, so the
+     * cursor still steps page to page and the row count is still the page count —
+     * which is why this change needed no arithmetic anywhere.
+     *
+     * Null on every category with four pages or fewer. Three headings over five
+     * pages is filing for its own sake.
+     */
+    val group: String? = null,
 ) {
-    // ---- Appearance --------------------------------------------------------
+    // ---- Personalization ---------------------------------------------------
     THEME(
         SettingsCategory.APPEARANCE, "Theme & colour",
         "The gallery, light or dark, accent, contrast and intensity",
+        group = "Theme",
     ),
 
     /**
@@ -41,6 +63,7 @@ enum class SettingsPage(
     SURFACES(
         SettingsCategory.APPEARANCE, "Surfaces",
         "Panel material, corners, depth and texture",
+        group = "Theme",
     ),
 
     /**
@@ -55,68 +78,107 @@ enum class SettingsPage(
     THEME_EDITOR(
         SettingsCategory.APPEARANCE, "Theme editor",
         "Build a theme of your own, and share it",
-    ),
-    WALLPAPER(
-        SettingsCategory.APPEARANCE, "Wallpaper",
-        "Background image, animated effect and how far it is dimmed",
-    ),
-    INTERFACE(
-        SettingsCategory.APPEARANCE, "Interface",
-        "Typeface, text size, motion, clock and folders",
+        group = "Theme",
     ),
 
-    // ---- Home screen -------------------------------------------------------
+    /*
+     * The home screen's own three, together.
+     *
+     * They were scattered through Personalization between the theme pages and the
+     * wallpaper — which is how "make the icons bigger" became a hunt. What the
+     * grid holds, what the cursor on it looks like and what sits along its bottom
+     * edge are one question asked three ways.
+     */
+    // Named for what it holds rather than for where it is: under a "Home screen"
+    // heading, a page called "Home screen" says the heading twice and says nothing.
     GRID(
-        SettingsCategory.APPEARANCE, "Home screen",
-        "Grid or platform cards, then size, spacing, icon shape and labels",
-    ),
-    DOCK(
-        SettingsCategory.APPEARANCE, "Dock",
-        "Size, transparency and behaviour",
+        SettingsCategory.APPEARANCE, "Grid & cards",
+        "Which layout Home uses, then size, spacing, icons and labels",
+        group = "Home screen",
     ),
     CURSOR(
         SettingsCategory.APPEARANCE, "Selection cursor",
         "Selection highlight style and glow",
+        group = "Home screen",
+    ),
+    DOCK(
+        SettingsCategory.APPEARANCE, "Dock",
+        "Size, transparency and behaviour",
+        group = "Home screen",
     ),
 
-    // ---- Library -----------------------------------------------------------
+    WALLPAPER(
+        SettingsCategory.APPEARANCE, "Wallpaper",
+        "Background image, animated effect and how far it is dimmed",
+        group = "Background & text",
+    ),
+    INTERFACE(
+        SettingsCategory.APPEARANCE, "Interface",
+        "Text size, motion, clock and folder style",
+        group = "Background & text",
+    ),
+
+    // ---- Games & artwork ---------------------------------------------------
     PLATFORMS(
         SettingsCategory.LIBRARY, "Platforms",
         "Consoles, their ROM folders and emulators",
+        group = "Where games come from",
     ),
     ROM_FOLDERS(
         SettingsCategory.LIBRARY, "Extra ROM folders",
         "Locations not tied to one platform",
+        group = "Where games come from",
     ),
     SCANNING(
         SettingsCategory.LIBRARY, "Scanning",
         "How games and apps are found",
+        group = "Where games come from",
     ),
+
     SORTING(
         SettingsCategory.LIBRARY, "Sorting",
         "Default library order",
+        group = "How they are arranged",
     ),
 
     /**
      * Folders defined by a query rather than by what was filed into them.
      *
-     * Under Library beside Sorting, because both answer "how is my library
-     * arranged" — and a smart folder is closer to a saved sort than it is to the
-     * folders you make by hand, which are made from the grid where they live.
+     * Beside Sorting, because both answer "how is my library arranged" — and a
+     * smart folder is closer to a saved sort than it is to the folders you make by
+     * hand, which are made from the grid where they live.
      */
     SMART_FOLDERS(
         SettingsCategory.LIBRARY, "Smart folders",
         "Folders that fill themselves from a query",
+        group = "How they are arranged",
     ),
 
-    // ---- Artwork -----------------------------------------------------------
     METADATA(
         SettingsCategory.LIBRARY, "Metadata & scraping",
-        "Artwork providers and their credentials",
+        "Where descriptions and artwork are fetched from",
+        group = "Artwork & progress",
     ),
     ICON_PACKS(
         SettingsCategory.LIBRARY, "Platform artwork",
-        "Platform artwork imported from a pack",
+        "Icon packs, and the art Loki ships",
+        group = "Artwork & progress",
+    ),
+
+    /**
+     * With artwork rather than with metadata, which it is not.
+     *
+     * Metadata describes the game; this describes the player's progress through
+     * it. They come from different places, are keyed to different things, and one
+     * of them needs an account. It was also declared at the very bottom of this
+     * enum, which — since declaration order is display order — put it under
+     * Accessibility's neighbours in the file and dead last in Games & artwork,
+     * several pages away from everything it belongs with.
+     */
+    ACHIEVEMENTS(
+        SettingsCategory.LIBRARY, "Achievements",
+        "RetroAchievements account and matching",
+        group = "Artwork & progress",
     ),
 
     // ---- Films & shows -----------------------------------------------------
@@ -144,20 +206,23 @@ enum class SettingsPage(
     ),
 
     // ---- Controls ----------------------------------------------------------
-    NAVIGATION(
-        SettingsCategory.CONTROLS, "Navigation",
-        "Cursor movement and stick behaviour",
-    ),
-
     /**
      * First in Controls, because it is the one that decides what the rest mean.
      *
      * Navigation and Feedback tune how a press behaves; this decides which press
-     * it was.
+     * it was. It said so already and was declared second, which — since
+     * declaration order is display order — meant it was drawn second and the
+     * comment described an arrangement that did not exist.
+     *
+     * No group headings here: four pages is a list you read rather than search.
      */
     BUTTON_MAPPING(
         SettingsCategory.CONTROLS, "Button mapping",
         "Which button does what, and how it feels",
+    ),
+    NAVIGATION(
+        SettingsCategory.CONTROLS, "Navigation",
+        "Cursor movement and stick behaviour",
     ),
     POINTER(
         SettingsCategory.CONTROLS, "Pointer",
@@ -187,43 +252,36 @@ enum class SettingsPage(
     DUAL_SCREEN(
         SettingsCategory.SYSTEM, "Dual screen",
         "How the two panels are used",
+        group = "This device",
     ),
     PERFORMANCE(
         SettingsCategory.SYSTEM, "Performance",
         "Animation and visual effects",
+        group = "This device",
+    ),
+    ACCESSIBILITY(
+        SettingsCategory.SYSTEM, "Accessibility",
+        "Contrast, motion, text and colour vision",
+        group = "This device",
     ),
 
     /**
      * Copying a profile out and putting it back.
      *
-     * Under System beside Extensions rather than under Profiles: it is about the
-     * device and its storage, and it is where somebody looks after deciding to
-     * reinstall — which is the same visit as "how do I get my launcher back".
+     * Under System rather than under Profiles: it is about the device and its
+     * storage, and it is where somebody looks after deciding to reinstall — which
+     * is the same visit as "how do I get my launcher back".
      */
     BACKUP(
         SettingsCategory.SYSTEM, "Backup",
         "Save this profile to a file, or restore one",
+        group = "Data & features",
     ),
 
     EXTENSIONS(
         SettingsCategory.SYSTEM, "Extensions",
-        "Add Movies or PC streaming to the launcher",
-    ),
-    ACCESSIBILITY(
-        SettingsCategory.SYSTEM, "Accessibility",
-        "Contrast, motion, text and colour vision",
-    ),
-
-    /**
-     * Under Library rather than under Metadata, which it is not.
-     *
-     * Metadata describes the game; this describes the player's progress through
-     * it. They come from different places, are keyed to different things, and
-     * one of them needs an account.
-     */
-    ACHIEVEMENTS(
-        SettingsCategory.LIBRARY, "Achievements",
-        "RetroAchievements account and matching",
+        "Add Films & shows or PC streaming to the launcher",
+        group = "Data & features",
     ),
     ;
 

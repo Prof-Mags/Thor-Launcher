@@ -444,6 +444,21 @@ fun SettingsScreen(
                         }
 
                         else -> pages.forEachIndexed { index, page ->
+                            /*
+                             * A heading whenever the group changes, and never a
+                             * focusable one.
+                             *
+                             * Drawn between the rows rather than as one of them,
+                             * which is what lets the cursor keep stepping page to
+                             * page and the row count keep being the page count —
+                             * a focusable heading would have meant renumbering
+                             * every row index in this screen for a label nobody
+                             * can press.
+                             */
+                            val previous = pages.getOrNull(index - 1)?.group
+                            if (page.group != null && page.group != previous) {
+                                PageGroupHeading(title = page.group)
+                            }
                             PageNavRow(
                                 page = page,
                                 focused = !focusOnRail && focusedRow == index,
@@ -639,6 +654,34 @@ private fun DetailHeader(
     }
 }
 
+/**
+ * A heading over a run of pages that answer the same question.
+ *
+ * Quiet on purpose: it is a signpost, not an entry. Anything with a surface under
+ * it or a cursor colour on it would read as a row the cursor had skipped, which is
+ * worse than no heading at all — the one thing a heading must not do on a
+ * D-pad-driven list is look pressable.
+ */
+@Composable
+private fun PageGroupHeading(title: String) {
+    val colors = ThorTheme.colors
+    val dimens = ThorTheme.dimens
+
+    Text(
+        text = title.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = colors.onSurfaceVariant.copy(alpha = HEADING_ALPHA),
+        modifier = Modifier.padding(
+            start = 4.dp,
+            // More above than below, so it belongs to what follows it rather than
+            // floating between two groups.
+            top = dimens.spacing,
+            bottom = dimens.spacingTiny,
+        ),
+    )
+}
+
 /** A row that opens a settings page. */
 @Composable
 private fun PageNavRow(
@@ -813,3 +856,6 @@ private const val CARD_RAIL_WIDTH = 256
 private const val CONSOLE_RAIL_WIDTH = 218
 private const val INDEX_RAIL_WIDTH = 286
 private const val CONTENT_MAX_WIDTH = 820
+
+/** Faint enough to read as a label rather than as a row that was skipped. */
+private const val HEADING_ALPHA = 0.7f
