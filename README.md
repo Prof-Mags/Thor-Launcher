@@ -316,6 +316,16 @@ It is deliberately not a remote control. The game is not Loki's to drive, and a 
 
 <br>
 
+### Loki over the top
+
+Hold **Start and R1** together inside a game and Loki comes over it — a small panel with the game's name and three tiles: take a screenshot, go home, or close. The D-pad walks it, **A** presses, **B** closes, and every key is swallowed while it is up so a direction cannot move the cursor here and your character there at the same time.
+
+A chord rather than a long press on Start, because a long press cannot be recognised until after the button has already reached the game — recognising one would mean swallowing every Start and re-injecting the short ones, which is a pause button that works most of the time. A chord is decided on the frame it completes. R1 rather than Select, because Start and Select together already raise the pointer.
+
+Three tiles and no more. Everything else Loki offers needs Loki in front — writing a note needs its keyboard, which cannot appear over another app's fullscreen window — and a tile that quietly dismissed your game to do its job would just be a worse Home button. The panel is drawn by the same service that draws the pointer, through the same permission, so it needs nothing you have not already granted.
+
+<br>
+
 ### Notes and screenshots
 
 Every game can carry a note — where you got to, what to do next, which of the four save files is the real one. It is the only field in the library that no scraper has an opinion about, so it lives in its own table and can never be overwritten by a rescrape, and it survives a rescan that cannot find the ROM: a moved file is exactly the case where the note is the last record left of where you were. Write one from a game's context menu or from the panel beside the game, on Loki's own keyboard. Emptying it and saving deletes it, so there is no second command to find.

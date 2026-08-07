@@ -65,4 +65,36 @@ class ScreenshotBridge @Inject constructor() {
      * and not an error, and every caller has the same thing to do about it.
      */
     suspend fun capture(displayId: Int): ByteArray? = capture?.invoke(displayId)
+
+    // ---- The other direction: the launcher telling the service things --------
+
+    private val _nowPlaying = MutableStateFlow("")
+
+    /**
+     * What the launcher last handed a panel to.
+     *
+     * Published here rather than discovered, because the alternative is the
+     * service asking the system which app is in front — and the reason this
+     * service can be trusted with the permissions it holds is that it reads
+     * nothing about any app. The launcher already knows the answer; this is it
+     * saying so.
+     */
+    val nowPlaying: StateFlow<String> = _nowPlaying.asStateFlow()
+
+    fun setNowPlaying(title: String?) { _nowPlaying.value = title.orEmpty() }
+
+    private var fileCapture: (suspend () -> Unit)? = null
+
+    /**
+     * Installed by the launcher: take a shot and file it against the right game.
+     *
+     * The service can produce a PNG but has no idea which entry it belongs to, and
+     * no way to write into the active profile. So the overlay asks for the whole
+     * operation rather than for a frame, and it lands in exactly the same place as
+     * a capture started from the launcher's own tile — one code path, one set of
+     * rules about attribution.
+     */
+    fun onCaptureRequested(block: suspend () -> Unit) { fileCapture = block }
+
+    suspend fun captureAndFile() { fileCapture?.invoke() }
 }

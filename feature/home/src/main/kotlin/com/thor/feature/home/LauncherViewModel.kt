@@ -216,6 +216,16 @@ class LauncherViewModel @Inject constructor(
         _secondScreenOccupied.value = entryId != null
         _runningEntryId.value = entryId
         _runningSinceEpochMs.value = entryId?.let { nowMs }
+        /*
+         * Told to the pointer service, which draws Loki's panel over the game and
+         * has to be able to name what is running.
+         *
+         * Published rather than discovered: the alternative is that service asking
+         * the system which app is in front, and the reason it can be trusted with
+         * the permissions it holds is that it reads nothing about any app. The
+         * launcher already knows.
+         */
+        screenshots.setNowPlaying(entryId?.let { uiState.value.entriesById[it]?.title })
     }
 
     /** Whether the secondary panel's Presentation is still attached to its display. */
@@ -1452,6 +1462,17 @@ class LauncherViewModel @Inject constructor(
      * the same reason.
      */
     init {
+        /*
+         * The overlay's Screenshot tile, wired to the same code the launcher's own
+         * tile runs.
+         *
+         * The service can produce a PNG but knows neither which entry it belongs to
+         * nor how to write into the active profile, so it asks for the whole
+         * operation rather than for a frame. One path means one set of rules about
+         * attribution, and a shot taken from over a game lands exactly where one
+         * taken from the panel does.
+         */
+        screenshots.onCaptureRequested { captureScreenshot() }
         observeAchievementRefreshes()
     }
 

@@ -95,6 +95,13 @@ class ThorMouseService : AccessibilityService() {
     /** Suppresses the chord re-firing while both buttons stay down. */
     private var chordFired = false
 
+    /** R1, for the second chord; see [handleOverlayChord]. */
+    private var shoulderHeld = false
+    private var overlayChordFired = false
+
+    /** Loki's panel over a running game, when it is up. */
+    private var gameOverlay: GameOverlay? = null
+
     /** Directions currently held, for repeat while the pointer is up. */
     private val heldDirections = mutableMapOf<Int, Job>()
 
@@ -227,6 +234,10 @@ class ThorMouseService : AccessibilityService() {
         // destroyed service and would report the ability to take a screenshot that
         // nothing can now take.
         screenshots.unbind()
+        // A window added by a service the system is tearing down would otherwise
+        // be left on screen with nothing able to remove it.
+        gameOverlay?.hide()
+        gameOverlay = null
         mouse.setServiceCursorDisplayId(null)
         // Cleared before the scope dies: the controller is a singleton and outlives
         // this service, so a listener left pointing at a destroyed one would keep
@@ -349,6 +360,17 @@ class ThorMouseService : AccessibilityService() {
 
         if (!settings.enabled) return false
 
+        /*
+         * The panel over the game takes every key while it is up.
+         *
+         * Before the pointer's chord, because this one has to be dismissable from
+         * any state for the same reason that one does — and because its own window
+         * is focused, so the keys it wants are already being delivered there. What
+         * is left here is the chord that closes it again.
+         */
+        if (handleOverlayChord(event)) return true
+        if (gameOverlay?.isShowing == true) return true
+
         // The chord is checked first and always, so the pointer can be dismissed
         // from any state — including one where something else has gone wrong.
         if (handleChord(event)) return true
@@ -433,6 +455,86 @@ class ThorMouseService : AccessibilityService() {
      * Fires once per press of the pair rather than on every key event while both
      * are down, which would toggle the pointer several times a second.
      */
+    /**
+     * Start + R1, held together: Loki over the top of whatever is running.
+     *
+     * A second chord rather than a mode on the first, because the two do opposite
+     * things — the pointer hands the controller to the app underneath, and this
+     * takes it away — and because Start + Select was already spent.
+     *
+     * R1 rather than a hold of Start. A long press cannot be recognised until
+     * after the down has already been delivered, so recognising one would mean
+     * swallowing every Start and re-injecting the short ones: a pause button that
+     * works most of the time. A chord is decided on the frame it completes.
+     *
+     * Both halves are swallowed while the panel is up, for the same reason the
+     * pointer's are: R1 is bound in almost every game, and letting it through as
+     * the panel closed would fire it in the game every time.
+     */
+    private fun handleOverlayChord(event: KeyEvent): Boolean {
+        val isStart = event.keyCode == KeyEvent.KEYCODE_BUTTON_START ||
+            event.keyCode == KeyEvent.KEYCODE_MENU
+        val isShoulder = event.keyCode == KeyEvent.KEYCODE_BUTTON_R1
+
+        if (!isStart && !isShoulder) return false
+
+        val down = event.action == KeyEvent.ACTION_DOWN
+        if (isStart) startHeld = down
+        if (isShoulder) shoulderHeld = down
+
+        if (startHeld && shoulderHeld && !overlayChordFired) {
+            overlayChordFired = true
+            toggleGameOverlay()
+            return true
+        }
+
+        if (!startHeld && !shoulderHeld) overlayChordFired = false
+
+        // Only R1 is swallowed while the panel is up. Start is left alone here so
+        // the pointer's own chord below still sees it.
+        return isShoulder && gameOverlay?.isShowing == true
+    }
+
+    /**
+     * Raises or lowers the panel over the running app.
+     *
+     * Named from the launcher's own record of what it handed a panel to, rather
+     * than by asking which app is in front — this service does not read that, and
+     * the whole reason it can be trusted with these permissions is that it does
+     * not start now.
+     */
+    private fun toggleGameOverlay() {
+        val overlay = gameOverlay ?: GameOverlay(
+            context = this,
+            onAction = ::onGameOverlayAction,
+            onDismiss = {},
+        ).also { gameOverlay = it }
+
+        if (overlay.isShowing) {
+            overlay.hide()
+            return
+        }
+        overlay.show(
+            displayId = Display.DEFAULT_DISPLAY,
+            title = screenshots.nowPlaying.value.ifBlank { "Loki" },
+            accentArgb = cursorArgb,
+        )
+    }
+
+    private fun onGameOverlayAction(action: GameOverlayAction) {
+        when (action) {
+            GameOverlayAction.SCREENSHOT -> scope.launch {
+                // Straight through the same bridge the launcher's own tile uses,
+                // so a shot taken from here is filed against the same game and in
+                // the same place as one taken from the panel.
+                screenshots.captureAndFile()
+            }
+
+            GameOverlayAction.GO_HOME -> performGlobalAction(GLOBAL_ACTION_HOME)
+            GameOverlayAction.CLOSE -> Unit
+        }
+    }
+
     private fun handleChord(event: KeyEvent): Boolean {
         val isStart = event.keyCode == KeyEvent.KEYCODE_BUTTON_START ||
             event.keyCode == KeyEvent.KEYCODE_MENU
