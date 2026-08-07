@@ -19,7 +19,10 @@ data class PlatformCard(
     val gameCount: Int,
     /** Games in this system that have never been launched. */
     val unplayedCount: Int,
+    val favouriteCount: Int,
     val totalPlayMillis: Long,
+    /** When this system was last touched, for "Last played 2 days ago". */
+    val lastPlayedEpochMs: Long?,
     /**
      * Artwork borrowed from a game, for a system the pack did not cover.
      *
@@ -28,6 +31,19 @@ data class PlatformCard(
      * — and the most recently played game is the one the user will recognise.
      */
     val previewUri: String?,
+    /**
+     * A few covers from inside, so the card answers "what is in here".
+     *
+     * The one thing a count cannot say. "142 games" is the same sentence for a
+     * shelf of favourites and a shelf of things never opened, and on a flow that
+     * shows one system at a time the user is deciding whether to press A on the
+     * strength of whatever the card manages to say.
+     *
+     * Most recently played first, falling back to whatever has cover art at all
+     * for a system nothing has been launched on — a new system should still show
+     * its contents rather than four empty frames.
+     */
+    val recentArtwork: List<String>,
 ) {
     val hasBeenPlayed: Boolean get() = totalPlayMillis > 0L
 }
@@ -58,17 +74,45 @@ fun platformCards(
     .groupBy(GameEntry::platformId)
     .mapNotNull { (platformId, entries) ->
         val platform = platformsById[platformId] ?: return@mapNotNull null
+
+        /*
+         * Played first, most recent at the front, then everything else by title.
+         *
+         * One ordering serving both the borrowed backdrop and the cover strip, so
+         * the picture behind the card and the first cover on it are the same game
+         * — two different orderings would put a system's most-played title in the
+         * backdrop and something arbitrary beside it, which reads as a mistake
+         * rather than as two rules.
+         */
+        val ranked = entries.sortedWith(
+            compareByDescending<GameEntry> { it.stats.lastPlayedEpochMs ?: Long.MIN_VALUE }
+                .thenByDescending { it.stats.totalPlayMillis }
+                .thenBy(GameEntry::sortTitle),
+        )
+        val played = ranked.filter { it.stats.lastPlayedEpochMs != null }
+
         PlatformCard(
             platform = platform,
             gameCount = entries.size,
             unplayedCount = entries.count { !it.stats.hasBeenPlayed },
+            favouriteCount = entries.count(GameEntry::isFavorite),
             totalPlayMillis = entries.sumOf { it.stats.totalPlayMillis },
-            previewUri = entries
-                .filter { it.stats.lastPlayedEpochMs != null }
-                .maxByOrNull { it.stats.lastPlayedEpochMs ?: Long.MIN_VALUE }
+            lastPlayedEpochMs = played.firstOrNull()?.stats?.lastPlayedEpochMs,
+            previewUri = played.firstOrNull()
                 ?.metadata
                 ?.artwork
                 ?.let { it.backgroundImage ?: it.boxArt },
+            // Falls back to the whole ranked list, not just the played half: a
+            // system nothing has been launched on should still show its covers
+            // rather than an empty row where the covers go.
+            recentArtwork = ranked
+                .asSequence()
+                .mapNotNull { game ->
+                    game.metadata.artwork.let { it.boxArt ?: it.cappedScreenshots.firstOrNull() }
+                }
+                .distinct()
+                .take(COVER_STRIP_COUNT)
+                .toList(),
         )
     }
     .sortedWith(compareBy<PlatformCard> { it.platform.sortIndex }.thenBy { it.platform.name })
@@ -108,5 +152,77 @@ fun formatPlayTime(totalMillis: Long): String? {
 /** "142 games", and "1 game" — a card is prose, and prose agrees with itself. */
 fun formatGameCount(count: Int): String = if (count == 1) "1 game" else "$count games"
 
+/**
+ * The system's identity, as one line: who made it, when, and what it is called.
+ *
+ * Separate from the statistics line because it says something different in kind.
+ * Everything else on the card is about what the *user* has done with the system;
+ * this is about the machine, and it is the same on a library of four hundred games
+ * and on one with none.
+ *
+ * Each part is dropped when it is blank rather than printed as an empty gap — a
+ * user-added platform may have no manufacturer and no year, and "· · N64" is
+ * worse than "N64".
+ */
+fun formatPlatformIdentity(
+    manufacturer: String,
+    releaseYear: Int?,
+    shortName: String,
+    name: String,
+): String = listOfNotNull(
+    manufacturer.takeIf(String::isNotBlank),
+    releaseYear?.toString(),
+    // The short name only when it adds something. On a system whose full name is
+    // already short the two are the same string, and printing "N64 · N64" reads
+    // as a bug.
+    shortName.takeIf { it.isNotBlank() && !it.equals(name, ignoreCase = true) },
+).joinToString(SEPARATOR)
+
+/**
+ * When the system was last touched, in the coarsest unit that is still useful.
+ *
+ * Coarse on purpose: the question a card answers is "have I been here recently",
+ * not "when exactly". A timestamp would be more precise and less informative, and
+ * it would also be the only thing on the card that changed every minute.
+ *
+ * [nowMs] is passed rather than read, so the boundaries can be tested — the
+ * interesting cases are all *at* a boundary, and a function that reads the clock
+ * cannot be asked about them.
+ */
+fun formatLastPlayed(lastPlayedEpochMs: Long?, nowMs: Long): String? {
+    if (lastPlayedEpochMs == null) return null
+    val elapsed = nowMs - lastPlayedEpochMs
+    // A clock that has gone backwards — a timezone change, a manual set, a
+    // restored backup — reads as "just now" rather than as a negative age.
+    if (elapsed < MILLIS_PER_HOUR) return "Played recently"
+    if (elapsed < MILLIS_PER_DAY) return "Played today"
+    val days = elapsed / MILLIS_PER_DAY
+    if (days == 1L) return "Played yesterday"
+    if (days < DAYS_PER_WEEK) return "Played $days days ago"
+    if (days < DAYS_PER_MONTH) {
+        val weeks = days / DAYS_PER_WEEK
+        return if (weeks == 1L) "Played last week" else "Played $weeks weeks ago"
+    }
+    if (days < DAYS_PER_YEAR) {
+        val months = days / DAYS_PER_MONTH
+        return if (months == 1L) "Played last month" else "Played $months months ago"
+    }
+    val years = days / DAYS_PER_YEAR
+    return if (years == 1L) "Played last year" else "Played $years years ago"
+}
+
+/** How many covers the strip along the card can show. */
+const val COVER_STRIP_COUNT = 4
+
+/** The dot every one of these lines is joined with, in one place. */
+const val SEPARATOR = "  ·  "
+
 private const val MILLIS_PER_MINUTE = 60_000L
 private const val MINUTES_PER_HOUR = 60L
+private const val MILLIS_PER_HOUR = 3_600_000L
+private const val MILLIS_PER_DAY = 86_400_000L
+private const val DAYS_PER_WEEK = 7L
+
+/** Approximate, and deliberately so: a card says "3 months ago", not a date. */
+private const val DAYS_PER_MONTH = 30L
+private const val DAYS_PER_YEAR = 365L

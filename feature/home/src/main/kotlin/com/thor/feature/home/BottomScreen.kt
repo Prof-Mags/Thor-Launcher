@@ -62,7 +62,6 @@ import com.thor.feature.home.couch.CouchScreen
 import com.thor.feature.home.couch.platform
 import com.thor.feature.home.cards.PlatformCard
 import com.thor.feature.home.cards.PlatformCardScreen
-import com.thor.feature.home.cards.platformCards
 import com.thor.feature.home.dialog.FolderPickerDialog
 import com.thor.feature.home.dialog.FolderPickerState
 import com.thor.feature.home.dialog.SortDialog
@@ -102,6 +101,15 @@ fun BottomScreen(
     showPageIndicators: Boolean,
     /** What Home draws on this panel: the grid, or a flow of systems. */
     homeLayout: HomeLayout = HomeLayout.GRID,
+    /**
+     * The systems the flow steps through.
+     *
+     * Passed in rather than folded here, because the information panel on the
+     * other screen resolves the highlighted system out of the same list — folded
+     * twice, the two could disagree for a frame, and that is the frame in which
+     * the top screen describes a system other than the one on the bottom.
+     */
+    platformCardList: List<PlatformCard> = emptyList(),
     /** Which system the card flow is showing, and which way it last stepped. */
     platformCardIndex: Int = 0,
     platformCardDirection: Int = 1,
@@ -252,24 +260,6 @@ fun BottomScreen(
     val adaptiveTint = (state.selection as? GameEntry)
         ?.let { game -> state.platformsById[game.platformId] }
         ?.let { platform -> Color(platform.accentArgb) }
-    /*
-     * Folded once per library change, not once per frame.
-     *
-     * Keyed on the two maps it actually reads rather than on the whole state,
-     * which changes every time the cursor moves — a card carries a play-time
-     * total and an unplayed count over every game in a system, and recomputing
-     * those on each press would make the flow slower the larger the library got.
-     */
-    val platformCardList = remember(homeLayout, state.entriesById, state.platformsById) {
-        if (homeLayout != HomeLayout.PLATFORM_CARDS) {
-            emptyList()
-        } else {
-            platformCards(
-                games = state.entriesById.values.filterIsInstance<GameEntry>(),
-                platformsById = state.platformsById,
-            )
-        }
-    }
     val couchPlatformSummaries = remember(couchMode, state.entriesById) {
         if (!couchMode) {
             emptyMap()

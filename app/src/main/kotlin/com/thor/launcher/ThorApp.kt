@@ -87,6 +87,7 @@ import com.thor.core.model.FolderEntry
 import com.thor.core.model.LauncherExtension
 import com.thor.core.model.LauncherFeatures
 import com.thor.core.model.GameEntry
+import com.thor.core.model.GridEntry
 import com.thor.core.model.KeyboardKey
 import com.thor.core.model.HomeLayout
 import com.thor.core.model.PlatformFolders
@@ -101,6 +102,7 @@ import com.thor.core.ui.input.LocalThorTextInput
 import com.thor.core.ui.input.ThorTextInputState
 import com.thor.core.ui.feedback.rememberThorFeedback
 import com.thor.feature.home.BottomScreen
+import com.thor.feature.home.cards.platformCards
 import com.thor.feature.home.couch.CouchDashboardActions
 import com.thor.launcher.stream.StreamSessionActivity
 import com.thor.feature.home.LauncherEffect
@@ -1926,7 +1928,71 @@ fun ThorApp(
          * panel with that system's hero rather than with the generic wallpaper —
          * which is exactly what an icon pack is for.
          */
-        val selectedPlatform = when (val selection = state.selection) {
+        /*
+         * The card flow, on the handheld layout only.
+         *
+         * Couch mode already answers "one system at a time" with its own rails and
+         * platform drawer, and running both would put two competing system
+         * browsers on one screen. The setting is not ignored there so much as
+         * already satisfied.
+         */
+        val effectiveHomeLayout = if (mode == DualScreenMode.COUCH) {
+            HomeLayout.GRID
+        } else {
+            settings.display.homeLayout
+        }
+
+        /*
+         * Folded here rather than inside the bottom panel, because both screens
+         * now read it: the flow draws it, and the information panel resolves the
+         * highlighted system out of it. Computed twice it could disagree for a
+         * frame, and the frame it disagreed on is the one where the top screen
+         * describes a system other than the one on the bottom.
+         *
+         * Keyed on the two maps it actually reads rather than on the whole state,
+         * which changes every time the cursor moves.
+         */
+        val platformCardList = remember(
+            effectiveHomeLayout,
+            state.entriesById,
+            state.platformsById,
+        ) {
+            if (effectiveHomeLayout != HomeLayout.PLATFORM_CARDS) {
+                emptyList()
+            } else {
+                platformCards(
+                    games = state.entriesById.values.filterIsInstance<GameEntry>(),
+                    platformsById = state.platformsById,
+                )
+            }
+        }
+
+        /*
+         * What the information panel is looking at.
+         *
+         * Normally the grid's own selection. In the card flow there is no cursor
+         * standing on a cell, so nothing was ever selected and the top screen sat
+         * on whatever it had been showing before the layout changed — or on the
+         * idle wallpaper from a cold start.
+         *
+         * The substitute is the highlighted system's *folder*, which is the same
+         * entry the grid would have selected if that system's cell were under the
+         * cursor. That makes the whole top screen work with no changes to it at
+         * all: `PlatformDetailPanel` is already what a selected platform folder
+         * draws, and the hero backdrop and accent already resolve from one.
+         */
+        val infoSelection: GridEntry? = if (
+            effectiveHomeLayout == HomeLayout.PLATFORM_CARDS && !state.isFolderOpen
+        ) {
+            platformCardList
+                .getOrNull(platformCardIndex.coerceIn(0, platformCardList.lastIndex.coerceAtLeast(0)))
+                ?.let { card -> state.entriesById[PlatformFolders.idFor(card.platform.id)] }
+                ?: state.selection
+        } else {
+            state.selection
+        }
+
+        val selectedPlatform = when (val selection = infoSelection) {
             is GameEntry -> state.platformsById[selection.platformId]
             is FolderEntry -> PlatformFolders.platformIdOf(selection.id)
                 ?.let { state.platformsById[it] }
@@ -2111,7 +2177,9 @@ fun ThorApp(
                 }
 
                 TopScreen(
-                    selection = state.selection,
+                    // Not `state.selection`: in the card flow this is the
+                    // highlighted system's folder. See [infoSelection].
+                    selection = infoSelection,
                     platform = selectedPlatform,
                     wallpaper = settings.personalization.animatedWallpaper,
                     wallpaperUri = settings.personalization.topScreenWallpaperUri
@@ -2126,7 +2194,7 @@ fun ThorApp(
                      * literally true of the list it was counting.
                      */
                     folderChildren = state.openFolderContents.ifEmpty {
-                        (state.selection as? FolderEntry)
+                        (infoSelection as? FolderEntry)
                             ?.childIds
                             ?.mapNotNull(state.entriesById::get)
                             .orEmpty()
@@ -2406,19 +2474,9 @@ fun ThorApp(
                 // control, matching whatever its top panel is showing.
                 sectionContent = sectionHost,
                 couchMode = mode == DualScreenMode.COUCH,
-                /*
-                 * The card flow, on the handheld layout only.
-                 *
-                 * Couch mode already answers "one system at a time" with its own
-                 * rails and its own platform drawer, and running both would put
-                 * two competing system browsers on one screen. The setting is not
-                 * ignored so much as already satisfied there.
-                 */
-                homeLayout = if (mode == DualScreenMode.COUCH) {
-                    HomeLayout.GRID
-                } else {
-                    settings.display.homeLayout
-                },
+                homeLayout = effectiveHomeLayout,
+                // Folded once above and handed to both screens; see [infoSelection].
+                platformCardList = platformCardList,
                 platformCardIndex = platformCardIndex,
                 platformCardDirection = platformCardDirection,
                 onPlatformCardOpened = { card ->

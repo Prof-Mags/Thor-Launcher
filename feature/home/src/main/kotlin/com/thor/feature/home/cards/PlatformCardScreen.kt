@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -199,39 +201,109 @@ private fun CardFace(
         ) {
             Nameplate(card = card)
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            /*
+             * What the machine is, before what the user has done with it.
+             *
+             * The only line on the card that says the same thing on an empty
+             * library as on a full one, which is why it sits directly under the
+             * name rather than among the counts.
+             */
+            formatPlatformIdentity(
+                manufacturer = card.platform.manufacturer,
+                releaseYear = card.platform.releaseYear,
+                shortName = card.platform.shortName,
+                name = card.platform.name,
+            ).takeIf(String::isNotBlank)?.let { identity ->
                 Text(
-                    text = formatGameCount(card.gameCount),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = colors.onSurface,
+                    text = identity,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                /*
-                 * Play time, then how much is untouched — in that order because
-                 * the first is about what this system has been to the user and
-                 * the second is about what is left in it. Each is omitted when it
-                 * has nothing to say rather than printed as a zero, so a card
-                 * never claims "0h played" about a system that is simply new.
-                 */
-                formatPlayTime(card.totalPlayMillis)?.let { played ->
-                    Dot()
-                    Text(
-                        text = played,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                    )
-                }
-                if (card.unplayedCount > 0 && card.hasBeenPlayed) {
-                    Dot()
-                    Text(
-                        text = "${card.unplayedCount} unplayed",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                    )
-                }
             }
+
+            if (card.recentArtwork.isNotEmpty()) {
+                CoverStrip(covers = card.recentArtwork, accent = accent)
+            }
+
+            /*
+             * The counts, in one line, each dropped when it has nothing to say.
+             *
+             * Order is what the system *has*, then what has been done with it,
+             * then what is left — a sentence that reads the same way whichever
+             * parts survive. Nothing is printed as a zero: a card must never say
+             * "0h played" about a system that is simply new, because that reads
+             * as a system the user abandoned rather than one they have not
+             * started.
+             */
+            val stats = listOfNotNull(
+                formatGameCount(card.gameCount),
+                card.favouriteCount.takeIf { it > 0 }?.let { "$it favourite" + if (it == 1) "" else "s" },
+                formatPlayTime(card.totalPlayMillis),
+                // Only once something *has* been played. On an untouched system
+                // every game is unplayed, so the number would just restate the
+                // count beside it in different words.
+                card.unplayedCount.takeIf { it > 0 && card.hasBeenPlayed }?.let { "$it unplayed" },
+            ).joinToString(SEPARATOR)
+
+            Text(
+                text = stats,
+                style = MaterialTheme.typography.titleSmall,
+                color = colors.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            /*
+             * Read once per card rather than held in the model.
+             *
+             * "2 days ago" is a fact about the clock as much as about the game, so
+             * folding it into [PlatformCard] would freeze it at the moment the
+             * library was loaded and leave a card that had been open for an hour
+             * quietly lying. [formatLastPlayed] takes the time so it can be
+             * tested at its boundaries; only this call site reads it.
+             */
+            formatLastPlayed(card.lastPlayedEpochMs, System.currentTimeMillis())?.let { last ->
+                Text(
+                    text = last,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A few covers from inside the system.
+ *
+ * The one thing a count cannot say: "142 games" reads identically for a shelf of
+ * favourites and a shelf of things never opened. Most recently played first, so
+ * the first cover is the same game as the backdrop behind it.
+ *
+ * Not focusable and not individually pressable. A is "open this system", and a
+ * strip whose covers could be pressed would make the card two targets that look
+ * like one — the flow has a single action and the covers are illustration.
+ */
+@Composable
+private fun CoverStrip(covers: List<String>, accent: Color) {
+    val colors = ThorTheme.colors
+
+    Row(horizontalArrangement = Arrangement.spacedBy(COVER_GAP.dp)) {
+        covers.forEach { cover ->
+            ArtworkImage(
+                model = cover,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .width(COVER_WIDTH.dp)
+                    .height(COVER_HEIGHT.dp)
+                    .clip(RoundedCornerShape(COVER_RADIUS.dp))
+                    .background(colors.surface)
+                    .border(1.dp, accent.copy(alpha = COVER_BORDER_ALPHA), RoundedCornerShape(COVER_RADIUS.dp)),
+            )
         }
     }
 }
@@ -340,15 +412,6 @@ private fun PositionStrip(
     }
 }
 
-@Composable
-private fun Dot() {
-    Text(
-        text = "·",
-        style = MaterialTheme.typography.bodySmall,
-        color = ThorTheme.colors.onSurfaceVariant,
-    )
-}
-
 /**
  * Nothing to flow through yet.
  *
@@ -393,6 +456,12 @@ private const val SCRIM_ALPHA = 0.92f
 
 /** How strongly the accent shows on a system with no artwork at all. */
 private const val BARE_TOP_ALPHA = 0.55f
+
+private const val COVER_WIDTH = 44
+private const val COVER_HEIGHT = 62
+private const val COVER_GAP = 6
+private const val COVER_RADIUS = 5
+private const val COVER_BORDER_ALPHA = 0.35f
 
 private const val LOGO_WIDTH_FRACTION = 0.62f
 private const val LOGO_HEIGHT = 56

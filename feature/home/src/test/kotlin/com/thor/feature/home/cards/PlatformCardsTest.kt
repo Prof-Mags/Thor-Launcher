@@ -225,4 +225,153 @@ class PlatformCardsTest {
         assertThat(formatGameCount(1)).isEqualTo("1 game")
         assertThat(formatGameCount(142)).isEqualTo("142 games")
     }
+
+    // ---- The rest of what a card carries -----------------------------------
+
+    @Test
+    fun `favourites are counted across the system`() {
+        val cards = platformCards(
+            listOf(
+                game("a", "nes").copy(isFavorite = true),
+                game("b", "nes").copy(isFavorite = true),
+                game("c", "nes"),
+            ),
+            platforms,
+        )
+
+        assertThat(cards.single().favouriteCount).isEqualTo(2)
+    }
+
+    @Test
+    fun `last played is the most recent game in the system`() {
+        val cards = platformCards(
+            listOf(
+                game("a", "nes", launches = 1, lastPlayed = 1_000L),
+                game("b", "nes", launches = 1, lastPlayed = 9_000L),
+            ),
+            platforms,
+        )
+
+        assertThat(cards.single().lastPlayedEpochMs).isEqualTo(9_000L)
+    }
+
+    @Test
+    fun `a system nothing has been played on has no last played`() {
+        val cards = platformCards(listOf(game("a", "nes")), platforms)
+
+        assertThat(cards.single().lastPlayedEpochMs).isNull()
+    }
+
+    /**
+     * The strip is capped, so a large system does not decode its whole library.
+     *
+     * The cap is also what keeps the row from wrapping off the card, which on a
+     * flow showing one system at a time would push the counts under the fold.
+     */
+    @Test
+    fun `the cover strip is capped`() {
+        val many = (1..20).map { index ->
+            game("g$index", "nes").withBoxArt("file:///art/$index.png")
+        }
+
+        val cards = platformCards(many, platforms)
+
+        assertThat(cards.single().recentArtwork).hasSize(COVER_STRIP_COUNT)
+    }
+
+    /** A system nothing has been launched on still shows what is in it. */
+    @Test
+    fun `covers appear even with nothing played`() {
+        val cards = platformCards(
+            listOf(game("a", "nes").withBoxArt("file:///art/a.png")),
+            platforms,
+        )
+
+        assertThat(cards.single().recentArtwork).containsExactly("file:///art/a.png")
+    }
+
+    /** The same image twice would read as the card repeating itself. */
+    @Test
+    fun `duplicate cover art is not repeated in the strip`() {
+        val cards = platformCards(
+            listOf(
+                game("a", "nes").withBoxArt("file:///art/same.png"),
+                game("b", "nes").withBoxArt("file:///art/same.png"),
+            ),
+            platforms,
+        )
+
+        assertThat(cards.single().recentArtwork).containsExactly("file:///art/same.png")
+    }
+
+    // ---- The identity line -------------------------------------------------
+
+    @Test
+    fun `identity reads maker then year then short name`() {
+        val line = formatPlatformIdentity("Nintendo", 1996, "N64", "Nintendo 64")
+
+        assertThat(line).isEqualTo("Nintendo  ·  1996  ·  N64")
+    }
+
+    /** "N64 · N64" reads as a bug, so the short name is dropped when it repeats. */
+    @Test
+    fun `a short name identical to the full name is dropped`() {
+        val line = formatPlatformIdentity("Sega", 1998, "Dreamcast", "Dreamcast")
+
+        assertThat(line).isEqualTo("Sega  ·  1998")
+    }
+
+    /** A user-added system may have none of this, and gets no empty separators. */
+    @Test
+    fun `missing parts leave no gaps`() {
+        assertThat(formatPlatformIdentity("", null, "PC", "PC")).isEmpty()
+        assertThat(formatPlatformIdentity("", 1996, "N64", "Nintendo 64"))
+            .isEqualTo("1996  ·  N64")
+    }
+
+    // ---- Last played, in words ---------------------------------------------
+
+    private val now = 1_000_000_000_000L
+    private val day = 86_400_000L
+
+    @Test
+    fun `a system never played says nothing`() {
+        assertThat(formatLastPlayed(null, now)).isNull()
+    }
+
+    @Test
+    fun `within the hour is recent, and within the day is today`() {
+        assertThat(formatLastPlayed(now - 60_000L, now)).isEqualTo("Played recently")
+        assertThat(formatLastPlayed(now - 5 * 3_600_000L, now)).isEqualTo("Played today")
+    }
+
+    @Test
+    fun `days read as days, and one of them reads as yesterday`() {
+        assertThat(formatLastPlayed(now - day, now)).isEqualTo("Played yesterday")
+        assertThat(formatLastPlayed(now - 3 * day, now)).isEqualTo("Played 3 days ago")
+    }
+
+    @Test
+    fun `weeks months and years each get their own words`() {
+        assertThat(formatLastPlayed(now - 8 * day, now)).isEqualTo("Played last week")
+        assertThat(formatLastPlayed(now - 21 * day, now)).isEqualTo("Played 3 weeks ago")
+        assertThat(formatLastPlayed(now - 40 * day, now)).isEqualTo("Played last month")
+        assertThat(formatLastPlayed(now - 100 * day, now)).isEqualTo("Played 3 months ago")
+        assertThat(formatLastPlayed(now - 400 * day, now)).isEqualTo("Played last year")
+    }
+
+    /**
+     * A clock that has gone backwards reads as "recently", not as a negative age.
+     *
+     * Reachable without anything being broken: a timezone change, a manual clock
+     * set, or a backup restored onto a device whose clock is behind.
+     */
+    @Test
+    fun `a timestamp in the future does not produce nonsense`() {
+        assertThat(formatLastPlayed(now + 10 * day, now)).isEqualTo("Played recently")
+    }
 }
+
+/** Cover art, without restating the whole metadata tree at each call site. */
+private fun GameEntry.withBoxArt(uri: String): GameEntry =
+    copy(metadata = metadata.copy(artwork = metadata.artwork.copy(boxArt = uri)))
