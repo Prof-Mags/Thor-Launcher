@@ -51,6 +51,23 @@ import com.thor.core.ui.component.ArtworkImage
 import kotlinx.coroutines.delay
 
 /**
+ * What the companion panel can do.
+ *
+ * Declared once and consumed by both the panel and the input routing, because the
+ * first version had the tiles listed in the composable and the cursor counted in
+ * the view model — two lists that had to stay in the same order and nothing to
+ * make them.
+ */
+enum class CompanionAction(val label: String) {
+    SCREENSHOT("Screenshot"),
+    NOTE("Note"),
+    HOME("Take panel back"),
+}
+
+/** In cursor order, which is also the order they are drawn. */
+val COMPANION_ACTIONS: List<CompanionAction> = CompanionAction.entries
+
+/**
  * The panel that stays with you while the game plays on the other screen.
  *
  * This is what the second screen is for. Until now the launcher handed a panel to
@@ -76,6 +93,8 @@ fun CompanionPanel(
     journal: GameJournal,
     sinceEpochMs: Long?,
     canScreenshot: Boolean,
+    /** Which tile the controller cursor is on; see [COMPANION_ACTIONS]. */
+    focusedAction: Int,
     onScreenshot: () -> Unit,
     onEditNote: () -> Unit,
     onHome: () -> Unit,
@@ -154,29 +173,37 @@ fun CompanionPanel(
             Box(modifier = Modifier.weight(1f))
 
             Row(horizontalArrangement = Arrangement.spacedBy(dimens.spacingSmall)) {
-                CompanionAction(
-                    icon = Icons.Rounded.PhotoCamera,
-                    label = "Screenshot",
-                    accent = accent,
-                    // Shown but inert without the pointer service, and it says so
-                    // when pressed rather than being hidden — a button that
-                    // disappears for reasons the user cannot see is worse than one
-                    // that explains itself.
-                    dimmed = !canScreenshot,
-                    onClick = onScreenshot,
-                )
-                CompanionAction(
-                    icon = Icons.Rounded.Edit,
-                    label = if (journal.note == null) "Add note" else "Edit note",
-                    accent = accent,
-                    onClick = onEditNote,
-                )
-                CompanionAction(
-                    icon = Icons.Rounded.Home,
-                    label = "Take panel back",
-                    accent = accent,
-                    onClick = onHome,
-                )
+                COMPANION_ACTIONS.forEachIndexed { index, action ->
+                    ActionTile(
+                        icon = when (action) {
+                            CompanionAction.SCREENSHOT -> Icons.Rounded.PhotoCamera
+                            CompanionAction.NOTE -> Icons.Rounded.Edit
+                            CompanionAction.HOME -> Icons.Rounded.Home
+                        },
+                        label = when (action) {
+                            // Says which of the two it will do, because "Note" on a
+                            // game that already has one reads as losing it.
+                            CompanionAction.NOTE ->
+                                if (journal.note == null) "Add note" else "Edit note"
+
+                            else -> action.label
+                        },
+                        accent = accent,
+                        focused = index == focusedAction,
+                        // Shown but inert without the pointer service, and it says
+                        // so when pressed rather than being hidden — a button that
+                        // disappears for reasons the user cannot see is worse than
+                        // one that explains itself.
+                        dimmed = action == CompanionAction.SCREENSHOT && !canScreenshot,
+                        onClick = {
+                            when (action) {
+                                CompanionAction.SCREENSHOT -> onScreenshot()
+                                CompanionAction.NOTE -> onEditNote()
+                                CompanionAction.HOME -> onHome()
+                            }
+                        },
+                    )
+                }
             }
         }
     }
@@ -310,10 +337,11 @@ private fun ShotStrip(screenshots: List<Screenshot>, accent: Color) {
 }
 
 @Composable
-private fun CompanionAction(
+private fun ActionTile(
     icon: ImageVector,
     label: String,
     accent: Color,
+    focused: Boolean,
     onClick: () -> Unit,
     dimmed: Boolean = false,
 ) {
@@ -324,7 +352,17 @@ private fun CompanionAction(
     Row(
         modifier = Modifier
             .clip(ThorTheme.shapes.pill)
-            .background(colors.surfaceElevated)
+            .background(if (focused) colors.surfaceHighest else colors.surfaceElevated)
+            // The cursor, drawn the way the rest of the launcher draws one: an
+            // outline in the theme's cursor colour rather than a colour swap,
+            // which is the only treatment that reads on both light and dark.
+            .then(
+                if (focused) {
+                    Modifier.border(2.dp, colors.cursor, ThorTheme.shapes.pill)
+                } else {
+                    Modifier
+                },
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = dimens.spacingSmall, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),

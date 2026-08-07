@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!--
       QUERY_ALL_PACKAGES is required for a launcher: LauncherApps must be able to
@@ -24,6 +25,18 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+    <!--
+      Brightness, from the panel Loki draws over a running game.
+
+      A special permission: declaring it is not granting it, and the user has to
+      turn it on in Android's "Modify system settings" screen. Written to the
+      system setting rather than to a window attribute because a window attribute
+      dims only that window, and the window in question is a transparent overlay
+      that has just been taken down — the setting is the brightness the user means.
+      Without the grant the two brightness tiles do nothing and say so in the log.
+    -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!--

@@ -402,6 +402,8 @@ fun ThorApp(
     val runningEntryId by viewModel.runningEntryId.collectAsState()
     val runningSince by viewModel.runningSinceEpochMs.collectAsState()
     val canScreenshot by viewModel.canScreenshot.collectAsState()
+
+    val companionAction by viewModel.companionAction.collectAsState()
     val noteDialog by viewModel.noteDialog.collectAsState()
 
     /*
@@ -2508,6 +2510,7 @@ fun ThorApp(
                 companionJournal = companionJournal,
                 companionSinceEpochMs = runningSince,
                 canScreenshot = canScreenshot,
+                companionAction = companionAction,
                 onScreenshot = viewModel::captureScreenshot,
                 onEditCompanionNote = viewModel::openNoteEditorForRunning,
                 onTakePanelBack = viewModel::goHome,

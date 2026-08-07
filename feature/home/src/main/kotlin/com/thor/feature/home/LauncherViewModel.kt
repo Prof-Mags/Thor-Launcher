@@ -34,6 +34,8 @@ import com.thor.core.model.NavDirection
 import com.thor.core.model.Platform
 import com.thor.core.model.PlatformFolders
 import com.thor.feature.home.cards.PlatformCard
+import com.thor.feature.home.companion.CompanionAction
+import com.thor.feature.home.companion.COMPANION_ACTIONS
 import com.thor.feature.home.dialog.NoteDialogState
 import com.thor.feature.home.cards.platformCards
 import com.thor.feature.home.cards.stepCard
@@ -212,10 +214,29 @@ class LauncherViewModel @Inject constructor(
      * exist exactly when the panel is occupied — is the kind that decays when it
      * is spelled out repeatedly.
      */
-    private fun setPanelOccupant(entryId: String?, nowMs: Long = System.currentTimeMillis()) {
+    private fun setPanelOccupant(entryId: String?) {
         _secondScreenOccupied.value = entryId != null
+    }
+
+    /**
+     * Records that a game has been started, or has been let go of.
+     *
+     * Separate from [setPanelOccupant], and the first version of this conflated
+     * the two — which is why the companion panel never appeared. They are
+     * different facts. "The second panel is occupied" is about *which surface the
+     * launcher still owns*, and is false for the ordinary case: a game opens on
+     * the top screen and the launcher keeps the bottom one. "A game is running" is
+     * true either way, and is the only one the companion panel cares about.
+     *
+     * Tied to the launcher's own belief rather than to the game's actual life,
+     * because nothing can see the latter — see the known limits in the README.
+     * Home is what says otherwise, which is the same gesture that takes a panel
+     * back, so there is one way out rather than two.
+     */
+    private fun setRunningEntry(entryId: String?, nowMs: Long = System.currentTimeMillis()) {
         _runningEntryId.value = entryId
         _runningSinceEpochMs.value = entryId?.let { nowMs }
+        _companionAction.value = 0
         /*
          * Told to the pointer service, which draws Loki's panel over the game and
          * has to be able to name what is running.
@@ -227,6 +248,10 @@ class LauncherViewModel @Inject constructor(
          */
         screenshots.setNowPlaying(entryId?.let { uiState.value.entriesById[it]?.title })
     }
+
+    /** Which tile the companion panel's cursor is on. */
+    private val _companionAction = MutableStateFlow(0)
+    val companionAction: StateFlow<Int> = _companionAction.asStateFlow()
 
     /** Whether the secondary panel's Presentation is still attached to its display. */
     private val secondaryPresentationVisible = MutableStateFlow(false)
@@ -1765,6 +1790,19 @@ class LauncherViewModel @Inject constructor(
         }
 
         /*
+         * The companion panel owns this screen while a game is running.
+         *
+         * Ahead of the card flow and the grid, matching the draw order — and
+         * without this the D-pad drove the grid *underneath* an panel that was
+         * covering it, which is the other half of "the companion panel does not
+         * work": it was on screen and none of the buttons reached it.
+         */
+        if (_runningEntryId.value != null && !uiState.value.isFolderOpen) {
+            onCompanionCommand(command)
+            return
+        }
+
+        /*
          * The card flow replaces the top level of Home and nothing under it.
          *
          * Gated on no folder being open, which is what makes opening a system
@@ -1876,6 +1914,47 @@ class LauncherViewModel @Inject constructor(
              * than mapped onto something approximate — a Favourite button that
              * quietly favourited a system's most recent game would be worse than
              * one that does nothing.
+             */
+            else -> Unit
+        }
+    }
+
+    /**
+     * The panel beside a running game.
+     *
+     * Left and Right walk the tiles, A presses, and Home or Back puts the grid
+     * back — the same gesture that takes a panel back, because they are the same
+     * decision: the launcher's only signal that a game is finished with is the
+     * user saying so.
+     */
+    private fun onCompanionCommand(command: ControllerCommand) {
+        val count = COMPANION_ACTIONS.size
+        when (command) {
+            ControllerCommand.NAVIGATE_LEFT ->
+                _companionAction.value = (_companionAction.value - 1).coerceAtLeast(0)
+
+            ControllerCommand.NAVIGATE_RIGHT ->
+                _companionAction.value = (_companionAction.value + 1).coerceAtMost(count - 1)
+
+            ControllerCommand.CONFIRM -> when (COMPANION_ACTIONS[_companionAction.value]) {
+                CompanionAction.SCREENSHOT -> captureScreenshot()
+                CompanionAction.NOTE -> openNoteEditorForRunning()
+                CompanionAction.HOME -> goHome()
+            }
+
+            // Both, because either reads as "I have finished with that game".
+            ControllerCommand.BACK, ControllerCommand.GO_HOME -> goHome()
+
+            ControllerCommand.OPEN_SHORTCUTS -> toggleShortcutPanel()
+            ControllerCommand.SEARCH -> emit(LauncherEffect.OpenSearch)
+            ControllerCommand.OPEN_SIDE_MENU -> toggleSideMenu()
+
+            /*
+             * Everything else acts on a cell, and there is no cell here.
+             *
+             * Ignored rather than passed through to the grid underneath, which is
+             * what made a press on this panel favourite whatever the hidden cursor
+             * happened to be resting on.
              */
             else -> Unit
         }
@@ -2733,6 +2812,10 @@ class LauncherViewModel @Inject constructor(
          * impossible.
          */
         setPanelOccupant(null)
+        // The companion panel goes with it. Home is the one signal the launcher
+        // has that a game is no longer being played — nothing can observe the
+        // game itself ending — so it is also what puts the grid back.
+        setRunningEntry(null)
 
         // Whatever was launched is being left behind, so its session is over.
         settlePlaytime()
@@ -3529,6 +3612,18 @@ class LauncherViewModel @Inject constructor(
             // accepted onto that panel — see the note above the start call.
             setPanelOccupant(entry.id.takeIf { arrivedOnSecondPanel })
             if (result is LaunchResult.Success) {
+                /*
+                 * A game is now running, wherever it landed.
+                 *
+                 * Not gated on `arrivedOnSecondPanel`, which is the mistake that
+                 * made the companion panel never appear: the ordinary case is a
+                 * game opening on the top screen while the launcher keeps the
+                 * bottom one, and that is *not* the second panel being occupied.
+                 * Games only, because an app is not something you play and has no
+                 * session worth counting.
+                 */
+                if (entry is GameEntry) setRunningEntry(entry.id)
+
                 // Reports where the app *landed*, not where it was aimed, so the
                 // shell yields focus for the panel actually being taken.
                 emit(LauncherEffect.Launched(onSecondaryPanel = arrivedOnSecondPanel))

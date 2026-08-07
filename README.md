@@ -318,11 +318,13 @@ It is deliberately not a remote control. The game is not Loki's to drive, and a 
 
 ### Loki over the top
 
-Hold **Start and R1** together inside a game and Loki comes over it — a small panel with the game's name and three tiles: take a screenshot, go home, or close. The D-pad walks it, **A** presses, **B** closes, and every key is swallowed while it is up so a direction cannot move the cursor here and your character there at the same time.
+Hold **Start and R1** together inside a game and Loki comes over it — a small panel with the game's name and seven tiles: screenshot, pointer, brightness down and up, the system panel, home, and close. The D-pad walks it in both directions, **A** presses, **B** closes, and every key is swallowed while it is up so a direction cannot move the cursor here and your character there at the same time.
+
+The system tile opens Android's own quick settings, which is where Wi-Fi, Bluetooth, volume and aeroplane mode already live and is not worth reimplementing — it is also the only route to them from over a fullscreen game, since the notification shade is exactly what such a game is covering. Brightness writes the real system setting rather than dimming a window, so it needs Android's **Modify system settings** permission; without it those two tiles do nothing.
 
 A chord rather than a long press on Start, because a long press cannot be recognised until after the button has already reached the game — recognising one would mean swallowing every Start and re-injecting the short ones, which is a pause button that works most of the time. A chord is decided on the frame it completes. R1 rather than Select, because Start and Select together already raise the pointer.
 
-Three tiles and no more. Everything else Loki offers needs Loki in front — writing a note needs its keyboard, which cannot appear over another app's fullscreen window — and a tile that quietly dismissed your game to do its job would just be a worse Home button. The panel is drawn by the same service that draws the pointer, through the same permission, so it needs nothing you have not already granted.
+There is no note tile, and that is the line: writing one needs Loki's keyboard, which cannot appear over another app's fullscreen window, so a tile for it would have had to dismiss your game first — a worse Home button wearing a different label. The panel is drawn by the same service that draws the pointer, through the same permission, so it needs nothing you have not already granted for that.
 
 <br>
 

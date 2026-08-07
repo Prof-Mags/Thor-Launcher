@@ -129,6 +129,8 @@ fun BottomScreen(
     companionJournal: GameJournal = GameJournal.EMPTY,
     companionSinceEpochMs: Long? = null,
     canScreenshot: Boolean = false,
+    /** Which companion tile the controller cursor is on. */
+    companionAction: Int = 0,
     onScreenshot: () -> Unit = {},
     onEditCompanionNote: () -> Unit = {},
     onTakePanelBack: () -> Unit = {},
@@ -424,6 +426,7 @@ fun BottomScreen(
                         journal = companionJournal,
                         sinceEpochMs = companionSinceEpochMs,
                         canScreenshot = canScreenshot,
+                        focusedAction = companionAction,
                         onScreenshot = onScreenshot,
                         onEditNote = onEditCompanionNote,
                         onHome = onTakePanelBack,

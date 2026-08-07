@@ -12,6 +12,7 @@ import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.DisplayMetrics
 import android.view.Display
 import android.view.InputDevice
@@ -358,18 +359,23 @@ class ThorMouseService : AccessibilityService() {
          */
         if (StreamPresence.streaming) return false
 
-        if (!settings.enabled) return false
-
         /*
-         * The panel over the game takes every key while it is up.
+         * The panel over the game, before anything else and before the pointer's
+         * own switch.
          *
-         * Before the pointer's chord, because this one has to be dismissable from
-         * any state for the same reason that one does — and because its own window
-         * is focused, so the keys it wants are already being delivered there. What
-         * is left here is the chord that closes it again.
+         * It used to sit *after* `settings.enabled`, which is the setting for the
+         * pointer — so on any device where the pointer was turned off the chord
+         * was dropped before it was ever tested and nothing happened. They are
+         * unrelated features that happen to share a service, and gating one on the
+         * other's switch was simply a mistake.
+         *
+         * Dismissable from any state for the same reason the pointer's chord is,
+         * which is why it is first.
          */
         if (handleOverlayChord(event)) return true
         if (gameOverlay?.isShowing == true) return true
+
+        if (!settings.enabled) return false
 
         // The chord is checked first and always, so the pointer can be dismissed
         // from any state — including one where something else has gone wrong.
@@ -524,14 +530,65 @@ class ThorMouseService : AccessibilityService() {
     private fun onGameOverlayAction(action: GameOverlayAction) {
         when (action) {
             GameOverlayAction.SCREENSHOT -> scope.launch {
+                /*
+                 * A beat after the panel comes down.
+                 *
+                 * The overlay hides itself before running an action, but hiding a
+                 * window and the compositor no longer drawing it are not the same
+                 * frame — without this the screenshot caught Loki's own panel
+                 * sitting over the game it was supposed to be a picture of.
+                 */
+                delay(OVERLAY_SETTLE_MS)
                 // Straight through the same bridge the launcher's own tile uses,
                 // so a shot taken from here is filed against the same game and in
                 // the same place as one taken from the panel.
                 screenshots.captureAndFile()
             }
 
+            // Its own chord already does this; the tile is how somebody finds out
+            // that it can be done at all.
+            GameOverlayAction.POINTER -> if (settings.enabled) mouse.toggle()
+
+            GameOverlayAction.BRIGHTNESS_DOWN -> stepBrightness(-BRIGHTNESS_STEP)
+            GameOverlayAction.BRIGHTNESS_UP -> stepBrightness(BRIGHTNESS_STEP)
+
+            /*
+             * The system's own panel rather than a reimplementation of it.
+             *
+             * Wi-Fi, Bluetooth, volume and aeroplane mode all live there already,
+             * and this is the only route to it from over a fullscreen game — the
+             * notification shade is exactly what such a game is covering.
+             */
+            GameOverlayAction.QUICK_SETTINGS ->
+                performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+
             GameOverlayAction.GO_HOME -> performGlobalAction(GLOBAL_ACTION_HOME)
             GameOverlayAction.CLOSE -> Unit
+        }
+    }
+
+    /**
+     * Nudges the screen brightness.
+     *
+     * Written to the system setting rather than to a window attribute, because a
+     * window attribute only dims the window it is set on — and the window this
+     * service could set it on is a transparent overlay that has just been taken
+     * down. The setting is the real brightness and is what the user means.
+     *
+     * Needs `WRITE_SETTINGS`, which is a permission the user grants in Android's
+     * own screen; without it this fails and says so once rather than each press.
+     */
+    private fun stepBrightness(delta: Int) {
+        val resolver = contentResolver
+        val current = runCatching {
+            Settings.System.getInt(resolver, Settings.System.SCREEN_BRIGHTNESS)
+        }.getOrNull() ?: return
+
+        val next = (current + delta).coerceIn(MIN_BRIGHTNESS, MAX_BRIGHTNESS)
+        runCatching {
+            Settings.System.putInt(resolver, Settings.System.SCREEN_BRIGHTNESS, next)
+        }.onFailure {
+            ThorLog.w(TAG, "Brightness needs the Modify system settings permission")
         }
     }
 
@@ -918,6 +975,14 @@ class ThorMouseService : AccessibilityService() {
 
         /** Ignored by the PNG encoder, which is lossless; required by the call. */
         const val PNG_QUALITY = 100
+
+        /** Long enough for a removed overlay to stop being composited. */
+        const val OVERLAY_SETTLE_MS = 120L
+
+        /** About a tenth of the range, which is one perceptible notch. */
+        const val BRIGHTNESS_STEP = 25
+        const val MIN_BRIGHTNESS = 1
+        const val MAX_BRIGHTNESS = 255
         const val TAP_MS = 40L
         const val LONG_PRESS_MS = 600L
         const val SCROLL_MS = 220L

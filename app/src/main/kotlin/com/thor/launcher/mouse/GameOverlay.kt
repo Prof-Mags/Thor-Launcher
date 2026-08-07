@@ -125,7 +125,29 @@ class GameOverlay(
  */
 enum class GameOverlayAction(val label: String) {
     /** The one action that is genuinely better from here than from anywhere else. */
-    SCREENSHOT("Screenshot"),
+    SCREENSHOT("Shot"),
+
+    /**
+     * The pointer, from inside a game.
+     *
+     * Its own chord already does this, but that chord is two buttons held in a
+     * game that is listening to both — and nobody who has not read the README
+     * knows it exists. A tile is how a feature stops being a secret.
+     */
+    POINTER("Pointer"),
+
+    /** Brightness, which on a handheld is the setting reached for most in a game. */
+    BRIGHTNESS_DOWN("Dim"),
+    BRIGHTNESS_UP("Bright"),
+
+    /**
+     * The system's own panel, for everything Loki has no business reimplementing.
+     *
+     * Wi-Fi, Bluetooth, volume, aeroplane mode. Raised through the accessibility
+     * service, which is the only route to it that does not need a notification
+     * shade the game is covering.
+     */
+    QUICK_SETTINGS("System"),
 
     /** Back to the launcher, which is where everything else lives. */
     GO_HOME("Home"),
@@ -210,15 +232,32 @@ private class GameOverlayView(
             titlePaint,
         )
 
+        /*
+         * A grid rather than a row.
+         *
+         * Seven tiles across a card this width would be forty pixels each, which is
+         * unreadable and unhittable. Wrapping at four keeps the card the width of a
+         * dialog rather than the width of the screen — this is drawn over a game
+         * and should cover as little of it as it can.
+         */
         val tileWidth = dp(TILE_WIDTH)
         val tileHeight = dp(TILE_HEIGHT)
         val gap = dp(TILE_GAP)
-        val totalWidth = tileWidth * actions.size + gap * (actions.size - 1)
-        var x = left + (cardWidth - totalWidth) / 2f
-        val tileTop = top + dp(TILE_TOP)
 
         actions.forEachIndexed { index, action ->
-            val rect = RectF(x, tileTop, x + tileWidth, tileTop + tileHeight)
+            val row = index / TILES_PER_ROW
+            val column = index % TILES_PER_ROW
+            val inRow = countInRow(row)
+
+            // Each row is centred on its own, so a short last row sits under the
+            // middle of the one above rather than hanging off the left.
+            val rowWidth = tileWidth * inRow + gap * (inRow - 1)
+            val rowLeft = left + (cardWidth - rowWidth) / 2f
+
+            val x = rowLeft + column * (tileWidth + gap)
+            val y = top + dp(TILE_TOP) + row * (tileHeight + gap)
+            val rect = RectF(x, y, x + tileWidth, y + tileHeight)
+
             tilePaint.color = if (index == focused) TILE_FOCUSED else TILE_COLOR
             canvas.drawRoundRect(rect, dp(TILE_RADIUS), dp(TILE_RADIUS), tilePaint)
             if (index == focused) {
@@ -230,8 +269,13 @@ private class GameOverlayView(
                 rect.centerY() + dp(LABEL_BASELINE),
                 labelPaint,
             )
-            x += tileWidth + gap
         }
+    }
+
+    /** How many tiles a row actually holds; the last one is usually short. */
+    private fun countInRow(row: Int): Int {
+        val first = row * TILES_PER_ROW
+        return (actions.size - first).coerceAtMost(TILES_PER_ROW)
     }
 
     /**
@@ -245,6 +289,8 @@ private class GameOverlayView(
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT -> step(-1)
             KeyEvent.KEYCODE_DPAD_RIGHT -> step(1)
+            KeyEvent.KEYCODE_DPAD_UP -> step(-TILES_PER_ROW)
+            KeyEvent.KEYCODE_DPAD_DOWN -> step(TILES_PER_ROW)
 
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_BUTTON_A,
@@ -261,8 +307,14 @@ private class GameOverlayView(
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean = true
 
     private fun step(delta: Int) {
-        // Clamped rather than wrapped: three tiles in a row have visible ends, and
-        // a cursor that jumped from one end to the other would read as a misfire.
+        /*
+         * Clamped rather than wrapped.
+         *
+         * The tiles have visible ends, and a cursor that jumped from one to the
+         * other would read as a misfire. Vertical steps clamp too, which is what
+         * makes Down from the short last row stay put instead of vanishing past
+         * the end of the list.
+         */
         focused = (focused + delta).coerceIn(0, actions.lastIndex)
         invalidate()
     }
@@ -273,15 +325,18 @@ private class GameOverlayView(
         val TILE_COLOR = Color.argb(255, 38, 38, 44)
         val TILE_FOCUSED = Color.argb(255, 58, 58, 68)
 
-        const val CARD_WIDTH = 320f
-        const val CARD_HEIGHT = 150f
+        const val CARD_WIDTH = 340f
+        const val CARD_HEIGHT = 200f
         const val CARD_RADIUS = 18f
-        const val TILE_WIDTH = 92f
+        const val TILE_WIDTH = 76f
         const val TILE_HEIGHT = 44f
         const val TILE_GAP = 8f
-        const val TILE_TOP = 78f
+        const val TILE_TOP = 74f
         const val TILE_RADIUS = 10f
         const val LABEL_BASELINE = 5f
+
+        /** Four keeps the card dialog-width; see the note in `onDraw`. */
+        const val TILES_PER_ROW = 4
 
         /** The card is a fixed width; a long title has to stop somewhere. */
         const val TITLE_MAX_CHARS = 34
