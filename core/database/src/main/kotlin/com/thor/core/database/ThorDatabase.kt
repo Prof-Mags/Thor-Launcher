@@ -8,6 +8,7 @@ import com.thor.core.database.dao.AppDao
 import com.thor.core.database.dao.CollectionDao
 import com.thor.core.database.dao.FolderDao
 import com.thor.core.database.dao.GameDao
+import com.thor.core.database.dao.GameNoteDao
 import com.thor.core.database.dao.GridDao
 import com.thor.core.database.dao.PlatformDao
 import com.thor.core.database.dao.PlayHistoryDao
@@ -19,6 +20,7 @@ import com.thor.core.database.model.CollectionEntity
 import com.thor.core.database.model.CollectionEntryCrossRef
 import com.thor.core.database.model.FolderEntity
 import com.thor.core.database.model.GameEntity
+import com.thor.core.database.model.GameNoteEntity
 import com.thor.core.database.model.GameVersionEntity
 import com.thor.core.database.model.PageEntity
 import com.thor.core.database.model.PlacementEntity
@@ -46,6 +48,7 @@ import com.thor.core.database.model.WidgetEntity
         CollectionEntity::class,
         CollectionEntryCrossRef::class,
         PlaySessionEntity::class,
+        GameNoteEntity::class,
         AchievementEntity::class,
         WatchProgressEntity::class,
         WidgetEntity::class,
@@ -64,13 +67,14 @@ abstract class ThorDatabase : RoomDatabase() {
     abstract fun collectionDao(): CollectionDao
     abstract fun playHistoryDao(): PlayHistoryDao
     abstract fun achievementDao(): AchievementDao
+    abstract fun gameNoteDao(): GameNoteDao
 
     abstract fun watchProgressDao(): WatchProgressDao
 
     abstract fun widgetDao(): WidgetDao
 
     companion object {
-        const val VERSION = 7
+        const val VERSION = 8
         const val NAME = "thor-library.db"
     }
 }

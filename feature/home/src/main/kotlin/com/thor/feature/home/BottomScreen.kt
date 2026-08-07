@@ -39,6 +39,7 @@ import com.thor.core.model.CouchWallpaperStyle
 import com.thor.core.model.DisplaySettings
 import com.thor.core.model.DockSettings
 import com.thor.core.model.GameEntry
+import com.thor.core.model.GameJournal
 import com.thor.core.model.GridEntry
 import com.thor.core.model.HomeLayout
 import com.thor.core.model.LauncherAction
@@ -62,6 +63,9 @@ import com.thor.feature.home.couch.CouchScreen
 import com.thor.feature.home.couch.platform
 import com.thor.feature.home.cards.PlatformCard
 import com.thor.feature.home.cards.PlatformCardScreen
+import com.thor.feature.home.companion.CompanionPanel
+import com.thor.feature.home.dialog.NoteDialog
+import com.thor.feature.home.dialog.NoteDialogState
 import com.thor.feature.home.dialog.FolderPickerDialog
 import com.thor.feature.home.dialog.FolderPickerState
 import com.thor.feature.home.dialog.SortDialog
@@ -114,6 +118,24 @@ fun BottomScreen(
     platformCardIndex: Int = 0,
     platformCardDirection: Int = 1,
     onPlatformCardOpened: (PlatformCard) -> Unit = {},
+    /**
+     * The entry currently holding the other panel, if any.
+     *
+     * Non-null is what turns this panel into the companion; see [CompanionPanel].
+     * Passed as the entry rather than as a flag plus an id, because everything the
+     * panel draws comes off it and a flag would mean looking it up again here.
+     */
+    companionEntry: GridEntry? = null,
+    companionJournal: GameJournal = GameJournal.EMPTY,
+    companionSinceEpochMs: Long? = null,
+    canScreenshot: Boolean = false,
+    onScreenshot: () -> Unit = {},
+    onEditCompanionNote: () -> Unit = {},
+    onTakePanelBack: () -> Unit = {},
+    /** The note editor, raised from the companion panel and from the context menu. */
+    noteDialog: NoteDialogState = NoteDialogState(),
+    onNoteSaved: (String) -> Unit = {},
+    onNoteDismissed: () -> Unit = {},
     currentSort: SortOrder,
     focusedDockSlot: Int?,
     focusedMenuAction: SideMenuAction?,
@@ -385,7 +407,31 @@ fun BottomScreen(
                  */
                 val showCards = homeLayout == HomeLayout.PLATFORM_CARDS && !state.isFolderOpen
 
-                if (showCards) {
+                if (companionEntry != null) {
+                    /*
+                     * A game has the other panel, so this one belongs to that game.
+                     *
+                     * Ahead of both the grid and the card flow, because while
+                     * something is being played neither of them is what this screen
+                     * is for — a menu for choosing something already chosen. This is
+                     * the whole reason the device has two screens; see
+                     * [CompanionPanel].
+                     */
+                    CompanionPanel(
+                        entry = companionEntry,
+                        platform = (companionEntry as? GameEntry)
+                            ?.let { state.platformsById[it.platformId] },
+                        journal = companionJournal,
+                        sinceEpochMs = companionSinceEpochMs,
+                        canScreenshot = canScreenshot,
+                        onScreenshot = onScreenshot,
+                        onEditNote = onEditCompanionNote,
+                        onHome = onTakePanelBack,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    )
+                } else if (showCards) {
                     PlatformCardScreen(
                         cards = platformCardList,
                         focusedIndex = platformCardIndex,
@@ -627,6 +673,13 @@ fun BottomScreen(
                 onDismiss = onMenuDismissed,
             )
         }
+
+        // Over everything, including the companion panel that usually raises it.
+        NoteDialog(
+            state = noteDialog,
+            onSave = onNoteSaved,
+            onDismiss = onNoteDismissed,
+        )
 
         FolderPickerDialog(
             state = folderPicker,

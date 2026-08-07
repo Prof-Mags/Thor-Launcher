@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.Image
@@ -152,6 +153,17 @@ enum class ContextAction(
         "Remove",
     ),
     EDIT("Edit…", "Title, artwork, details and emulator", Icons.Rounded.Edit, "Edit…"),
+
+    /**
+     * Separate from [EDIT], because it edits a different kind of thing.
+     *
+     * Everything in the editor is a correction to what was scraped — the title is
+     * wrong, the artwork is the Japanese cover, the emulator is the wrong one. A
+     * note is not a correction to anything; it is the only field in the library
+     * that no provider has an opinion about. Filing it inside a form of scraped
+     * values would put it behind two presses and imply it could be overwritten.
+     */
+    NOTE("Note…", "Write where you got to", Icons.Rounded.EditNote, "Note…"),
     APP_INFO("App info", "Open Android's settings page", Icons.Rounded.Info, "App info"),
     TOGGLE_FAVORITE(
         "Favourite",
@@ -377,6 +389,9 @@ fun contextActionsFor(
      * artwork nobody has chosen it would do nothing visible.
      */
     if (entry is GameEntry) {
+        // Only games, because "where you got to" is a question a game has and an
+        // app or a folder does not.
+        add(ContextAction.NOTE)
         add(ContextAction.CHOOSE_MATCH)
         add(ContextAction.SET_GAME_COVER)
         add(ContextAction.SET_GAME_BACKDROP)

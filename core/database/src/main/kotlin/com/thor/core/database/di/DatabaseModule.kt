@@ -11,6 +11,7 @@ import com.thor.core.database.dao.AppDao
 import com.thor.core.database.dao.CollectionDao
 import com.thor.core.database.dao.FolderDao
 import com.thor.core.database.dao.GameDao
+import com.thor.core.database.dao.GameNoteDao
 import com.thor.core.database.dao.GridDao
 import com.thor.core.database.dao.PlatformDao
 import com.thor.core.database.dao.PlayHistoryDao
@@ -80,6 +81,11 @@ object DatabaseModule {
     @Singleton
     fun providesPlayHistoryDao(active: ActiveDatabase): PlayHistoryDao =
         profileScopedDao(PlayHistoryDao::class.java, active.current, active::require, ThorDatabase::playHistoryDao)
+
+    @Provides
+    @Singleton
+    fun providesGameNoteDao(active: ActiveDatabase): GameNoteDao =
+        profileScopedDao(GameNoteDao::class.java, active.current, active::require, ThorDatabase::gameNoteDao)
 
     @Provides
     @Singleton

@@ -306,6 +306,24 @@ If it feels slow, **Settings → System & accessibility → Performance** turns 
 
 <div align="center">
 
+## While you are playing
+
+Start a game and the panel you are not playing on becomes that game's panel rather than going back to being a grid. A grid at that moment is a menu for choosing something you have already chosen; this is the thing a second screen is actually for.
+
+It shows what you cannot see from inside the game. A clock counting this sitting — not your total, which answers a different question; this one answers whether you should stop. How far through you are, drawn against the completion times the scrapers returned, and only where one was actually returned rather than against an invented number. What you wrote down last time. The frames you have kept. And three actions: take a screenshot, write a note, or take the panel back.
+
+It is deliberately not a remote control. The game is not Loki's to drive, and a row of buttons that mostly did nothing would be worse than one that admits what it can reach.
+
+<br>
+
+### Notes and screenshots
+
+Every game can carry a note — where you got to, what to do next, which of the four save files is the real one. It is the only field in the library that no scraper has an opinion about, so it lives in its own table and can never be overwritten by a rescrape, and it survives a rescan that cannot find the ROM: a moved file is exactly the case where the note is the last record left of where you were. Write one from a game's context menu or from the panel beside the game, on Loki's own keyboard. Emptying it and saving deletes it, so there is no second command to find.
+
+Screenshots are taken of the game — another app, on another display, which is something an app normally cannot capture at all. Loki does it through the pointer service's permission rather than through a screen-capture consent dialog, because that dialog would appear on top of the very thing being photographed. Each frame is filed against the game it came from and shown on that game's panel, rather than landing in a folder of a hundred undated pictures. Both notes and screenshots live inside the profile directory, so a backup carries them and a restore brings them back without either feature having to know that backups exist.
+
+<br>
+
 ## Recording
 
 There are two recordings, and they capture different things, which is why they are two tiles rather than one tile with a setting behind it.

@@ -3,7 +3,10 @@ package com.thor.launcher.mouse
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
+import android.accessibilityservice.AccessibilityService.ScreenshotResult
+import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Path
 import android.hardware.display.DisplayManager
 import android.os.Build
@@ -16,6 +19,8 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.annotation.RequiresApi
+import com.thor.core.common.capture.ScreenshotBridge
 import com.thor.core.common.log.ThorLog
 import com.thor.data.stream.StreamPresence
 import com.thor.core.datastore.SettingsRepository
@@ -40,7 +45,11 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.Executors
 import javax.inject.Inject
+import kotlin.coroutines.resume
 import kotlin.math.abs
 
 /**
@@ -69,6 +78,8 @@ class ThorMouseService : AccessibilityService() {
     @Inject lateinit var mouse: MouseController
 
     @Inject lateinit var settingsRepository: SettingsRepository
+
+    @Inject lateinit var screenshots: ScreenshotBridge
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var overlay: PointerOverlay? = null
@@ -100,6 +111,12 @@ class ThorMouseService : AccessibilityService() {
         super.onServiceConnected()
         requestControllerKeyFiltering()
         overlay = PointerOverlay(this, ::onStickMoved, ::stopAllStickInput)
+        // Only where the platform has the call. Below API 30 the launcher simply
+        // reports that a screenshot cannot be taken, which is the truth and is
+        // what every surface offering the action already handles.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            screenshots.bind(::captureDisplay)
+        }
         reportDisplays()
         mouse.onPanelsNeeded(::reportDisplays)
 
@@ -205,6 +222,11 @@ class ThorMouseService : AccessibilityService() {
         cancelMovement()
         overlay?.hide()
         overlay = null
+        // Same reasoning as the mouse listener below: the bridge is a singleton and
+        // outlives this service, so a capture lambda left bound would hold a
+        // destroyed service and would report the ability to take a screenshot that
+        // nothing can now take.
+        screenshots.unbind()
         mouse.setServiceCursorDisplayId(null)
         // Cleared before the scope dies: the controller is a singleton and outlives
         // this service, so a listener left pointing at a destroyed one would keep
@@ -217,6 +239,58 @@ class ThorMouseService : AccessibilityService() {
         scope.cancel()
         super.onDestroy()
     }
+
+    /**
+     * A PNG of one display, taken through the accessibility permission.
+     *
+     * The only route that works while a game is in front — see [ScreenshotBridge]
+     * for why `MediaProjection` is not usable here.
+     *
+     * The frame arrives as a hardware buffer, which is a handle to memory the GPU
+     * owns rather than pixels. It has to be wrapped, copied into a software bitmap
+     * and closed, in that order: compressing straight from the hardware bitmap
+     * throws on some drivers, and leaving the buffer open leaks a graphics
+     * allocation per screenshot.
+     *
+     * Suspends until the frame lands rather than returning a callback, so the
+     * caller can write the file and report the result as one operation.
+     */
+    @RequiresApi(Build.VERSION_CODES.R)
+    private suspend fun captureDisplay(displayId: Int): ByteArray? =
+        suspendCancellableCoroutine { continuation ->
+            takeScreenshot(
+                displayId,
+                Executors.newSingleThreadExecutor(),
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(result: ScreenshotResult) {
+                        val bytes = result.hardwareBuffer.use { buffer ->
+                            val hardware = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
+                            // A hardware bitmap has no pixels to read; the copy is
+                            // what makes it compressible, and is why this is not
+                            // simply `hardware.compress`.
+                            val software = hardware?.copy(Bitmap.Config.ARGB_8888, false)
+                            hardware?.recycle()
+                            software?.let { bitmap ->
+                                ByteArrayOutputStream().use { out ->
+                                    bitmap.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY, out)
+                                    bitmap.recycle()
+                                    out.toByteArray()
+                                }
+                            }
+                        }
+                        if (continuation.isActive) continuation.resume(bytes)
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        // Ordinary rather than exceptional: the system refuses a
+                        // capture over a secure window, which is a correct refusal
+                        // and something the user may simply be looking at.
+                        ThorLog.w(TAG, "Screenshot refused on display $displayId (code $errorCode)")
+                        if (continuation.isActive) continuation.resume(null)
+                    }
+                },
+            )
+        }
 
     /**
      * Nothing is observed.
@@ -739,6 +813,9 @@ class ThorMouseService : AccessibilityService() {
 
     private companion object {
         const val TAG = "Pointer"
+
+        /** Ignored by the PNG encoder, which is lossless; required by the call. */
+        const val PNG_QUALITY = 100
         const val TAP_MS = 40L
         const val LONG_PRESS_MS = 600L
         const val SCROLL_MS = 220L

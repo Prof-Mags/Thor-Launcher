@@ -33,6 +33,20 @@ enum class ShortcutAction(val label: String, val description: String) {
      */
     RECORD_SCREEN("Record screen", "Capture the top screen, including games"),
 
+    /**
+     * One frame rather than a video, and filed against the game rather than dumped.
+     *
+     * Separate from both recordings because it answers a different question. A
+     * recording is something you set going and stop; this is a moment you want
+     * kept, and the reason it is worth keeping is almost always *which game it
+     * was* — so it is stored against the game and shown on that game's panel,
+     * rather than landing in a folder of a hundred undated frames.
+     *
+     * Needs the pointer service, which is the only route to capturing a display
+     * the launcher does not own; see `ScreenshotBridge`.
+     */
+    SCREENSHOT("Screenshot", "Save a frame to the game it came from"),
+
     WIFI("Wi-Fi", "Open the Wi-Fi panel"),
     BLUETOOTH("Bluetooth", "Open Bluetooth settings"),
     VOLUME("Volume", "Open the volume panel"),

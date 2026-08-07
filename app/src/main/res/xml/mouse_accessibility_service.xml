@@ -25,6 +25,14 @@
   Used for exactly two calls: `findFocus(FOCUS_INPUT)` to locate the field the
   user has tapped, and `ACTION_SET_TEXT` to fill it in. Nothing is stored, and
   no window is inspected unless a key has just been pressed on Loki's keyboard.
+
+  `canTakeScreenshot` is what allows a screenshot of a game, which is another
+  app on another display and therefore something the launcher cannot capture on
+  its own. The alternative is `MediaProjection`, which asks the system's consent
+  dialog every time — on top of the very thing being photographed. Used only when
+  the user presses the screenshot action; nothing is captured on a timer, on an
+  event, or in the background, and every frame is written into the active
+  profile's own directory and nowhere else.
 -->
 <accessibility-service
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -33,6 +41,7 @@
     android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
     android:canPerformGestures="true"
     android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
     android:canRequestFilterKeyEvents="true"
     android:description="@string/mouse_service_description"
     android:notificationTimeout="0"

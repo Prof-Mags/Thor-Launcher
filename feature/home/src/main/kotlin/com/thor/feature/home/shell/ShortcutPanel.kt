@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
@@ -391,6 +392,7 @@ private fun ShortcutAction.group(): ShortcutGroup = when (this) {
 
     ShortcutAction.RECORD,
     ShortcutAction.RECORD_SCREEN,
+    ShortcutAction.SCREENSHOT,
     -> ShortcutGroup.CAPTURE
 
     ShortcutAction.WIFI,
@@ -415,6 +417,8 @@ private fun ShortcutAction.icon(): ImageVector = when (this) {
     ShortcutAction.SCAN_LIBRARY -> Icons.Rounded.Refresh
     ShortcutAction.RECORD -> Icons.Rounded.Videocam
     ShortcutAction.RECORD_SCREEN -> Icons.AutoMirrored.Rounded.ScreenShare
+    ShortcutAction.SCREENSHOT -> Icons.Rounded.PhotoCamera
+
     ShortcutAction.WIFI -> Icons.Rounded.Wifi
     ShortcutAction.BLUETOOTH -> Icons.Rounded.Bluetooth
     ShortcutAction.VOLUME -> Icons.AutoMirrored.Rounded.VolumeUp

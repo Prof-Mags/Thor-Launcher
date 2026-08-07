@@ -64,6 +64,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import com.thor.core.designsystem.theme.DesignScale
 import com.thor.core.designsystem.theme.PANEL_SHORT_SIDE
 import com.thor.core.designsystem.theme.ThorTheme
@@ -87,6 +88,7 @@ import com.thor.core.model.FolderEntry
 import com.thor.core.model.LauncherExtension
 import com.thor.core.model.LauncherFeatures
 import com.thor.core.model.GameEntry
+import com.thor.core.model.GameJournal
 import com.thor.core.model.GridEntry
 import com.thor.core.model.KeyboardKey
 import com.thor.core.model.HomeLayout
@@ -395,6 +397,24 @@ fun ThorApp(
     // [com.thor.feature.home.cards.PlatformCardScreen].
     val platformCardIndex by viewModel.platformCardIndex.collectAsState()
     val platformCardDirection by viewModel.platformCardDirection.collectAsState()
+
+    // ---- The companion panel ---------------------------------------------------
+    val runningEntryId by viewModel.runningEntryId.collectAsState()
+    val runningSince by viewModel.runningSinceEpochMs.collectAsState()
+    val canScreenshot by viewModel.canScreenshot.collectAsState()
+    val noteDialog by viewModel.noteDialog.collectAsState()
+
+    /*
+     * Everything recorded about the game currently holding a panel.
+     *
+     * Collected only while one actually is, so a launcher sitting on the grid is
+     * not observing a note table for a game nobody is playing. `flowOf(EMPTY)`
+     * rather than a null flow, so the panel below never has to reason about the
+     * difference between "nothing recorded" and "not asked yet".
+     */
+    val companionJournal by remember(runningEntryId) {
+        runningEntryId?.let(viewModel::journalFor) ?: flowOf(GameJournal.EMPTY)
+    }.collectAsState(initial = GameJournal.EMPTY)
     val navCursor by viewModel.navCursor.collectAsState()
     val couchFocus by viewModel.couchFocus.collectAsState()
     val couchPlatformIndex by viewModel.couchPlatformIndex.collectAsState()
@@ -2474,6 +2494,26 @@ fun ThorApp(
                 // control, matching whatever its top panel is showing.
                 sectionContent = sectionHost,
                 couchMode = mode == DualScreenMode.COUCH,
+                /*
+                 * The companion panel, whenever a game is holding the other one.
+                 *
+                 * Resolved from the id the launcher recorded at hand-over rather
+                 * than from the foreground app, which would mean reading which app
+                 * is open — something the accessibility service deliberately does
+                 * not do. Null when the entry has since gone from the library, so a
+                 * rescan mid-game falls back to the grid rather than to a panel
+                 * about nothing.
+                 */
+                companionEntry = runningEntryId?.let(state.entriesById::get),
+                companionJournal = companionJournal,
+                companionSinceEpochMs = runningSince,
+                canScreenshot = canScreenshot,
+                onScreenshot = viewModel::captureScreenshot,
+                onEditCompanionNote = viewModel::openNoteEditorForRunning,
+                onTakePanelBack = viewModel::goHome,
+                noteDialog = noteDialog,
+                onNoteSaved = viewModel::saveNote,
+                onNoteDismissed = viewModel::dismissNoteDialog,
                 homeLayout = effectiveHomeLayout,
                 // Folded once above and handed to both screens; see [infoSelection].
                 platformCardList = platformCardList,

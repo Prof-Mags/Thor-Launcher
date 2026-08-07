@@ -207,6 +207,32 @@ object ThorMigrations {
         }
     }
 
+    /**
+     * Adds the notes table.
+     *
+     * Purely additive, and with no foreign key to `games` on purpose: a note has
+     * to outlive a rescan that could not find its ROM, which is the moment the
+     * game row goes and the note is the only record left of where you got to.
+     */
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `game_notes` (
+                    `entry_id` TEXT NOT NULL,
+                    `body` TEXT NOT NULL,
+                    `updated_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`entry_id`)
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_game_notes_updated_at` " +
+                    "ON `game_notes` (`updated_at`)",
+            )
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -214,5 +240,6 @@ object ThorMigrations {
         MIGRATION_4_5,
         MIGRATION_5_6,
         MIGRATION_6_7,
+        MIGRATION_7_8,
     )
 }

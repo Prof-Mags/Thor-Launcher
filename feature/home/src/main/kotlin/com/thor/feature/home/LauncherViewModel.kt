@@ -14,8 +14,11 @@ import com.thor.core.model.ControllerCommand
 import com.thor.core.model.ControlSettings
 import com.thor.core.model.DualScreenMode
 import com.thor.core.model.FolderEntry
+import com.thor.core.common.capture.ScreenshotBridge
 import com.thor.core.model.GameEntry
+import com.thor.core.model.GameJournal
 import com.thor.core.model.HomeLayout
+import com.thor.data.journal.GameJournalRepository
 import com.thor.core.model.GameMetadata
 import com.thor.core.model.GridEntry
 import com.thor.core.model.CellSpan
@@ -31,6 +34,7 @@ import com.thor.core.model.NavDirection
 import com.thor.core.model.Platform
 import com.thor.core.model.PlatformFolders
 import com.thor.feature.home.cards.PlatformCard
+import com.thor.feature.home.dialog.NoteDialogState
 import com.thor.feature.home.cards.platformCards
 import com.thor.feature.home.cards.stepCard
 import com.thor.core.model.PreferredPanel
@@ -128,6 +132,8 @@ class LauncherViewModel @Inject constructor(
     private val clipboard: ThorClipboard,
     private val widgetRepository: WidgetRepository,
     private val achievementRepository: AchievementRepository,
+    private val journalRepository: GameJournalRepository,
+    private val screenshots: ScreenshotBridge,
 ) : ViewModel() {
 
     private val cursor = MutableStateFlow(CursorPosition(0, 0))
@@ -177,6 +183,40 @@ class LauncherViewModel @Inject constructor(
      */
     private val _secondScreenOccupied = MutableStateFlow(false)
     val secondScreenOccupied: StateFlow<Boolean> = _secondScreenOccupied.asStateFlow()
+
+    /**
+     * The entry the launcher last handed a panel to, while it still has it.
+     *
+     * [_secondScreenOccupied] says *that* a panel is taken; this says by what, and
+     * the difference is the whole of the companion panel and of filing a
+     * screenshot against the right game. Set beside the flag rather than derived
+     * from the foreground app, which would mean reading which app is open — a
+     * thing the accessibility service deliberately does not do.
+     *
+     * Cleared wherever the flag is, so the two cannot disagree. A stale id would
+     * be worse than none: it would attribute a screenshot to whatever was played
+     * before.
+     */
+    private val _runningEntryId = MutableStateFlow<String?>(null)
+    val runningEntryId: StateFlow<String?> = _runningEntryId.asStateFlow()
+
+    /** When the current hand-over happened, for the companion panel's timer. */
+    private val _runningSinceEpochMs = MutableStateFlow<Long?>(null)
+    val runningSinceEpochMs: StateFlow<Long?> = _runningSinceEpochMs.asStateFlow()
+
+    /**
+     * Records that a panel has been handed to an entry, or taken back.
+     *
+     * One function rather than three assignments at each of the four sites that
+     * change the flag, because the invariant that matters — an id and a start time
+     * exist exactly when the panel is occupied — is the kind that decays when it
+     * is spelled out repeatedly.
+     */
+    private fun setPanelOccupant(entryId: String?, nowMs: Long = System.currentTimeMillis()) {
+        _secondScreenOccupied.value = entryId != null
+        _runningEntryId.value = entryId
+        _runningSinceEpochMs.value = entryId?.let { nowMs }
+    }
 
     /** Whether the secondary panel's Presentation is still attached to its display. */
     private val secondaryPresentationVisible = MutableStateFlow(false)
@@ -982,6 +1022,107 @@ class LauncherViewModel @Inject constructor(
         _shortcutPanel.update { it.copy(visible = false) }
     }
 
+    // ---- The journal: what the user recorded, not what was scraped -----------
+
+    /** Everything written and captured about one entry. */
+    fun journalFor(entryId: String): Flow<GameJournal> = journalRepository.observe(entryId)
+
+    /** Whether a screenshot can be taken at all; false without the pointer service. */
+    val canScreenshot: StateFlow<Boolean> = screenshots.available
+
+    /** The note editor, and what it is editing. */
+    private val _noteDialog = MutableStateFlow(NoteDialogState())
+    val noteDialog: StateFlow<NoteDialogState> = _noteDialog.asStateFlow()
+
+    /**
+     * Raises the note editor over whatever asked for it.
+     *
+     * The existing note is fetched before the dialog opens rather than observed
+     * inside it, so the field is populated on its first frame. Opening empty and
+     * filling in a moment later would race the user's first keystroke and could
+     * silently discard it.
+     */
+    fun openNoteEditor(entry: GridEntry) {
+        closeContextMenu()
+        viewModelScope.launchSafely(TAG) {
+            val existing = journalRepository.noteFor(entry.id)
+            _noteDialog.value = NoteDialogState(
+                entryId = entry.id,
+                title = entry.title,
+                body = existing?.body.orEmpty(),
+            )
+        }
+    }
+
+    /** Raises it for whatever is currently on the other panel. */
+    fun openNoteEditorForRunning() {
+        val id = _runningEntryId.value ?: return
+        uiState.value.entriesById[id]?.let(::openNoteEditor)
+    }
+
+    fun dismissNoteDialog() { _noteDialog.value = NoteDialogState() }
+
+    /** Saves what was typed and closes; blank deletes, see the repository. */
+    fun saveNote(body: String) {
+        val entryId = _noteDialog.value.entryId ?: return
+        _noteDialog.value = NoteDialogState()
+        setNote(entryId, body)
+    }
+
+    fun setNote(entryId: String, body: String) {
+        viewModelScope.launchSafely(TAG) {
+            journalRepository.setNote(entryId, body, System.currentTimeMillis())
+        }
+    }
+
+    /**
+     * Takes a frame and files it against whatever it is a picture of.
+     *
+     * The running game first, because that is what is on the screen being
+     * photographed — filing it against whatever the cursor happens to rest on
+     * would attribute a screenshot of one game to another. The selection is the
+     * fallback for a capture taken from the launcher itself, where the cursor is
+     * the only thing that says what the user means.
+     *
+     * Nothing at all to attribute it to means no capture rather than an orphan
+     * file: a screenshot whose game is unknown cannot be found again on any
+     * surface this feature has, and would be a file the user never sees.
+     */
+    fun captureScreenshot() {
+        val target = _runningEntryId.value ?: uiState.value.selection?.id
+        if (target == null) {
+            emit(LauncherEffect.ShowMessage("Nothing to attach a screenshot to"))
+            return
+        }
+
+        viewModelScope.launchSafely(TAG) {
+            val png = screenshots.capture(CAPTURED_DISPLAY_ID)
+            if (png == null) {
+                // Two causes and the user can act on both: the service is off, or
+                // the system refused the frame. Said plainly rather than silently.
+                val reason = if (canScreenshot.value) {
+                    "That screen cannot be captured"
+                } else {
+                    "Turn on Loki's pointer service to take screenshots"
+                }
+                emit(LauncherEffect.ShowMessage(reason))
+                return@launchSafely
+            }
+
+            val saved = journalRepository.addScreenshot(target, png, System.currentTimeMillis())
+            val title = uiState.value.entriesById[target]?.title
+            emit(
+                LauncherEffect.ShowMessage(
+                    if (saved != null) {
+                        "Screenshot saved to ${title ?: "this game"}"
+                    } else {
+                        "Could not save the screenshot"
+                    },
+                ),
+            )
+        }
+    }
+
     /** Runs a tile. The panel always closes first, so nothing opens behind it. */
     fun onShortcut(action: ShortcutAction) {
         closeShortcutPanel()
@@ -992,6 +1133,7 @@ class LauncherViewModel @Inject constructor(
             ShortcutAction.SCAN_LIBRARY -> scanLibrary()
             ShortcutAction.RECORD -> toggleRecording()
             ShortcutAction.RECORD_SCREEN -> startScreenRecording()
+            ShortcutAction.SCREENSHOT -> captureScreenshot()
 
             ShortcutAction.COUCH_MODE -> viewModelScope.launchSafely(TAG) {
                 settingsRepository.updateDisplay { display ->
@@ -2569,7 +2711,7 @@ class LauncherViewModel @Inject constructor(
          * exactly what made playing on one screen and browsing on the other
          * impossible.
          */
-        _secondScreenOccupied.value = false
+        setPanelOccupant(null)
 
         // Whatever was launched is being left behind, so its session is over.
         settlePlaytime()
@@ -3092,6 +3234,7 @@ class LauncherViewModel @Inject constructor(
             ContextAction.REMOVE_FROM_FOLDER -> removeFromFolder(entry)
 
             ContextAction.EDIT -> openEditor(entry)
+            ContextAction.NOTE -> openNoteEditor(entry)
 
             ContextAction.APP_INFO -> openAppInfo(entry)
 
@@ -3294,7 +3437,7 @@ class LauncherViewModel @Inject constructor(
              */
             val handOverFirst = effectiveTarget == LaunchTarget.SECOND_SCREEN
             if (handOverFirst) {
-                _secondScreenOccupied.value = true
+                setPanelOccupant(entry.id)
                 if (!awaitSecondaryPresentationDismissal()) {
                     ThorLog.w(TAG, "Second panel did not stand down; launching over it")
                 }
@@ -3332,7 +3475,7 @@ class LauncherViewModel @Inject constructor(
                 }
 
                 is FolderEntry -> {
-                    _secondScreenOccupied.value = false
+                    setPanelOccupant(null)
                     openFolder(entry.id)
                     closeContextMenu()
                     return@launchSafely
@@ -3341,7 +3484,7 @@ class LauncherViewModel @Inject constructor(
                 // Shortcuts carry a launcher action rather than a component, so
                 // there is nothing for a display target to apply to.
                 else -> {
-                    _secondScreenOccupied.value = false
+                    setPanelOccupant(null)
                     closeContextMenu()
                     return@launchSafely
                 }
@@ -3363,7 +3506,7 @@ class LauncherViewModel @Inject constructor(
 
             // Stood down only now, and only for a launch that was actually
             // accepted onto that panel — see the note above the start call.
-            _secondScreenOccupied.value = arrivedOnSecondPanel
+            setPanelOccupant(entry.id.takeIf { arrivedOnSecondPanel })
             if (result is LaunchResult.Success) {
                 // Reports where the app *landed*, not where it was aimed, so the
                 // shell yields focus for the panel actually being taken.
@@ -3443,6 +3586,16 @@ class LauncherViewModel @Inject constructor(
             closeContextMenu()
             gridRepository.removePlacement(entry.id)
             libraryRepository.deleteEntry(entry.id)
+            /*
+             * The note and the screenshots go with it, and only here.
+             *
+             * This is the one route that means "I do not want this game": a rescan
+             * that cannot find a ROM must never reach it, because a moved file is
+             * exactly the case where the note about where you got to is the last
+             * record left. That is also why `game_notes` has no foreign key onto
+             * `games` — the cascade would have made the rescan do this silently.
+             */
+            journalRepository.forget(entry.id)
             emit(LauncherEffect.ShowMessage("Removed ${entry.title} from the library"))
         }
     }
@@ -4373,6 +4526,15 @@ class LauncherViewModel @Inject constructor(
     private companion object {
         const val TAG = "Launcher"
         const val STOP_TIMEOUT_MS = 5_000L
+
+        /**
+         * The display a screenshot is taken of.
+         *
+         * The default one, which on this device is the top screen — where a game
+         * launched to the second panel actually runs. Not the panel the launcher
+         * is drawing on, which would photograph the grid rather than the game.
+         */
+        const val CAPTURED_DISPLAY_ID = android.view.Display.DEFAULT_DISPLAY
 
         /**
          * How long the cursor has to rest before a game's achievements are

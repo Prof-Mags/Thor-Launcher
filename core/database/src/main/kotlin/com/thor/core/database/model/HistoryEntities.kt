@@ -23,6 +23,36 @@ data class PlaySessionEntity(
 )
 
 
+/**
+ * What the user wrote about a game.
+ *
+ * A table of its own rather than a column on `games`, and rather than a field in
+ * `GameMetadata`, because it is the one thing in the library that no scraper may
+ * ever touch. Metadata is merged from five sources and overwritten on every
+ * rescrape — a note living there would need the locked-field machinery to survive,
+ * and a note that can be lost to a background scrape is not worth writing.
+ *
+ * Keyed by entry rather than by game, so a note can be attached to anything the
+ * grid holds. In practice that is games; the type does not need to care.
+ *
+ * No foreign key to `games`, deliberately. A rescan that loses a ROM removes its
+ * row, and the note about where you got to in it is exactly what should outlive
+ * a moved file — see [com.thor.data.library.NoteRepository], which sweeps notes
+ * only when a game is deleted on purpose.
+ */
+@Entity(
+    tableName = "game_notes",
+    // Ordered by when it was written wherever notes are listed rather than
+    // looked up, which is every screen that shows more than one.
+    indices = [Index(value = ["updated_at"])],
+)
+data class GameNoteEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "entry_id") val entryId: String,
+    @ColumnInfo(name = "body") val body: String,
+    @ColumnInfo(name = "updated_at") val updatedAtEpochMs: Long,
+)
+
 /** A single RetroAchievements achievement and this user's progress on it. */
 @Entity(
     tableName = "achievements",
